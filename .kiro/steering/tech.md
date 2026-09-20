@@ -8,7 +8,8 @@ Runtime: one FastAPI process, one Python worker, one Next.js app, one PostgreSQL
 
 | Layer | Choice |
 |---|---|
-| Backend | Python, FastAPI |
+| Backend | Python 3.13 (pinned via `.python-version`), FastAPI |
+| Packaging | uv (resolution, lockfile, task running); `src/` layout, hatchling build |
 | Contracts | Pydantic (artifacts, validation) + `typing.Protocol` (plugin seams) |
 | Database | PostgreSQL (Supabase for V1) with JSONB + pgvector |
 | ORM / migrations | SQLAlchemy + Alembic |
@@ -18,6 +19,7 @@ Runtime: one FastAPI process, one Python worker, one Next.js app, one PostgreSQL
 | Frontend | Next.js (public site + editor dashboard), TypeScript strict |
 | Observability | Structured logs + LLM tracing (e.g. Langfuse) from day one |
 | Lint / format | ruff (Python), eslint + prettier (TS) |
+| Types | mypy strict over `src` and `tests`; TS strict |
 | Tests | pytest, vitest, Playwright (triage + review flows only) |
 | Deploy | Railway (`api`, `worker`, `web`, `scheduler`), Dockerized, migrations as a release step |
 
@@ -47,4 +49,17 @@ Fetched web content is untrusted and may contain prompt injection. It is passed 
 
 ## Commands
 
-Not yet scaffolded — the repo currently contains only the PRD and steering files. When `apps/` and `src/` land, replace this section with the real commands (install, dev, test, lint, typecheck, migrate) and delete this note.
+Prerequisite: uv. It provisions the pinned Python itself.
+
+```bash
+uv sync --all-groups          # install (creates .venv)
+uv run pre-commit install     # commit + push hooks
+uv run ruff check .           # lint
+uv run ruff format .          # format
+uv run mypy                   # typecheck
+uv run pytest                 # test
+```
+
+Pre-commit runs lint, format and types on commit, and pytest on push, using the
+versions in `uv.lock` so it cannot drift from CI. Add `dev`, `migrate` and the
+frontend commands here when `apps/` lands.
