@@ -4,8 +4,12 @@ version = "0.1.0"
 description = "AI-engineering intelligence platform: discover, research, verify, publish."
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "alembic>=1.13,<2",
+    "pgvector>=0.3,<1",
+    "psycopg[binary]>=3.2,<4",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.5,<3",
+    "sqlalchemy>=2.0,<3",
 ]
 
 [dependency-groups]
