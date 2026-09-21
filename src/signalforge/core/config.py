@@ -5,6 +5,7 @@ reads ``os.environ`` directly, so every setting has one declared type, one
 default and one place to look it up.
 """
 
+from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 from typing import Literal, Self
@@ -12,6 +13,7 @@ from typing import Literal, Self
 from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from signalforge.core.budget import BudgetLimits, BudgetScope
 from signalforge.core.errors import ConfigurationError
 
 LLMProviderName = Literal["fake", "openrouter"]
@@ -51,6 +53,11 @@ class Settings(BaseSettings):
     llm_provider: LLMProviderName = "fake"
     openrouter_api_key: SecretStr | None = None
 
+    # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
+    # compared against accumulated spend and must not drift.
+    budget_per_topic_usd: Decimal = Decimal("0.50")
+    budget_per_article_usd: Decimal = Decimal("1.50")
+
     @model_validator(mode="after")
     def _require_credentials_for_live_providers(self) -> Self:
         if self.llm_provider == "openrouter" and self.openrouter_api_key is None:
@@ -66,6 +73,14 @@ class Settings(BaseSettings):
     def api_database_url(self) -> str:
         """Transaction-mode connection when configured, otherwise the session one."""
         return str(self.database_pooler_url or self.database_url)
+
+    def budget_limits(self, scope: BudgetScope) -> BudgetLimits:
+        """Configured caps for a scope, so limits live in config rather than in stages."""
+        caps = {
+            BudgetScope.TOPIC: self.budget_per_topic_usd,
+            BudgetScope.ARTICLE: self.budget_per_article_usd,
+        }
+        return BudgetLimits(max_cost_usd=caps[scope])
 
 
 @lru_cache(maxsize=1)
