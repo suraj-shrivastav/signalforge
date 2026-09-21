@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Provider setup notes pasted from dashboards routinely contain live keys.
+.kiro/*_prompt.md
+
 # Python
 __pycache__/
 *.py[cod]
