@@ -11,6 +11,7 @@ from alembic import context
 from sqlalchemy import Connection
 
 from signalforge.core.config import get_settings
+from signalforge.db import models  # noqa: F401  (registers tables on Base.metadata)
 from signalforge.db.base import Base
 from signalforge.db.session import ConnectionMode, create_db_engine
 
