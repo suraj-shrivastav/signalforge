@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 
 from apps.api.errors import REQUEST_ID_HEADER, register_error_handlers
-from apps.api.routes import signals
+from apps.api.routes import ingest, signals
 from signalforge.core.config import Settings, get_settings
 from signalforge.core.logging import configure_logging, correlation_id
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
@@ -56,4 +56,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(signals.router)
+    if settings.ingest_endpoint_enabled:
+        app.include_router(ingest.router)
     return app

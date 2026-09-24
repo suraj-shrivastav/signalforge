@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     budget_per_topic_usd: Decimal = Decimal("0.50")
     budget_per_article_usd: Decimal = Decimal("1.50")
 
+    # Temporary HTTP trigger for ingest (ADR-0005). Default off. Owner: suraj.
+    # Remove when ingest runs through the queue.
+    ingest_endpoint_enabled: bool = False
+    ingest_token: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def _require_token_for_ingest_endpoint(self) -> Self:
+        if self.ingest_endpoint_enabled and (
+            self.ingest_token is None or not self.ingest_token.get_secret_value()
+        ):
+            raise ValueError("INGEST_TOKEN is required when INGEST_ENDPOINT_ENABLED is true")
+        return self
+
     @model_validator(mode="after")
     def _require_credentials_for_live_providers(self) -> Self:
         if self.llm_provider == "openrouter" and self.openrouter_api_key is None:
