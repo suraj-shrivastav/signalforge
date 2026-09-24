@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 from apps.api.deps import get_signal_repository
-from apps.api.main import create_app
+from apps.api.main import create_app, resolve_request_id
 from fastapi.testclient import TestClient
 
 from signalforge.core.config import Settings
@@ -111,3 +111,9 @@ def test_request_id_is_echoed_when_safe_and_replaced_when_not(client: TestClient
     assert safe.headers["X-Request-ID"] == "abc-123"
     replaced = client.get("/health", headers={"X-Request-ID": "bad id with spaces"})
     assert replaced.headers["X-Request-ID"] != "bad id with spaces"
+
+
+@pytest.mark.parametrize("bad", ["abc\n", "abc\r\n", "a b", "", "x" * 65])
+def test_resolve_request_id_rejects_unsafe_values(bad: str) -> None:
+    assert resolve_request_id(bad) != bad
+    assert resolve_request_id("abc-1") == "abc-1"

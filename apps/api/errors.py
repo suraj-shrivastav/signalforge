@@ -61,5 +61,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _unexpected(request: Request, _: Exception) -> JSONResponse:
         # Logged once, here, at the boundary. The client gets no internals.
-        log.exception("unhandled error")
+        log.exception(
+            "unhandled error", extra={"request_id": getattr(request.state, "request_id", None)}
+        )
         return error_response(request, 500, "internal_error", "Internal error")

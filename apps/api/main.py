@@ -16,6 +16,11 @@ from signalforge.db.session import ConnectionMode, create_db_engine, create_sess
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
+def resolve_request_id(supplied: str) -> str:
+    """Echo a safe client id, else generate one (fullmatch: `$` allows a trailing newline)."""
+    return supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -39,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         supplied = request.headers.get(REQUEST_ID_HEADER, "")
-        rid = supplied if _SAFE_REQUEST_ID.match(supplied) else str(uuid.uuid4())
+        rid = resolve_request_id(supplied)
         request.state.request_id = rid
         with correlation_id(rid):
             response = await call_next(request)
