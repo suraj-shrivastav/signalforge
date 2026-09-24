@@ -8,6 +8,7 @@ from signalforge.core.errors import (
     ConfigurationError,
     OperationTimeoutError,
     PermanentError,
+    ProviderRejectedError,
     ProviderUnavailableError,
     RateLimitedError,
     RetryableError,
@@ -22,6 +23,7 @@ PERMANENT = [
     ArtifactValidationError,
     BudgetExceededError,
     UnsupportedCapabilityError,
+    ProviderRejectedError,
 ]
 
 
