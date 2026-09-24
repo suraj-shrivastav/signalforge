@@ -57,7 +57,7 @@ class SignalRepository:
                 "summary": s.summary,
                 "entities": list(s.entities),
                 "topics": list(s.topics),
-                "metadata": s.metadata,
+                "metadata_": s.metadata,
                 "content_hash": s.content_hash,
                 "produced_by": s.produced_by,
             }
