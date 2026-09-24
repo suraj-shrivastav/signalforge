@@ -33,6 +33,14 @@ uv run pytest                 # tests
 uv run pre-commit run --all-files
 ```
 
+## Database
+
+Supabase Postgres is the only database (no local Docker). Use the session pooler
+string in `DATABASE_URL`, pointed at the dev project. Migrations follow
+[ADR-0004](docs/adr/0004-database-environments.md): run
+`uv run alembic upgrade head` to test a branch's migration, and
+`uv run alembic downgrade -1` before switching branches or merging.
+
 ## Status
 
 Phase 1 (foundation) in progress. Nothing is wired end to end yet — see PRD §43
