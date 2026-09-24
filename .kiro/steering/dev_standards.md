@@ -50,6 +50,7 @@
 ## 6. Data and Operations
 
 - Schema changes only via **Alembic migrations**, backward-compatible (expand, then contract).
+- Shared databases follow ADR-0004: dev may run a branch's migration but must downgrade it before switching branches; prod is migrated only from `main`. Never `alembic stamp` to hide drift.
 - Structured logs with correlation IDs. No secrets in logs.
 - Every LLM call is logged with model, tokens, cost and latency.
 - Architecture-changing decisions get a short ADR in `docs/adr/` (see its README for the bar and the numbering), and the PRD is updated in the same PR. The PRD stays the source of truth for current architecture; ADRs record changes to it.
