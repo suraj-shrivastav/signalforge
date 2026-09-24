@@ -33,6 +33,7 @@ signalforge/
 ├── infra/                   # Dockerfiles, railway config
 └── docs/
     ├── signalforge_prd.md   # V1 baseline, source of truth for current architecture
+    ├── architecture-diagrams.md  # mermaid views of the PRD; diagrams only, no decisions
     └── adr/                 # architecture decision records, NNNN-title.md
 ```
 
