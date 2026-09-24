@@ -90,3 +90,11 @@ def test_configure_logging_sets_level_and_is_idempotent() -> None:
     finally:
         root.handlers[:] = saved
         root.setLevel(level)
+
+
+def test_current_correlation_id_reflects_the_active_block() -> None:
+    from signalforge.core.logging import current_correlation_id
+
+    assert current_correlation_id() is None
+    with correlation_id("abc"):
+        assert current_correlation_id() == "abc"

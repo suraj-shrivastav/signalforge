@@ -39,6 +39,10 @@ def correlation_id(value: str) -> Iterator[None]:
         _correlation_id.reset(token)
 
 
+def current_correlation_id() -> str | None:
+    return _correlation_id.get()
+
+
 def redact_text(text: str) -> str:
     return _URL_CREDENTIALS.sub(rf"\1:{REDACTED}@", text)
 
