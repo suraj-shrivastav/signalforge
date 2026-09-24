@@ -31,7 +31,18 @@ uv run ruff format .          # format
 uv run mypy                   # type-check
 uv run pytest                 # tests
 uv run pre-commit run --all-files
+uv run alembic upgrade head                                    # apply migrations (dev only from a branch, see ADR-0004)
+uv run python -m apps.worker.ingest hackernews --hours 48      # fetch and store
+uv run uvicorn --factory apps.api.main:create_app --port 8000  # API
+cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
+TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests
 ```
+
+## Trying it locally
+
+Run the commands above in order: migrate, ingest, start the API, start the UI at
+`localhost:3000`. `INGEST_ENDPOINT_ENABLED` stays `false` unless you want
+`POST /ingest/hackernews` (send the `X-Ingest-Token` header).
 
 ## Database
 
