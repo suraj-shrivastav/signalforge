@@ -656,7 +656,7 @@ Default V1 order: **direct fetch → Tavily/Firecrawl (optional, paid) → SearX
 
 ## 27. Database and Queue
 
-**PostgreSQL is the system of record.** Supabase Postgres is acceptable for V1; application code uses plain PostgreSQL semantics via SQLAlchemy and Alembic, and avoids Supabase-specific SDKs beyond (optionally) auth, so moving to AWS RDS is a connection-string change. Mind pooler modes with prepared statements.
+**PostgreSQL is the system of record.** Supabase Postgres is acceptable for V1; application code uses plain PostgreSQL semantics via SQLAlchemy and Alembic, and avoids Supabase-specific SDKs beyond (optionally) auth, so moving to AWS RDS is a connection-string change. Mind pooler modes with prepared statements. Dev and prod use separate Supabase projects; shared databases are migrated only from `main` (ADR-0004).
 
 Use JSONB for flexible artifacts, pgvector for embeddings and similarity, and real columns for frequently queried fields.
 

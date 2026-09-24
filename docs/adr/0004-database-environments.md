@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-09-24
 **Deciders:** suraj
-**PRD impact:** refines §39 (PostgreSQL) and §42 (deployment)
+**PRD impact:** refines §27 (Database and Queue) and §42 (deployment)
 
 ## Context
 
@@ -50,6 +50,6 @@ reintroduces the failure above.
 
 ## Follow-ups
 
-- [x] Update `README.md` and `.kiro/steering/dev_standards.md`
+- [x] Update `docs/signalforge_prd.md` §27, `README.md` and `.kiro/steering/dev_standards.md`
 - [ ] CI checks upgrade, downgrade and a single head (`chore/ci-migration-check`)
 - [ ] Create `signalforge-prod` at first deploy
