@@ -5,9 +5,8 @@ from collections.abc import Callable
 import httpx
 
 from signalforge.core.protocols import Source
+from signalforge.plugins.sources._http import USER_AGENT as USER_AGENT
 from signalforge.plugins.sources.hackernews import HackerNewsSource
-
-USER_AGENT = "signalforge/0.1 (+https://github.com/suraj-shrivastav/signalforge)"
 
 _FACTORIES: dict[str, Callable[[httpx.Client], Source]] = {
     HackerNewsSource.name: HackerNewsSource,

@@ -21,6 +21,7 @@ from signalforge.core.errors import (
     RateLimitedError,
 )
 from signalforge.core.retry import call_with_retry
+from signalforge.plugins.sources._http import USER_AGENT
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +89,12 @@ class HackerNewsSource:
 
     def _get(self, params: dict[str, str | int]) -> list[_Hit]:
         try:
-            response = self._client.get(SEARCH_URL, params=params, timeout=REQUEST_TIMEOUT_S)
+            response = self._client.get(
+                SEARCH_URL,
+                params=params,
+                headers={"User-Agent": USER_AGENT},
+                timeout=REQUEST_TIMEOUT_S,
+            )
         except httpx.TimeoutException as exc:
             raise OperationTimeoutError("Hacker News request timed out") from exc
         except httpx.TransportError as exc:
@@ -132,7 +138,7 @@ class HackerNewsSource:
                     "author": hit.author,
                 },
             )
-        except (ArtifactValidationError, ValueError) as exc:
+        except (ArtifactValidationError, ValueError, OverflowError, OSError) as exc:
             # One malformed item must not fail the whole run, but it must not vanish silently.
             log.warning("skipping hit", extra={"hn_id": hit.objectID, "error": str(exc)})
             return None

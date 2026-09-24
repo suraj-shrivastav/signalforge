@@ -9,6 +9,7 @@ from signalforge.core.errors import (
     ProviderRejectedError,
     ProviderUnavailableError,
 )
+from signalforge.plugins.sources._http import USER_AGENT
 from signalforge.plugins.sources.hackernews import HackerNewsSource
 
 SINCE = datetime(2026, 9, 23, tzinfo=UTC)
@@ -120,3 +121,36 @@ def test_malformed_payload_is_a_validation_error() -> None:
     transport = httpx.MockTransport(lambda _: httpx.Response(200, json={"hits": [{"objectID": 1}]}))
     with pytest.raises(ArtifactValidationError):
         source(transport, queries=["LLM"]).fetch(SINCE)
+
+
+def test_sends_the_user_agent_header() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"hits": []})
+
+    source(httpx.MockTransport(handler), queries=["LLM"]).fetch(SINCE)
+    assert seen[0].headers["User-Agent"] == USER_AGENT
+
+
+def test_429_is_retried_and_retry_after_is_honoured() -> None:
+    calls = {"n": 0}
+    sleeps: list[float] = []
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"})
+        return httpx.Response(200, json={"hits": [hit(1)]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    signals = HackerNewsSource(client, queries=["LLM"], sleep=sleeps.append).fetch(SINCE)
+    assert len(signals) == 1
+    assert sleeps == [7.0]
+
+
+def test_absurd_timestamp_skips_the_hit() -> None:
+    body = {"hits": [hit(1, created_at_i=10**18), hit(2)]}
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json=body))
+    assert [s.title for s in source(transport, queries=["LLM"]).fetch(SINCE)] == ["Story 2"]
