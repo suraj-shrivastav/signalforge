@@ -47,6 +47,10 @@ class ProviderUnavailableError(RetryableError):
     """An external provider was unreachable or returned a server-side failure."""
 
 
+class ProviderRejectedError(PermanentError):
+    """An external provider rejected the request itself (4xx other than rate limiting)."""
+
+
 class RateLimitedError(RetryableError):
     """A provider rejected the call for rate limiting."""
 
