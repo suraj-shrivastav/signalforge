@@ -882,6 +882,7 @@ Initial target: **Railway** with `api`, `worker`, `web` and `scheduler`, all Doc
 | Phase | Scope | Exit criteria (targets to calibrate) |
 |---|---|---|
 | 1 Foundation | monorepo, config, Postgres + Alembic, artifact models, stage runner, state machine, job queue, LLM gateway, logging/budgets | A no-op pipeline runs end to end through the queue; `stage_runs` and `llm_calls` are recorded; budgets enforced; migrations apply cleanly |
+| 1.5 Vertical slice | `RawSignal` + `signals` table, Hacker News source, ingest function, FastAPI `GET /signals`, minimal Next.js list page (ADR-0005) | Real signals fetched from Hacker News are visible on the page through the API; re-ingesting adds no duplicates; failed ingests end in a visible `failed` stage run |
 | 2 Discovery | GitHub, HN, RSS, arXiv/HF; normalization, canonicalization, dedupe, clustering | ≥ 4 sources ingesting continuously for 7 days; duplicate rate measured; clustering spot-checked on a ~50-cluster labeled sample |
 | 3 Topic Intelligence | relevance filter, topic cards, dashboard, editor decisions, reason tags, wildcards | **Run ~2 weeks nightly.** Answer: are the cards useful? Tracked by decision time per card, accept rate, and the editor's own verdict. *Do not build further until this passes.* |
 | 4 Research | search abstraction, direct retrieval, extraction, source documents, claims, evidence spans, research packages | Packages contain stored documents and spans; mechanical span check works on real samples |
