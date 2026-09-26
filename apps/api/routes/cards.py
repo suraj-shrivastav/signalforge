@@ -36,10 +36,19 @@ def require_editor_key(
 
 async def decision_body(request: Request) -> DecisionIn:
     """Parsed after auth (dependency order), so unauthenticated callers never see 422s."""
+    media = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if media != "application/json" and not (
+        media.startswith("application/") and media.endswith("+json")
+    ):
+        raise HTTPException(status_code=415, detail="Content-Type must be application/json")
     try:
         return DecisionIn.model_validate(await request.json())
     except ValidationError as exc:
-        raise RequestValidationError(exc.errors(include_url=False, include_context=False)) from exc
+        errors = [
+            {"loc": ("body", *e["loc"]), "msg": e["msg"]}
+            for e in exc.errors(include_url=False, include_context=False)
+        ]
+        raise RequestValidationError(errors) from exc
     except ValueError as exc:
         raise RequestValidationError([{"loc": ("body",), "msg": "invalid JSON"}]) from exc
 
@@ -91,6 +100,12 @@ def card_queue(
     "/cards/{card_id}/decision",
     response_model=DecisionOut,
     status_code=201,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": DecisionIn.model_json_schema()}},
+        }
+    },
     dependencies=[Depends(require_editor_key)],
 )
 def add_decision(

@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -184,7 +185,9 @@ def test_unauthenticated_precedes_404_and_body_validation(
     assert client.post(url(repo), json={"decision": "bad"}).status_code == 401
     assert client.post(url(repo), content=b"{not json").status_code == 401
     assert client.post("/cards/not-a-uuid/decision", json=BODY).status_code == 401
-    r = client.post(url(repo), content=b"{not json", headers=H)
+    r = client.post(
+        url(repo), content=b"{not json", headers={**H, "content-type": "application/json"}
+    )
     assert r.status_code == 422
 
 
@@ -296,3 +299,30 @@ def test_commit_failure_is_500_not_201() -> None:
     with client:
         r = client.post(url(stub), json=BODY, headers=H)
     assert r.status_code == 500
+
+
+def test_content_type_enforced_after_auth(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    plain = {"content-type": "text/plain"}
+    assert client.post(url(repo), content=b"{}", headers=plain).status_code == 401
+    r = client.post(url(repo), content=b"{}", headers={**H, **plain})
+    assert r.status_code == 415
+    assert r.json()["error"]["code"] == "unsupported_media_type"
+    ok = {**H, "content-type": "application/vnd.x+json; charset=utf-8"}
+    assert client.post(url(repo), content=json.dumps(BODY), headers=ok).status_code == 201
+
+
+def test_openapi_has_request_body_and_no_secret(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, _ = ctx
+    spec = client.get("/openapi.json")
+    assert "requestBody" in spec.json()["paths"]["/cards/{card_id}/decision"]["post"]
+    assert KEY not in spec.text
+
+
+def test_validation_locations_are_prefixed_with_body(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    r = client.post(url(repo), json={**BODY, "decision": "bad"}, headers=H)
+    assert r.json()["error"]["message"].startswith("body.decision:")
+    r = client.post(url(repo), json=[1], headers=H)
+    assert r.status_code == 422
+    assert r.json()["error"]["message"].startswith("body: Input should be a valid dictionary")

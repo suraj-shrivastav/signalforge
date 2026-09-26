@@ -34,6 +34,8 @@ def error_response(request: Request, status: int, code: str, message: str) -> JS
 
 
 def _code_for(status: int) -> str:
+    if status == 415:
+        return "unsupported_media_type"
     return re.sub(r"\W+", "_", HTTPStatus(status).phrase.lower())
 
 
