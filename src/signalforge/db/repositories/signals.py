@@ -7,12 +7,13 @@ from datetime import datetime
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from signalforge.core.artifacts.signal import RawSignal
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
+from signalforge.db.repositories.assessments import latest_assessment
 
 
 @dataclass(frozen=True)
@@ -85,13 +86,7 @@ class SignalRepository:
 
         Each signal is joined to its latest assessment (highest prompt version present).
         """
-        latest = (
-            select(SignalAssessmentRow)
-            .distinct(SignalAssessmentRow.signal_id)
-            .order_by(SignalAssessmentRow.signal_id, SignalAssessmentRow.prompt_version.desc())
-            .subquery()
-        )
-        assessment = aliased(SignalAssessmentRow, latest)
+        assessment = latest_assessment()
         query = (
             select(Signal, assessment)
             .outerjoin(assessment, assessment.signal_id == Signal.id)
