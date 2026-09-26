@@ -124,7 +124,9 @@ class OpenAICompatibleProvider:
             retry_after = response.headers.get("Retry-After")
             raise RateLimitedError(
                 "LLM provider rate limited",
-                retry_after_seconds=float(retry_after) if retry_after else None,
+                retry_after_seconds=float(retry_after)
+                if retry_after and retry_after.replace(".", "", 1).isdigit()
+                else None,
             )
         if status in _RETRYABLE_STATUS:
             raise ProviderUnavailableError("LLM provider unavailable", context={"status": status})

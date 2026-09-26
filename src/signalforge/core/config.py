@@ -9,6 +9,7 @@ from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any, Self
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -81,7 +82,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_credentials_for_live_providers(self) -> Self:
-        local = any(h in (self.llm_base_url or "") for h in ("localhost", "127.0.0.1"))
+        local = urlparse(self.llm_base_url or "").hostname in {"localhost", "127.0.0.1", "::1"}
         if self.llm_provider != "fake" and not local and self.llm_api_key is None:
             raise ValueError("LLM_API_KEY is required when LLM_PROVIDER is not 'fake'")
         return self
