@@ -60,6 +60,7 @@ uv run mypy                   # typecheck
 uv run pytest                 # test
 uv run alembic upgrade head                                    # apply migrations (dev only from a branch, see ADR-0004)
 uv run python -m apps.worker.ingest hackernews --hours 48      # fetch and store
+uv run python -m apps.worker.assess --limit 25               # summarize and score unassessed signals (needs LLM_PROVIDER + key)
 uv run uvicorn --factory apps.api.main:create_app --port 8000  # API
 cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
 TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests

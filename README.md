@@ -33,6 +33,7 @@ uv run pytest                 # tests
 uv run pre-commit run --all-files
 uv run alembic upgrade head                                    # apply migrations (dev only from a branch, see ADR-0004)
 uv run python -m apps.worker.ingest hackernews --hours 48      # fetch and store
+uv run python -m apps.worker.assess --limit 25               # summarize and score unassessed signals (needs LLM_PROVIDER + key)
 uv run uvicorn --factory apps.api.main:create_app --port 8000  # API
 cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
 TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests
@@ -56,3 +57,7 @@ string in `DATABASE_URL`, pointed at the dev project. Migrations follow
 
 Phase 1 (foundation) in progress. Nothing is wired end to end yet — see PRD §43
 for the gated build order.
+
+## Assessing signals (Phase 1.6)
+
+`assess` sends each unassessed signal to an LLM and stores a relevance score, category, summary and why-it-matters. The provider is plug-in: set `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL` (for example `https://openrouter.ai/api/v1`), `LLM_API_KEY` (or `OPENROUTER_API_KEY`) and `LLM_MODEL_RELEVANCE`. With `LLM_PROVIDER=fake` no network call is made. Cost is recorded per call in `llm_calls`; a 25-signal run on `openai/gpt-4o-mini` cost about $0.002.
