@@ -17,6 +17,8 @@
 - Visual rules from the spec: radius 16px cards, 12px inputs and buttons, full pill tags; no sharp corners; no heavy shadows (1px hairlines, `shadow-hover` on hover only); near-black accent; hierarchy from size, weight and spacing; Inter for UI, Source Serif 4 for article headlines and body.
 - Accessibility: visible focus rings, contrast at least 4.5:1 for text pairs in both themes (verified by a test), semantic landmarks, reduced motion respected.
 - TypeScript strict, no `any`. ESLint, Prettier, `check:tokens`, typecheck, tests and build all pass. PRs at most 400 changed lines (CSS and generated lockfile lines excluded), squash-merged, Conventional Commits, no AI trailers.
+- **No AI signalling on public pages.** Public routes (`(public)` group, `feed.xml`, metadata) never show or embed model names, AI-authorship wording, `model_trail`, prompt versions or verification notes. Such data appears only under `/editor`. A test scans the public route sources for these terms.
+- **No em dashes.** No em dash or en dash used as a dash in any UI copy, placeholder text or docs added by this plan.
 - No real data and no new API endpoints in `lib/api.ts` in this plan. Existing editor pages keep working.
 
 ## Rulings made while planning
@@ -81,7 +83,7 @@
 ### Task 3: UI primitives
 
 **Files:**
-- Create: `apps/web/src/components/ui/{Button,Tag,Card,Input,Skeleton}.tsx`, tests `Button.test.tsx`, `Tag.test.tsx`, `Input.test.tsx`
+- Create: `apps/web/src/components/ui/{Button,Tag,Card,Input,Skeleton,CoverImage}.tsx`, tests `Button.test.tsx`, `Tag.test.tsx`, `Input.test.tsx`, `CoverImage.test.tsx`
 
 **Interfaces:**
 - Produces (all accept `className` merged via a tiny `cx(...parts)` helper in `src/lib/cx.ts`; no `clsx` dependency):
@@ -89,9 +91,10 @@
   - `Tag`: pill (`rounded-pill`), `bg-sunken text-muted text-caption`; optional `href`.
   - `Card`: `bg-surface border border-line rounded-card`, `hover:shadow-hover` only when `interactive`.
   - `Input`: labelled field (`label` prop required, rendered as a real `<label htmlFor>`), `rounded-control`, error text linked with `aria-describedby`, `aria-invalid`.
+  - `CoverImage`: props `slug: string`, `alt: string` (required), optional `src`, optional `ratio: "16/9" | "1/1"`. With `src` it renders `next/image` with the alt text. Without `src` it renders a deterministic token-styled fallback block (`bg-sunken rounded-card`, pattern chosen by a small hash of `slug` from 4 token-based variants, `role="img"` with the alt text). Never renders an empty or broken box. Used by article cards and the article page.
   - `Skeleton`: `bg-sunken rounded-control` block with `aria-hidden` and a reduced-motion-safe pulse (Tailwind `animate-pulse` is fine; the global reduced-motion rule neutralises it).
 
-- [ ] **Step 1: Write failing tests** for Button (default type button, variants apply expected token classes, disabled blocks clicks, renders a link with href), Tag (renders text, link variant), Input (label association, error wiring and `aria-invalid`), Card (interactive class only when set). **Step 2:** run to fail; **Step 3:** implement; **Step 4:** `npm run typecheck && npm run lint && npm run test && npm run check:tokens && npm run format:check && npm run build`; **Step 5: Commit:** `feat: add UI primitives`
+- [ ] **Step 1: Write failing tests** for Button (default type button, variants apply expected token classes, disabled blocks clicks, renders a link with href), Tag (renders text, link variant), Input (label association, error wiring and `aria-invalid`), CoverImage (fallback when no `src`, same slug gives same variant, alt always present), Card (interactive class only when set). **Step 2:** run to fail; **Step 3:** implement; **Step 4:** `npm run typecheck && npm run lint && npm run test && npm run check:tokens && npm run format:check && npm run build`; **Step 5: Commit:** `feat: add UI primitives`
 
 ---
 
@@ -109,7 +112,7 @@
   - `editor/layout.tsx`: minimal shell with a "Signals" and "Triage" nav, `noindex` metadata (`robots: { index: false, follow: false }`), no auth yet.
   - Moved pages keep their behavior; only imports and paths change. The unstyled triage components may stay unstyled here (sub-project 3 restyles them), but they must still pass `check:tokens`.
 
-- [ ] **Step 1: Write failing tests:** Header toggles the mobile menu (`aria-expanded` flips, links reachable), skip link is the first tabbable element in the public layout, the feed route returns 200 with the Atom content type and parses as XML, `robots` metadata is noindex for `/editor`.
+- [ ] **Step 1: Write failing tests:** a test that greps `src/app/(public)`, `src/components/layout` and `feed.xml` sources for `model`, `AI-generated`, `written by AI`, `model_trail`, `prompt_version` and fails on any hit; Header toggles the mobile menu (`aria-expanded` flips, links reachable), skip link is the first tabbable element in the public layout, the feed route returns 200 with the Atom content type and parses as XML, `robots` metadata is noindex for `/editor`.
 - [ ] **Step 2:** run to fail; **Step 3:** implement and move pages; grep the repo (`docs/`, `README.md`, `.kiro/steering/tech.md`, `apps/web/src/lib/api.test.ts`, route handler tests) for old URLs `/triage` and update them; **Step 4:** `npm run typecheck && npm run lint && npm run test && npm run check:tokens && npm run format:check && npm run build`; start `npm run dev` and confirm `/`, `/editor/signals`, `/editor/triage`, `/feed.xml` respond 200 (stop the server afterwards); **Step 5: Commit:** `feat: add layout shell and reader and editor route groups`
 
 ---
