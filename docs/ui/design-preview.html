@@ -1,0 +1,230 @@
+<title>SignalForge Design Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page-bg:#F5F1EA;--surface-bg:#FFFFFF;--sunken-bg:#EBE6DD;--border-color:#E0DAD0;
+  --ink:#141414;--muted:#6B675F;--accent:#141414;--on-accent:#F5F1EA;
+  --radius-card:16px;--radius-control:12px;--radius-pill:9999px;
+  --shadow-hover:0 1px 2px rgba(0,0,0,.04);
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  --font-serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --caption:13px;--small:15px;--body:17px;--lead:20px;--h3:28px;--h2:40px;--h1:56px;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s6:24px;--s8:32px;--s10:40px;--s12:48px;--s16:64px;--s20:80px;
+  --container-article:680px;--container-page:1120px;
+  --t-fast:150ms ease;--t-base:200ms ease;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --page-bg:#121110;--surface-bg:#1B1A18;--sunken-bg:#1A180F;--border-color:#2A2825;
+    --ink:#F2EEE6;--muted:#9A958B;--accent:#F2EEE6;--on-accent:#121110;color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page-bg:#121110;--surface-bg:#1B1A18;--sunken-bg:#1A180F;--border-color:#2A2825;
+  --ink:#F2EEE6;--muted:#9A958B;--accent:#F2EEE6;--on-accent:#121110;color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--page-bg);color:var(--ink);font-family:var(--font-sans);font-size:var(--body);line-height:28px;-webkit-font-smoothing:antialiased;padding-inline:16px}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.wrap{max-width:var(--container-page);margin-inline:auto}
+.banner{margin-block:var(--s4);padding:var(--s3) var(--s4);background:var(--sunken-bg);border-radius:var(--radius-control);font-size:var(--caption);line-height:18px;color:var(--muted)}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--page-bg);border-bottom:1px solid var(--border-color);margin-inline:-16px;padding-inline:16px}
+header .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;gap:var(--s4)}
+.mark{font-weight:600;font-size:var(--lead);letter-spacing:-.01em;text-decoration:none}
+nav{display:flex;align-items:center;gap:var(--s2)}
+nav a{font-size:var(--small);line-height:22px;color:var(--muted);text-decoration:none;padding:var(--s2) var(--s3);border-radius:var(--radius-control);transition:color var(--t-fast)}
+nav a:hover{color:var(--ink)}
+.btn{font:inherit;font-size:var(--small);line-height:22px;font-weight:500;border-radius:var(--radius-control);padding:var(--s3) var(--s6);cursor:pointer;border:1px solid transparent;transition:opacity var(--t-fast)}
+.btn.primary{background:var(--accent);color:var(--on-accent)}
+.btn.secondary{background:var(--surface-bg);color:var(--ink);border-color:var(--border-color)}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.sm{padding:var(--s2) var(--s4)}
+.btn:hover{opacity:.85}
+.hero{padding-block:var(--s16) var(--s12);display:grid;gap:var(--s6)}
+h1.display{font-size:clamp(36px,7vw,var(--h1));line-height:1.06;letter-spacing:-.03em;font-weight:600;margin:0;max-width:16ch;text-wrap:balance}
+.lead{font-size:var(--lead);line-height:30px;letter-spacing:-.01em;color:var(--muted);max-width:52ch;margin:0}
+.tag{display:inline-block;font-size:var(--caption);line-height:18px;background:var(--sunken-bg);color:var(--muted);border-radius:var(--radius-pill);padding:var(--s1) var(--s3);text-decoration:none}
+.tags{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s6);padding-bottom:var(--s16)}
+.card{background:var(--surface-bg);border:1px solid var(--border-color);border-radius:var(--radius-card);overflow:hidden;display:flex;flex-direction:column;transition:box-shadow var(--t-base)}
+.card:hover{box-shadow:var(--shadow-hover)}
+.card .body{padding:var(--s6);display:grid;gap:var(--s3);align-content:start}
+.card h3{font-family:var(--font-serif);font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.01em;margin:0}
+.card h3 a{text-decoration:none}
+.card p{margin:0;font-size:var(--small);line-height:22px;color:var(--muted)}
+.meta{font-size:var(--caption);line-height:18px;color:var(--muted)}
+.cover{aspect-ratio:16/9;background:var(--sunken-bg);position:relative}
+.cover.v1{background:repeating-linear-gradient(135deg,var(--sunken-bg) 0 14px,var(--border-color) 14px 15px)}
+.cover.v2{background:radial-gradient(circle at 30% 40%,var(--border-color) 0 2px,transparent 3px) 0 0/22px 22px,var(--sunken-bg)}
+.cover.v3{background:linear-gradient(90deg,var(--border-color) 1px,transparent 1px) 0 0/28px 100%,var(--sunken-bg)}
+.cover.v4{background:radial-gradient(120% 90% at 100% 0,var(--border-color),var(--sunken-bg) 60%)}
+.section{padding-block:var(--s12);border-top:1px solid var(--border-color)}
+.section>h2{font-size:var(--small);line-height:22px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:0 0 var(--s6)}
+.article{display:grid;grid-template-columns:1fr;gap:var(--s8)}
+.prose{max-width:var(--container-article);font-family:var(--font-serif)}
+.prose>*+*{margin-top:var(--s6)}
+.prose h1{font-size:clamp(34px,6vw,var(--h1));line-height:1.08;letter-spacing:-.02em;font-weight:600;margin:0;text-wrap:balance}
+.prose h2{font-size:var(--h3);line-height:36px;letter-spacing:-.01em;font-weight:600;margin-top:var(--s10)}
+.prose p{margin:0}
+.prose .dek{font-size:var(--lead);line-height:30px;color:var(--muted)}
+.prose blockquote{margin:0;border-left:1px solid var(--border-color);padding-left:var(--s6);color:var(--muted);font-style:italic}
+.prose ul{padding-left:var(--s6);margin:0}
+.prose li+li{margin-top:var(--s2)}
+.prose .byline{font-family:var(--font-sans);font-size:var(--caption);color:var(--muted)}
+.prose .cover{border-radius:var(--radius-card)}
+.kit{display:grid;gap:var(--s10)}
+.row{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:center}
+.field{display:grid;gap:var(--s2);max-width:360px}
+.field label{font-size:var(--small);font-weight:500;line-height:22px}
+.field input{font:inherit;font-size:var(--small);background:var(--surface-bg);color:var(--ink);border:1px solid var(--border-color);border-radius:var(--radius-control);padding:var(--s3) var(--s4)}
+.field .err{font-size:var(--caption);color:var(--muted)}
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:var(--s3)}
+.sw div{border:1px solid var(--border-color);border-radius:var(--radius-control);padding:var(--s3);font-size:var(--caption);line-height:18px;color:var(--ink)}
+.sw i{display:block;height:36px;border-radius:8px;border:1px solid var(--border-color);margin-bottom:var(--s2)}
+.type p{margin:0}
+footer{border-top:1px solid var(--border-color);padding-block:var(--s10);color:var(--muted);font-size:var(--small);line-height:22px;margin-inline:-16px;padding-inline:16px}
+footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--s4)}
+@media (max-width:640px){nav .hide-sm{display:none}}
+.ic{width:1em;height:1em;flex:none;display:inline-block;vertical-align:-.125em}.btn{display:inline-flex;align-items:center;gap:var(--s2)}.btn .ic{width:16px;height:16px}.meta .ic{width:14px;height:14px;margin-right:4px}
+.article-c{max-width:var(--container-article);margin-inline:auto;text-align:center}.article-c .tags{justify-content:center}.article-c .byline{display:flex;justify-content:center;align-items:center;gap:var(--s3)}.article-c .body-text{text-align:left}.article-c h1{margin-inline:auto}.article-c .dek{margin-inline:auto;max-width:34em}
+</style>
+
+<header><div class="wrap">
+  <a class="mark" href="#top">SignalForge</a>
+  <nav aria-label="Main">
+    <a class="hide-sm" href="#feed">Topics</a>
+    <a class="hide-sm" href="#feed"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search</a>
+    <button class="btn secondary sm" id="theme" type="button" aria-pressed="false"><span id="ti"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></span><span id="tl">Dark</span></button>
+  </nav>
+</div></header>
+
+<main id="top" class="wrap">
+  <p class="banner">Design preview. Static mockup built from the tokens in global.css, with sample content. Use the toggle top right to check dark mode.</p>
+
+  <section class="hero" aria-labelledby="h">
+    <h1 class="display" id="h">What changed in AI this week</h1>
+    <p class="lead">Short, sourced write-ups on new models, research and tools. Read in five minutes, skip the noise.</p>
+    <div class="tags"><a class="tag" href="#feed">Models</a><a class="tag" href="#feed">Research</a><a class="tag" href="#feed">Agents</a><a class="tag" href="#feed">Open source</a><a class="tag" href="#feed">Hardware</a></div>
+  </section>
+
+  <section id="feed" class="grid" aria-label="Latest articles">
+    <article class="card">
+      <div class="cover v1" role="img" aria-label="Pattern cover"></div>
+      <div class="body">
+        <div class="meta">Models &middot; <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>4 min read</div>
+        <h3><a href="#article">A 7B open model now matches last year's frontier on code</a></h3>
+        <p>Benchmarks and licence terms, and what it means for teams running models on their own hardware.</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="cover v2" role="img" aria-label="Pattern cover"></div>
+      <div class="body">
+        <div class="meta">Research &middot; <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>6 min read</div>
+        <h3><a href="#article">Sparse attention cuts long-context cost by a third</a></h3>
+        <p>The approach, the results on 128k-token inputs, and where the authors say it breaks down.</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="cover v3" role="img" aria-label="Pattern cover"></div>
+      <div class="body">
+        <div class="meta">Agents &middot; <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>3 min read</div>
+        <h3><a href="#article">Browser agents get a shared tool protocol</a></h3>
+        <p>Three vendors ship support in the same week. What is standardised and what is not.</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="cover v4" role="img" aria-label="Pattern cover"></div>
+      <div class="body">
+        <div class="meta">Hardware &middot; <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>5 min read</div>
+        <h3><a href="#article">New inference chips promise lower cost per token</a></h3>
+        <p>Vendor numbers side by side, with the claims that have independent measurements marked.</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="cover v2" role="img" aria-label="Pattern cover"></div>
+      <div class="body">
+        <div class="meta">Open source &middot; <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>3 min read</div>
+        <h3><a href="#article">A small speech model runs in real time on a laptop CPU</a></h3>
+        <p>Latency figures, supported languages and the licence.</p>
+      </div>
+    </article>
+    <article class="card">
+      <div class="body">
+        <div class="tags"><span class="tag">Loading state</span></div>
+        <div style="height:14px;border-radius:12px;background:var(--sunken-bg);width:80%"></div>
+        <div style="height:14px;border-radius:12px;background:var(--sunken-bg);width:60%"></div>
+        <div style="height:14px;border-radius:12px;background:var(--sunken-bg);width:70%"></div>
+      </div>
+    </article>
+  </section>
+
+  <section id="article" class="section article" aria-label="Article page sample">
+    <h2 style="font-size:15px;line-height:22px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin:0">Article page</h2>
+    <div class="prose article-c">
+      <div class="tags" style="font-family:var(--font-sans)"><span class="tag">Research</span><span class="tag">Long context</span></div>
+      <h1>Sparse attention cuts long-context cost by a third</h1>
+      <p class="dek">A new attention pattern keeps quality on 128k-token inputs while reducing compute. The gains are real, but they shrink on short prompts.</p>
+      <p class="byline"><span>SignalForge Desk</span><span>27 Sep 2026</span><span><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 6 min read</span></p>
+      <div class="cover v3" role="img" aria-label="Pattern cover"></div>
+      <div class="body-text prose"><p>Long inputs are expensive because attention cost grows with the square of the sequence. The paper replaces full attention in most layers with a fixed sparse pattern and keeps a few dense layers for global context.</p>
+      <h2>What the results show</h2>
+      <ul>
+        <li>About 33% lower compute at 128k tokens on the authors' benchmark set.</li>
+        <li>Quality within 1 point of the dense baseline on retrieval tasks.</li>
+        <li>No gain below 8k tokens, where dense attention is already cheap.</li>
+      </ul>
+      <blockquote>The saving depends on keeping the dense layers. Removing them cost 6 points.</blockquote>
+      <p>Code and weights are not released yet, so the numbers have no independent check.</p></div>
+    </div>
+  </section>
+
+  <section class="section kit" aria-label="Components">
+    <h2>Components</h2>
+    <div class="kit">
+      <div><div class="meta" style="margin-bottom:12px">Buttons</div>
+        <div class="row"><button class="btn primary" type="button">Read article <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button><button class="btn secondary" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Search</button><button class="btn ghost" type="button">Cancel</button><button class="btn primary sm" type="button">Small</button></div></div>
+      <div><div class="meta" style="margin-bottom:12px">Tags</div>
+        <div class="tags"><span class="tag">Models</span><span class="tag">Research</span><span class="tag">Agents</span></div></div>
+      <div><div class="meta" style="margin-bottom:12px">Input</div>
+        <div class="field"><label for="q">Search articles</label><input id="q" type="text" placeholder="Try &quot;long context&quot;"><span class="err">Enter at least 2 characters.</span></div></div>
+      <div><div class="meta" style="margin-bottom:12px">Colour tokens</div>
+        <div class="sw">
+          <div><i style="background:var(--page-bg)"></i>page</div>
+          <div><i style="background:var(--surface-bg)"></i>surface</div>
+          <div><i style="background:var(--sunken-bg)"></i>sunken</div>
+          <div><i style="background:var(--border-color)"></i>line</div>
+          <div><i style="background:var(--ink)"></i>ink</div>
+          <div><i style="background:var(--muted)"></i>muted</div>
+        </div></div>
+      <div class="type"><div class="meta" style="margin-bottom:12px">Type scale</div>
+        <p style="font-size:56px;line-height:60px;letter-spacing:-.02em;font-weight:600">Display 56</p>
+        <p style="font-size:40px;line-height:46px;letter-spacing:-.02em;font-weight:600">Heading 40</p>
+        <p style="font-size:28px;line-height:36px;font-weight:600">Heading 28</p>
+        <p style="font-size:20px;line-height:30px">Lead 20</p>
+        <p>Body 17, line height 28</p>
+        <p style="font-size:15px;line-height:22px;color:var(--muted)">Small 15</p>
+        <p style="font-size:13px;line-height:18px;color:var(--muted)">Caption 13</p></div>
+    </div>
+  </section>
+</main>
+
+<footer><div class="wrap"><span>SignalForge</span><span>Topics &middot; Search &middot; RSS</span></div></footer>
+
+<script>
+(function(){
+  var SUN='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41m11.32-11.32 1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/></svg>',MOON='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';var root=document.documentElement,btn=document.getElementById("theme"),KEY="sf-theme";
+  function dark(){var t=root.getAttribute("data-theme");return t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches}
+  function sync(){var d=dark();document.getElementById("tl").textContent=d?"Light":"Dark";document.getElementById("ti").innerHTML=d?SUN:MOON;btn.setAttribute("aria-pressed",String(d))}
+  try{var s=localStorage.getItem(KEY);if(s==="light"||s==="dark")root.setAttribute("data-theme",s)}catch(e){}
+  sync();
+  btn.addEventListener("click",function(){
+    var n=dark()?"light":"dark";root.setAttribute("data-theme",n);
+    try{localStorage.setItem(KEY,n)}catch(e){}
+    sync();
+  });
+})();
+</script>
