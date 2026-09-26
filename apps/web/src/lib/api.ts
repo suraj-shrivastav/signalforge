@@ -106,3 +106,184 @@ export async function fetchSignals(
   if (!response.ok) throw new Error(`API returned ${response.status}`);
   return parseSignalList(await response.json());
 }
+
+// Mirrors REASON_TAGS in src/signalforge/core/reason_tags.py.
+export const REASON_TAGS = [
+  "off_niche",
+  "too_incremental",
+  "duplicate",
+  "already_covered",
+  "low_quality_source",
+  "great_angle",
+  "timely",
+  "evergreen",
+  "needs_more_evidence",
+] as const;
+export type ReasonTag = (typeof REASON_TAGS)[number];
+
+export type DecisionKind = "accepted" | "rejected" | "snoozed";
+
+export type Decision = {
+  decision: DecisionKind;
+  reason_tags: ReasonTag[];
+  note: string;
+  decision_ms: number | null;
+};
+
+export type CardSignal = {
+  id: string;
+  title: string;
+  source: string;
+  canonical_url: string;
+};
+
+export type Card = {
+  id: string;
+  what_happened: string;
+  why_it_matters: string;
+  novelty: number;
+  signal_strength: number;
+  coverage_gap: string;
+  suggested_angle: string;
+  format: string;
+  evergreen_score: number;
+  confidence: number;
+  risk_flags: string[];
+  signal: CardSignal;
+  score: number;
+  wildcard: boolean;
+  status: "proposed" | "snoozed";
+  created_at: string;
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
+function isNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function parseCardSignal(value: unknown): CardSignal {
+  if (!isRecord(value))
+    throw new ApiError(200, "bad_shape", "signal is not an object");
+  const { id, title, source, canonical_url } = value;
+  if (
+    !isString(id) ||
+    !isString(title) ||
+    !isString(source) ||
+    !isString(canonical_url)
+  ) {
+    throw new ApiError(200, "bad_shape", "card signal has an unexpected shape");
+  }
+  return { id, title, source, canonical_url };
+}
+
+export function parseCard(value: unknown): Card {
+  const bad = () =>
+    new ApiError(200, "bad_shape", "card has an unexpected shape");
+  if (!isRecord(value)) throw bad();
+  const v = value;
+  if (
+    !isString(v.id) ||
+    !isString(v.what_happened) ||
+    !isString(v.why_it_matters) ||
+    !isNumber(v.novelty) ||
+    !isNumber(v.signal_strength) ||
+    !isString(v.coverage_gap) ||
+    !isString(v.suggested_angle) ||
+    !isString(v.format) ||
+    !isNumber(v.evergreen_score) ||
+    !isNumber(v.confidence) ||
+    !Array.isArray(v.risk_flags) ||
+    !v.risk_flags.every(isString) ||
+    !isNumber(v.score) ||
+    typeof v.wildcard !== "boolean" ||
+    (v.status !== "proposed" && v.status !== "snoozed") ||
+    !isString(v.created_at)
+  ) {
+    throw bad();
+  }
+  return {
+    id: v.id,
+    what_happened: v.what_happened,
+    why_it_matters: v.why_it_matters,
+    novelty: v.novelty,
+    signal_strength: v.signal_strength,
+    coverage_gap: v.coverage_gap,
+    suggested_angle: v.suggested_angle,
+    format: v.format,
+    evergreen_score: v.evergreen_score,
+    confidence: v.confidence,
+    risk_flags: v.risk_flags,
+    signal: parseCardSignal(v.signal),
+    score: v.score,
+    wildcard: v.wildcard,
+    status: v.status,
+    created_at: v.created_at,
+  };
+}
+
+export function parseQueue(json: unknown): Card[] {
+  if (!Array.isArray(json))
+    throw new ApiError(200, "bad_shape", "queue is not a list");
+  return json.map(parseCard);
+}
+
+export async function errorFromResponse(response: Response): Promise<ApiError> {
+  let code = "http_error";
+  let message = `API returned ${response.status}`;
+  try {
+    const body: unknown = await response.json();
+    if (isRecord(body) && isRecord(body.error)) {
+      if (isString(body.error.code)) code = body.error.code;
+      if (isString(body.error.message)) message = body.error.message;
+    }
+  } catch {
+    // Body was not JSON; keep the safe defaults.
+  }
+  return new ApiError(response.status, code, message);
+}
+
+export async function fetchQueue(limit = 15): Promise<Card[]> {
+  const base = process.env.API_BASE_URL;
+  if (!base)
+    throw new ApiError(500, "not_configured", "API_BASE_URL is not set");
+  const response = await fetch(`${base}/cards/queue?limit=${limit}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!response.ok) throw await errorFromResponse(response);
+  return parseQueue(await response.json());
+}
+
+// Runs in the browser; calls the same-origin proxy route (the API has no CORS).
+export async function postDecision(
+  cardId: string,
+  body: Decision,
+  editorKey: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/cards/${encodeURIComponent(cardId)}/decision`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Editor-Key": editorKey,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+}
