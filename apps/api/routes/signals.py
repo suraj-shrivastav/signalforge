@@ -15,8 +15,10 @@ def list_signals(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     cursor: str | None = None,
     source: str | None = None,
+    relevant_only: bool = False,
 ) -> SignalListOut:
-    page = repo.list_page(limit=limit, cursor=cursor, source=source)
+    page = repo.list_page(limit=limit, cursor=cursor, source=source, relevant_only=relevant_only)
     return SignalListOut(
-        items=[SignalOut.from_row(row) for row in page.items], next_cursor=page.next_cursor
+        items=[SignalOut.from_row(row, page.assessments.get(row.id)) for row in page.items],
+        next_cursor=page.next_cursor,
     )
