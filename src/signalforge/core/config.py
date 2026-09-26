@@ -59,6 +59,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("llm_api_key", "LLM_API_KEY", "OPENROUTER_API_KEY"),
     )
     llm_model_relevance: str = "openai/gpt-4o-mini"
+    llm_model_topic_card: str = "openai/gpt-4o-mini"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
 

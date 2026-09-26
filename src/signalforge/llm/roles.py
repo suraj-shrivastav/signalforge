@@ -18,9 +18,15 @@ class ModelSpec:
 RoleMap = dict[str, ModelSpec]
 
 
-def build_roles(settings: Settings) -> RoleMap:
-    model = settings.llm_model_relevance
+def _spec(model: str) -> ModelSpec:
     # Family is the model id's namespace ("vendor/model"); it feeds the
     # writer-vs-judge family check, so it is derived, not configured.
     family = model.split("/", 1)[0] if "/" in model else "unknown"
-    return {"relevance_filter": ModelSpec(model, family)}
+    return ModelSpec(model, family)
+
+
+def build_roles(settings: Settings) -> RoleMap:
+    return {
+        "relevance_filter": _spec(settings.llm_model_relevance),
+        "topic_card": _spec(settings.llm_model_topic_card),
+    }
