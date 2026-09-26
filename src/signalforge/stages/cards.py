@@ -21,6 +21,7 @@ from signalforge.db.models import Signal, StageRun, StageRunStatus
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.repositories.cards import CardRepository
 from signalforge.llm.gateway import LLMGateway
+from signalforge.plugins.rankers.rules import score
 from signalforge.stages.ingest import _ENTITY_NAMESPACE, _MAX_ERROR_CHARS, _sha
 
 log = logging.getLogger(__name__)
@@ -84,11 +85,6 @@ def build_messages(signal: Signal, assessment: SignalAssessmentRow) -> tuple[str
     return _SYSTEM, user
 
 
-def _score(_card: TopicCard) -> float:
-    # ponytail: replaced by RulesRanker in the next task
-    return 0.0
-
-
 def run_cards(
     session: Session, gateway_factory: Callable[[Session], LLMGateway], *, limit: int
 ) -> CardsResult:
@@ -133,7 +129,12 @@ def run_cards(
                     **draft.model_dump(),
                 )
                 # llm_call_id stays None as in assess: the gateway does not expose it yet.
-                if repo.insert(card, stage_run_id=run_id, llm_call_id=None, score=_score(card)):
+                if repo.insert(
+                    card,
+                    stage_run_id=run_id,
+                    llm_call_id=None,
+                    score=score(assessment.relevance_score, card),
+                ):
                     created += 1
                 session.commit()
             session.commit()  # calls recorded before a budget stop

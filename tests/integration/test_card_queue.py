@@ -1,0 +1,106 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy.orm import Session
+
+from signalforge.core.artifacts.signal import RawSignal
+from signalforge.core.artifacts.topic_card import ArticleFormat, RiskFlag, TopicCard
+from signalforge.core.errors import ArtifactValidationError
+from signalforge.db.models.cards import TopicCardRow
+from signalforge.db.models.ops import StageRun, StageRunStatus
+from signalforge.db.repositories.cards import CardRepository
+from signalforge.db.repositories.signals import SignalRepository
+
+pytestmark = pytest.mark.integration
+
+BASE = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
+
+
+def seed(session: Session, count: int) -> tuple[list[RawSignal], StageRun]:
+    signals = [
+        RawSignal(
+            source="hackernews",
+            source_type="community",
+            canonical_url=f"https://example.com/{n}",
+            title=f"Title {n}",
+            published_at=BASE + timedelta(minutes=n),
+        )
+        for n in range(count)
+    ]
+    SignalRepository(session).insert_new(signals)
+    run = StageRun(
+        stage="card",
+        entity_id=signals[0].id,
+        input_hash="h",
+        stage_config_hash="c",
+        status=StageRunStatus.RUNNING,
+    )
+    session.add(run)
+    session.flush()
+    return signals, run
+
+
+def card(signal: RawSignal, version: str = "card-v1") -> TopicCard:
+    return TopicCard(
+        signal_id=signal.id,
+        what_happened="w",
+        why_it_matters="m",
+        novelty=0.5,
+        signal_strength=0.5,
+        coverage_gap="",
+        suggested_angle="a",
+        format=ArticleFormat.EXPLAINER,
+        evergreen_score=0.5,
+        confidence=0.5,
+        risk_flags=(RiskFlag.HYPE,),
+        prompt_version=version,
+        model="m",
+    )
+
+
+SINCE = datetime(2000, 1, 1, tzinfo=UTC)
+
+
+def make_cards(session: Session, count: int) -> list[TopicCardRow]:
+    signals, run = seed(session, count)
+    repo = CardRepository(session)
+    for n, signal in enumerate(signals):
+        repo.insert(card(signal), stage_run_id=run.id, llm_call_id=None, score=n / count)
+    session.flush()
+    rows = list(session.query(TopicCardRow).order_by(TopicCardRow.score.desc()))
+    return rows
+
+
+def test_queue_splits_top_and_wildcards(db_session: Session) -> None:
+    rows = make_cards(db_session, 20)
+    for n, row in enumerate(rows[13:]):
+        row.novelty = 0.99 if n < 2 else 0.1
+    db_session.flush()
+    items = CardRepository(db_session).queue(since=SINCE)
+    assert len(items) == 15
+    assert [i.card.id for i in items[:13]] == [r.id for r in rows[:13]]
+    assert [i.wildcard for i in items] == [False] * 13 + [True] * 2
+    assert {i.card.id for i in items[13:]} == {r.id for r in rows[13:15]}
+    assert all(i.card.wildcard is False for i in items)
+    assert items[0].signal_title.startswith("Title")
+
+
+def test_decisions_filter_and_snooze(db_session: Session) -> None:
+    rows = make_cards(db_session, 4)
+    repo = CardRepository(db_session)
+    repo.add_decision(rows[0].id, "accepted", [], "", None)
+    repo.add_decision(rows[1].id, "rejected", [], "", None)
+    repo.add_decision(rows[2].id, "snoozed", [], "", None)
+    items = repo.queue(since=SINCE)
+    assert {i.card.id for i in items} == {rows[2].id, rows[3].id}
+    assert {i.status for i in items if i.card.id == rows[2].id} == {"snoozed"}
+
+
+def test_since_and_validation(db_session: Session) -> None:
+    make_cards(db_session, 2)
+    repo = CardRepository(db_session)
+    assert repo.queue(since=datetime.now(UTC) + timedelta(days=1)) == []
+    with pytest.raises(ArtifactValidationError):
+        repo.queue(since=BASE.replace(tzinfo=None))
+    with pytest.raises(ArtifactValidationError):
+        repo.queue(limit=0, since=SINCE)
