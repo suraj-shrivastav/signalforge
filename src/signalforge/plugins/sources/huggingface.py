@@ -54,6 +54,8 @@ class HuggingFacePapersSource:
 
     def fetch(self, since: datetime) -> list[RawSignal]:
         body = fetch_bytes(self._client, API_URL, label="Hugging Face", sleep=self._sleep)
+        # Bad item SHAPE fails the whole run (fail loud on schema drift);
+        # a bad date or RawSignal failure skips only that item.
         try:
             items = TypeAdapter(list[_Item]).validate_json(body)
         except ValidationError as exc:
@@ -64,9 +66,10 @@ class HuggingFacePapersSource:
         for item in items:
             paper = item.paper
             raw_date = item.publishedAt or paper.publishedAt
+            if raw_date is None:
+                log.warning("skipping Hugging Face paper: no publish date", extra={"id": paper.id})
+                continue
             try:
-                if raw_date is None:
-                    continue
                 published = _parse_date(raw_date)
                 if published <= since:
                     continue
@@ -79,8 +82,10 @@ class HuggingFacePapersSource:
                     published_at=published,
                     metadata={"upvotes": paper.upvotes or 0, "arxiv_id": paper.id},
                 )
-            except (ValueError, ValidationError):
-                log.warning("skipping malformed Hugging Face paper", extra={"id": paper.id})
+            except (ValueError, ValidationError) as exc:
+                log.warning(
+                    "skipping malformed Hugging Face paper: %s", exc, extra={"id": paper.id}
+                )
                 continue
             signals.setdefault(signal.canonical_url, signal)
         return list(signals.values())
