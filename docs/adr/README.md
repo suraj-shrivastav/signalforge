@@ -17,6 +17,12 @@ Short documents recording architecture-changing decisions and the alternatives r
 | ADR | Title | Status | Date |
 |---|---|---|---|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions in this folder | Accepted | 2026-09-20 |
+| [0002](0002-python-toolchain.md) | Python toolchain: uv, Python 3.13, ruff, mypy | Accepted | 2026-09-20 |
+| [0003](0003-job-queue-procrastinate.md) | Procrastinate for the job queue | Accepted | |
+| [0004](0004-database-environments.md) | Separate dev and prod Supabase projects | Accepted | |
+| [0005](0005-vertical-slice-before-pipeline-infrastructure.md) | Vertical slice before pipeline infrastructure | Accepted | |
+| [0006](0006-assess-signals-before-clustering.md) | Assess signals before clustering and topic cards | Accepted | 2026-09-26 |
+| [0007](0007-topic-cards-per-signal-with-rules-ranker.md) | Topic cards per signal with a rules-based ranker | Proposed | 2026-09-27 |
 
 ## Expected
 
