@@ -28,9 +28,16 @@ RSS_BODY = b"""<?xml version="1.0"?><rss version="2.0"><channel>
 <pubDate>Sat, 26 Sep 2026 10:00:00 GMT</pubDate></item></channel></rss>"""
 
 
+ARXIV_BODY = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+<entry><title>Paper</title><link rel="alternate" href="http://arxiv.org/abs/2609.00001v1"/>
+<published>2026-09-26T10:00:00Z</published><summary>Abstract.</summary></entry></feed>"""
+
+
 def _respond(request: httpx.Request) -> httpx.Response:
     if "hn.algolia.com" in request.url.host:
         return httpx.Response(200, json=HN_BODY)
+    if request.url.host == "export.arxiv.org":
+        return httpx.Response(200, content=ARXIV_BODY)
     return httpx.Response(200, content=RSS_BODY)
 
 
