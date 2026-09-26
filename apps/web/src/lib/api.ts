@@ -1,3 +1,11 @@
+export type Assessment = {
+  is_relevant: boolean;
+  relevance_score: number;
+  category: string;
+  summary: string;
+  why_it_matters: string;
+};
+
 export type Signal = {
   id: string;
   source: string;
@@ -7,12 +15,29 @@ export type Signal = {
   published_at: string;
   summary: string;
   metadata: Record<string, unknown>;
+  assessment?: Assessment;
 };
 
 export type SignalList = { items: Signal[]; next_cursor: string | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseAssessment(value: unknown): Assessment {
+  if (!isRecord(value)) throw new Error("assessment is not an object");
+  const { is_relevant, relevance_score, category, summary, why_it_matters } =
+    value;
+  if (
+    typeof is_relevant !== "boolean" ||
+    typeof relevance_score !== "number" ||
+    typeof category !== "string" ||
+    typeof summary !== "string" ||
+    typeof why_it_matters !== "string"
+  ) {
+    throw new Error("assessment has an unexpected shape");
+  }
+  return { is_relevant, relevance_score, category, summary, why_it_matters };
 }
 
 function parseSignal(value: unknown): Signal {
@@ -26,6 +51,7 @@ function parseSignal(value: unknown): Signal {
     published_at,
     summary,
     metadata,
+    assessment,
   } = value;
   if (
     typeof id !== "string" ||
@@ -48,6 +74,7 @@ function parseSignal(value: unknown): Signal {
     published_at,
     summary,
     metadata,
+    ...(assessment == null ? {} : { assessment: parseAssessment(assessment) }),
   };
 }
 
@@ -63,10 +90,14 @@ export function parseSignalList(json: unknown): SignalList {
 const PAGE_SIZE = 20;
 const TIMEOUT_MS = 10_000;
 
-export async function fetchSignals(cursor?: string): Promise<SignalList> {
+export async function fetchSignals(
+  cursor?: string,
+  relevantOnly = true,
+): Promise<SignalList> {
   const base = process.env.API_BASE_URL;
   if (!base) throw new Error("API_BASE_URL is not set");
   const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+  if (relevantOnly) params.set("relevant_only", "true");
   if (cursor) params.set("cursor", cursor);
   const response = await fetch(`${base}/signals?${params}`, {
     cache: "no-store",
