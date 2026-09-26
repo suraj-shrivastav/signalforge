@@ -1,0 +1,423 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   SignalForge - Global Design Tokens
+   Single source of truth for all styling values. Components must reference
+   token names (bg-page, text-ink, rounded-card, etc.) - never hex or raw px.
+
+   Contrast (WCAG AA, 4.5:1 minimum for body text):
+     Light  ink #141414    on page    #F5F1EA  → ~16.3:1
+     Light  muted #6B675F  on page    #F5F1EA  → ~5.4:1
+     Dark   text #F2EEE6   on bg      #121110  → ~16.5:1
+     Dark   muted #9A958B  on bg      #121110  → ~6.4:1
+   Ratios are verified by test (Task 5).
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Raw tokens - light theme (default)
+   -------------------------------------------------------------------------- */
+:root {
+  /* Color: surfaces */
+  --page-bg: #f5f1ea;
+  --surface-bg: #ffffff;
+  --sunken-bg: #ebe6dd;
+  --border-color: #e0dad0;
+
+  /* Color: text */
+  --ink: #141414;
+  --muted: #6b675f;
+
+  /* Color: accent (near-black, no hue) */
+  --accent: #141414;
+  --on-accent: #f5f1ea;
+
+  /* Radii - soft, rounded, no sharp corners */
+  --raw-radius-card: 16px;
+  --raw-radius-control: 12px;
+  --raw-radius-pill: 9999px;
+
+  /* Shadows - flat by default, one soft hover shadow */
+  --raw-shadow-none: none;
+  --raw-shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* Borders */
+  --border-width-hairline: 1px;
+
+  /* Fonts - next/font injects --font-inter / --font-source-serif */
+  --raw-font-sans:
+    var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  --raw-font-serif:
+    var(--font-source-serif), "Source Serif 4", Georgia, "Times New Roman",
+    serif;
+
+  /* Type scale - sizes in px, tight negative tracking on large sizes */
+  --text-caption-size: 13px;
+  --text-caption-line: 18px;
+  --text-caption-tracking: 0;
+
+  --text-small-size: 15px;
+  --text-small-line: 22px;
+  --text-small-tracking: 0;
+
+  --text-body-size: 17px;
+  --text-body-line: 28px;
+  --text-body-tracking: 0;
+
+  --text-lead-size: 20px;
+  --text-lead-line: 30px;
+  --text-lead-tracking: -0.01em;
+
+  --text-h3-size: 28px;
+  --text-h3-line: 36px;
+  --text-h3-tracking: -0.01em;
+
+  --text-h2-size: 40px;
+  --text-h2-line: 46px;
+  --text-h2-tracking: -0.02em;
+
+  --text-h1-size: 56px;
+  --text-h1-line: 60px;
+  --text-h1-tracking: -0.02em;
+
+  /* Display reuses the h1 size for hero contexts, slightly tighter tracking */
+  --text-display-size: 56px;
+  --text-display-line: 58px;
+  --text-display-tracking: -0.03em;
+
+  /* Spacing - 4px base grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Containers & gutters */
+  --raw-container-article: 680px;
+  --raw-container-page: 1120px;
+  --gutter-mobile: 16px;
+  --gutter-desktop: 24px;
+
+  /* Transitions */
+  --raw-transition-fast: 150ms ease;
+  --raw-transition-base: 200ms ease;
+  --raw-transition-slow: 300ms ease;
+
+  /* Z-index scale */
+  --raw-z-base: 0;
+  --raw-z-dropdown: 10;
+  --raw-z-sticky: 20;
+  --raw-z-overlay: 30;
+  --raw-z-modal: 40;
+  --raw-z-toast: 50;
+
+  /* Focus ring */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--ink);
+}
+
+/* --------------------------------------------------------------------------
+   2. Dark theme - explicit opt-in via [data-theme="dark"], and automatic
+      via prefers-color-scheme unless the user has explicitly chosen light.
+      Warm greys throughout - never blue-black.
+   -------------------------------------------------------------------------- */
+[data-theme="dark"] {
+  --page-bg: #121110;
+  --surface-bg: #1b1a18;
+  --sunken-bg: #1a180f;
+  --border-color: #2a2825;
+
+  --ink: #f2eee6;
+  --muted: #9a958b;
+
+  --accent: #f2eee6;
+  --on-accent: #121110;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg: #121110;
+    --surface-bg: #1b1a18;
+    --sunken-bg: #1a180f;
+    --border-color: #2a2825;
+
+    --ink: #f2eee6;
+    --muted: #9a958b;
+
+    --accent: #f2eee6;
+    --on-accent: #121110;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. Tailwind v4 theme mapping - generates the utility classes
+   -------------------------------------------------------------------------- */
+@theme {
+  --color-page: var(--page-bg);
+  --color-surface: var(--surface-bg);
+  --color-sunken: var(--sunken-bg);
+  --color-line: var(--border-color);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+
+  --radius-card: var(--raw-radius-card);
+  --radius-control: var(--raw-radius-control);
+  --radius-pill: var(--raw-radius-pill);
+
+  --shadow-none: var(--raw-shadow-none);
+  --shadow-hover: var(--raw-shadow-hover);
+
+  --font-sans: var(--raw-font-sans);
+  --font-serif: var(--raw-font-serif);
+
+  --text-caption: var(--text-caption-size);
+  --text-caption--line-height: var(--text-caption-line);
+  --text-caption--letter-spacing: var(--text-caption-tracking);
+
+  --text-small: var(--text-small-size);
+  --text-small--line-height: var(--text-small-line);
+  --text-small--letter-spacing: var(--text-small-tracking);
+
+  --text-body: var(--text-body-size);
+  --text-body--line-height: var(--text-body-line);
+  --text-body--letter-spacing: var(--text-body-tracking);
+
+  --text-lead: var(--text-lead-size);
+  --text-lead--line-height: var(--text-lead-line);
+  --text-lead--letter-spacing: var(--text-lead-tracking);
+
+  --text-h3: var(--text-h3-size);
+  --text-h3--line-height: var(--text-h3-line);
+  --text-h3--letter-spacing: var(--text-h3-tracking);
+
+  --text-h2: var(--text-h2-size);
+  --text-h2--line-height: var(--text-h2-line);
+  --text-h2--letter-spacing: var(--text-h2-tracking);
+
+  --text-h1: var(--text-h1-size);
+  --text-h1--line-height: var(--text-h1-line);
+  --text-h1--letter-spacing: var(--text-h1-tracking);
+
+  --text-display: var(--text-display-size);
+  --text-display--line-height: var(--text-display-line);
+  --text-display--letter-spacing: var(--text-display-tracking);
+
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+
+  --container-article: var(--raw-container-article);
+  --container-page: var(--raw-container-page);
+
+  --transition-fast: var(--raw-transition-fast);
+  --transition-base: var(--raw-transition-base);
+  --transition-slow: var(--raw-transition-slow);
+
+  --z-base: var(--raw-z-base);
+  --z-dropdown: var(--raw-z-dropdown);
+  --z-sticky: var(--raw-z-sticky);
+  --z-overlay: var(--raw-z-overlay);
+  --z-modal: var(--raw-z-modal);
+  --z-toast: var(--raw-z-toast);
+}
+
+/* --------------------------------------------------------------------------
+   4. Base layer - reset, defaults, focus, motion, selection
+   -------------------------------------------------------------------------- */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--raw-font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  img,
+  picture,
+  video,
+  canvas,
+  svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  :focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  ::selection {
+    background-color: var(--color-ink);
+    color: var(--color-page);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5. Prose - article typography (serif), scoped to .prose
+   -------------------------------------------------------------------------- */
+@layer components {
+  .prose {
+    max-width: var(--raw-container-article);
+    font-family: var(--raw-font-serif);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    color: var(--color-ink);
+  }
+
+  .prose > * + * {
+    margin-top: var(--space-6);
+  }
+
+  .prose h1,
+  .prose h2,
+  .prose h3 {
+    font-family: var(--raw-font-serif);
+    font-weight: 600;
+    color: var(--color-ink);
+    letter-spacing: -0.01em;
+  }
+
+  .prose h1 {
+    font-size: var(--text-h1);
+    line-height: var(--text-h1--line-height);
+    letter-spacing: var(--text-h1--letter-spacing);
+    margin-top: var(--space-12);
+  }
+
+  .prose h2 {
+    font-size: var(--text-h2);
+    line-height: var(--text-h2--line-height);
+    letter-spacing: var(--text-h2--letter-spacing);
+    margin-top: var(--space-10);
+  }
+
+  .prose h3 {
+    font-size: var(--text-h3);
+    line-height: var(--text-h3--line-height);
+    letter-spacing: var(--text-h3--letter-spacing);
+    margin-top: var(--space-8);
+  }
+
+  .prose p {
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+
+  .prose a {
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: opacity var(--raw-transition-fast);
+  }
+
+  .prose a:hover {
+    opacity: 0.7;
+  }
+
+  .prose blockquote {
+    border-left: var(--border-width-hairline) solid var(--color-line);
+    padding-left: var(--space-6);
+    color: var(--color-muted);
+    font-style: italic;
+  }
+
+  .prose ul,
+  .prose ol {
+    padding-left: var(--space-6);
+  }
+
+  .prose li + li {
+    margin-top: var(--space-2);
+  }
+
+  .prose code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--text-small);
+    background-color: var(--color-sunken);
+    border-radius: var(--raw-radius-control);
+    padding: 0.15em 0.4em;
+  }
+
+  .prose pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--text-small);
+    background-color: var(--color-sunken);
+    border-radius: var(--raw-radius-control);
+    padding: var(--space-4);
+    overflow-x: auto;
+  }
+
+  .prose pre code {
+    background-color: transparent;
+    padding: 0;
+  }
+
+  .prose img {
+    border-radius: var(--raw-radius-card);
+    width: 100%;
+  }
+
+  .prose hr {
+    border: none;
+    border-top: var(--border-width-hairline) solid var(--color-line);
+    margin: var(--space-10) 0;
+  }
+}
