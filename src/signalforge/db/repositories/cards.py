@@ -1,16 +1,55 @@
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from signalforge.core.artifacts.topic_card import TopicCard
+from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.signals import Signal
 from signalforge.db.repositories.assessments import latest_assessment
+
+
+@dataclass(frozen=True)
+class QueueItem:
+    card: TopicCardRow
+    signal_title: str
+    source: str
+    canonical_url: str
+    wildcard: bool
+    status: str  # "proposed" or "snoozed"
+
+
+def _ranked(items: Sequence[QueueItem], *, novelty_first: bool = False) -> list[QueueItem]:
+    """Stable total order: score desc, newest first, id; optionally novelty desc before all."""
+    ordered = sorted(items, key=lambda i: str(i.card.id))
+    ordered.sort(key=lambda i: i.card.created_at, reverse=True)
+    ordered.sort(key=lambda i: i.card.score, reverse=True)
+    if novelty_first:
+        ordered.sort(key=lambda i: i.card.novelty, reverse=True)
+    return ordered
+
+
+def _validate(limit: int, wildcard_slots: int) -> None:
+    if limit < 1:
+        raise ArtifactValidationError("limit must be at least 1")
+    if not 0 <= wildcard_slots <= limit:
+        raise ArtifactValidationError("wildcard_slots must be between 0 and limit")
+
+
+def select_queue(items: Sequence[QueueItem], limit: int, wildcard_slots: int) -> list[QueueItem]:
+    """Top ``limit - wildcard_slots`` by score, then the most novel leftovers as wildcards."""
+    _validate(limit, wildcard_slots)
+    ranked = _ranked(items)
+    top = ranked[: limit - wildcard_slots]
+    rest = _ranked(ranked[len(top) :], novelty_first=True)
+    wild = [replace(item, wildcard=True) for item in rest[:wildcard_slots]]
+    return [*top, *wild]
 
 
 class CardRepository:
@@ -98,3 +137,42 @@ class CardRepository:
             .limit(1)
         )
         return self._session.scalars(query).first()
+
+    def queue(
+        self, *, limit: int = 15, wildcard_slots: int = 2, since: datetime
+    ) -> list[QueueItem]:
+        """Cards awaiting a decision (none yet, or snoozed) created at or after ``since``."""
+        if since.tzinfo is None:
+            raise ArtifactValidationError("since must be timezone-aware")
+        _validate(limit, wildcard_slots)
+        latest = (
+            select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
+            .distinct(EditorDecisionRow.topic_card_id)
+            .order_by(
+                EditorDecisionRow.topic_card_id,
+                EditorDecisionRow.decided_at.desc(),
+                EditorDecisionRow.created_at.desc(),
+            )
+            .subquery()
+        )
+        query = (
+            select(TopicCardRow, Signal, latest.c.decision)
+            .join(Signal, Signal.id == TopicCardRow.signal_id)
+            .outerjoin(latest, latest.c.topic_card_id == TopicCardRow.id)
+            .where(
+                TopicCardRow.created_at >= since,
+                or_(latest.c.decision.is_(None), latest.c.decision == "snoozed"),
+            )
+        )
+        items = [
+            QueueItem(
+                card=row,
+                signal_title=signal.title,
+                source=signal.source,
+                canonical_url=signal.canonical_url,
+                wildcard=False,
+                status="snoozed" if decision == "snoozed" else "proposed",
+            )
+            for row, signal, decision in self._session.execute(query).all()
+        ]
+        return select_queue(items, limit, wildcard_slots)
