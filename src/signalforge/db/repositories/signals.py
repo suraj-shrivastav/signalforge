@@ -7,10 +7,11 @@ from datetime import datetime
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from signalforge.core.artifacts.signal import RawSignal
 from signalforge.core.errors import ArtifactValidationError
+from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
 
 
@@ -18,6 +19,7 @@ from signalforge.db.models.signals import Signal
 class SignalPage:
     items: list[Signal]
     next_cursor: str | None
+    assessments: dict[uuid.UUID, SignalAssessmentRow]
 
 
 def _encode_cursor(signal: Signal) -> str:
@@ -72,10 +74,31 @@ class SignalRepository:
         return len(self._session.execute(statement).all())
 
     def list_page(
-        self, *, limit: int, cursor: str | None = None, source: str | None = None
+        self,
+        *,
+        limit: int,
+        cursor: str | None = None,
+        source: str | None = None,
+        relevant_only: bool = False,
     ) -> SignalPage:
-        """Newest first. Keyset paging, so pages stay stable while new rows arrive."""
-        query = select(Signal).order_by(Signal.published_at.desc(), Signal.id.desc())
+        """Newest first. Keyset paging, so pages stay stable while new rows arrive.
+
+        Each signal is joined to its latest assessment (highest prompt version present).
+        """
+        latest = (
+            select(SignalAssessmentRow)
+            .distinct(SignalAssessmentRow.signal_id)
+            .order_by(SignalAssessmentRow.signal_id, SignalAssessmentRow.prompt_version.desc())
+            .subquery()
+        )
+        assessment = aliased(SignalAssessmentRow, latest)
+        query = (
+            select(Signal, assessment)
+            .outerjoin(assessment, assessment.signal_id == Signal.id)
+            .order_by(Signal.published_at.desc(), Signal.id.desc())
+        )
+        if relevant_only:
+            query = query.where(assessment.is_relevant.is_(True))
         if source is not None:
             query = query.where(Signal.source == source)
         if cursor is not None:
@@ -84,7 +107,9 @@ class SignalRepository:
                 tuple_(Signal.published_at, Signal.id) < tuple_(published_at, signal_id)  # type: ignore[arg-type]
             )
         # One extra row tells us whether another page exists without a count query.
-        rows = list(self._session.scalars(query.limit(limit + 1)))
-        items = rows[:limit]
+        rows = self._session.execute(query.limit(limit + 1)).all()
+        page = rows[:limit]
+        items = [signal for signal, _ in page]
+        assessments = {signal.id: found for signal, found in page if found is not None}
         next_cursor = _encode_cursor(items[-1]) if len(rows) > limit else None
-        return SignalPage(items=items, next_cursor=next_cursor)
+        return SignalPage(items=items, next_cursor=next_cursor, assessments=assessments)

@@ -62,3 +62,56 @@ def test_list_filters_by_source(db_session: Session) -> None:
 def test_garbage_cursor_is_a_validation_error(db_session: Session) -> None:
     with pytest.raises(ArtifactValidationError):
         SignalRepository(db_session).list_page(limit=5, cursor="not-a-cursor")
+
+
+def test_relevant_only_uses_latest_assessment_and_keeps_cursor_valid(db_session: Session) -> None:
+    from signalforge.core.artifacts.assessment import Category, SignalAssessment
+    from signalforge.db.models.ops import StageRun, StageRunStatus
+    from signalforge.db.repositories.assessments import AssessmentRepository
+
+    signals = [signal(n) for n in range(1, 7)]
+    repo = SignalRepository(db_session)
+    repo.insert_new(signals)
+    run = StageRun(
+        stage="assess",
+        entity_id=signals[0].id,
+        input_hash="h",
+        stage_config_hash="c",
+        status=StageRunStatus.RUNNING,
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    def assess(n: int, version: str, relevant: bool) -> SignalAssessment:
+        return SignalAssessment(
+            signal_id=signals[n - 1].id,
+            is_relevant=relevant,
+            relevance_score=0.5,
+            category=Category.RESEARCH,
+            summary="s",
+            why_it_matters="w",
+            prompt_version=version,
+            model="m",
+        )
+
+    assessments = AssessmentRepository(db_session)
+    for n, version, relevant in [
+        (6, "assess-v1", True),
+        (5, "assess-v1", True),
+        (4, "assess-v1", True),
+        (4, "assess-v2", False),  # latest wins: signal 4 is not relevant
+        (3, "assess-v1", False),
+        (2, "assess-v1", True),
+    ]:
+        assessments.insert(assess(n, version, relevant), run.id, None)
+
+    everything = repo.list_page(limit=10)
+    assert everything.assessments[signals[5].id].is_relevant is True
+    assert signals[0].id not in everything.assessments
+
+    first = repo.list_page(limit=2, relevant_only=True)
+    assert [s.title for s in first.items] == ["Title 6", "Title 5"]
+    assert first.next_cursor is not None
+    last = repo.list_page(limit=2, cursor=first.next_cursor, relevant_only=True)
+    assert [s.title for s in last.items] == ["Title 2"]
+    assert last.next_cursor is None

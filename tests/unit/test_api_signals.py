@@ -27,16 +27,29 @@ def fake_signal() -> SimpleNamespace:
     )
 
 
+def fake_assessment() -> SimpleNamespace:
+    return SimpleNamespace(
+        is_relevant=True,
+        relevance_score=0.83,
+        category="research",
+        summary="sum",
+        why_it_matters="why",
+    )
+
+
 class FakeRepo:
     def __init__(self, error: Exception | None = None) -> None:
         self.error = error
+        self.assess = False
         self.calls: list[dict[str, object]] = []
 
     def list_page(self, **kwargs: object) -> SimpleNamespace:
         self.calls.append(kwargs)
         if self.error:
             raise self.error
-        return SimpleNamespace(items=[fake_signal()], next_cursor="next")
+        signal = fake_signal()
+        assessments = {signal.id: fake_assessment()} if self.assess else {}
+        return SimpleNamespace(items=[signal], next_cursor="next", assessments=assessments)
 
 
 @pytest.fixture
@@ -61,10 +74,29 @@ def test_list_signals_returns_items_and_cursor(client: TestClient, repo: FakeRep
     assert body["next_cursor"] == "next"
     assert body["items"][0]["title"] == "A title"
     assert body["items"][0]["metadata"] == {"points": 50}
-    assert repo.calls == [{"limit": 5, "cursor": None, "source": "hackernews"}]
+    assert repo.calls == [
+        {"limit": 5, "cursor": None, "source": "hackernews", "relevant_only": False}
+    ]
 
 
-@pytest.mark.parametrize("query", ["limit=0", "limit=101", "limit=abc"])
+def test_unassessed_signal_has_null_assessment(client: TestClient) -> None:
+    assert client.get("/signals").json()["items"][0]["assessment"] is None
+
+
+def test_assessed_signal_exposes_assessment(client: TestClient, repo: FakeRepo) -> None:
+    repo.assess = True
+    body = client.get("/signals?relevant_only=true").json()
+    assert body["items"][0]["assessment"] == {
+        "is_relevant": True,
+        "relevance_score": 0.83,
+        "category": "research",
+        "summary": "sum",
+        "why_it_matters": "why",
+    }
+    assert repo.calls[-1]["relevant_only"] is True
+
+
+@pytest.mark.parametrize("query", ["limit=0", "limit=101", "limit=abc", "relevant_only=maybe"])
 def test_bad_limit_is_a_422_with_the_standard_error_shape(client: TestClient, query: str) -> None:
     response = client.get(f"/signals?{query}")
     assert response.status_code == 422
