@@ -67,10 +67,10 @@ cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
 TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests
 ```
 
-Scheduling: `tick` ingests all sources then assesses (assess needs `LLM_PROVIDER`, `LLM_BASE_URL` and `LLM_MODEL_RELEVANCE` in `.env`; it is skipped when the provider is `fake`). Cron, every 30 minutes:
+Scheduling: `tick` ingests all sources then assesses (assess needs `LLM_PROVIDER`, `LLM_BASE_URL` and `LLM_MODEL_RELEVANCE` in `.env`; it is skipped when the provider is `fake`). Exit codes: 0 = at least one source ingested and assess ok or skipped; 1 = every source failed; 2 = ingest ok but assess failed. Cron, every 30 minutes (cron has a minimal PATH, so use the absolute path from `which uv`, or set `PATH=` in the crontab; the log is not rotated):
 
 ```
-*/30 * * * * cd /Users/suraj/personal/signalforge && uv run python -m apps.worker.tick >> /tmp/signalforge-tick.log 2>&1
+*/30 * * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick >> $HOME/signalforge-tick.log 2>&1
 ```
 
 Pre-commit runs lint, format and types on commit, and pytest on push, using the

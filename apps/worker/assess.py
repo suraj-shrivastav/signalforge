@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from apps.worker._args import limit
 from signalforge.core.budget import Budget, BudgetScope
 from signalforge.core.config import get_settings
 from signalforge.core.logging import configure_logging
@@ -17,16 +18,9 @@ from signalforge.stages.assess import AssessResult, run_assess
 log = logging.getLogger(__name__)
 
 
-def _limit(value: str) -> int:
-    limit = int(value)
-    if not 1 <= limit <= 500:
-        raise argparse.ArgumentTypeError("must be between 1 and 500")
-    return limit
-
-
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="assess")
-    parser.add_argument("--limit", type=_limit, default=25, help="max signals to assess")
+    parser.add_argument("--limit", type=limit, default=25, help="max signals to assess")
     return parser.parse_args(argv)
 
 
