@@ -6,7 +6,7 @@ export default function Home() {
     <Container className="py-16">
       <section aria-labelledby="hero" className="mb-12">
         <h1 id="hero" className="text-display text-ink">
-          What changed in AI this week
+          What changed this week
         </h1>
         <p className="mt-4 max-w-article text-lead text-muted">
           Short, sourced write-ups on new releases, research and tools. Read in

@@ -23,9 +23,10 @@ describe("public sources", () => {
     ...files(join(src, "app/(public)")),
     ...files(join(src, "components/layout")),
   ].filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.tsx"));
+  it("scans real files", () => expect(all.length).toBeGreaterThan(5));
   it.each(all)("%s has no forbidden terms", (f) => {
     expect(readFileSync(f, "utf8")).not.toMatch(
-      /model|AI-generated|written by AI|model_trail|prompt_version/i,
+      /model|\bAI\b|AI-generated|written by AI|author(ship)?|generated|\bLLM\b|\bGPT\b|prompt_version/i,
     );
   });
 });
