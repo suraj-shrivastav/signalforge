@@ -85,7 +85,7 @@ class CardOut(BaseModel):
     signal: QueueSignalOut
     score: float
     wildcard: bool
-    status: str
+    status: Literal["proposed", "snoozed"]
     created_at: datetime
 
 
@@ -110,7 +110,7 @@ class DecisionIn(BaseModel):
 class DecisionOut(BaseModel):
     id: UUID
     card_id: UUID
-    decision: str
+    decision: Literal["accepted", "rejected", "snoozed"]
     reason_tags: list[str]
     note: str
     decision_ms: int | None

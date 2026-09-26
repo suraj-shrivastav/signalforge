@@ -160,7 +160,9 @@ def test_null_decision_ms_ok_unknown_card_404_bad_uuid_422(
 
 
 def test_key_never_in_logs_or_bodies(
-    ctx: tuple[TestClient, StubRepo], caplog: pytest.LogCaptureFixture
+    ctx: tuple[TestClient, StubRepo],
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     client, repo = ctx
     with caplog.at_level(logging.DEBUG):
@@ -170,4 +172,127 @@ def test_key_never_in_logs_or_bodies(
             client.post(url(repo), json={**BODY, "decision": "bad"}, headers=H),
         ]
     assert KEY not in caplog.text
+    assert KEY not in capsys.readouterr().err
     assert all(KEY not in r.text for r in rs)
+
+
+def test_unauthenticated_precedes_404_and_body_validation(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    assert client.post(f"/cards/{uuid4()}/decision", json=BODY).status_code == 401
+    assert client.post(url(repo), json={"decision": "bad"}).status_code == 401
+    assert client.post(url(repo), content=b"{not json").status_code == 401
+    assert client.post("/cards/not-a-uuid/decision", json=BODY).status_code == 401
+    r = client.post(url(repo), content=b"{not json", headers=H)
+    assert r.status_code == 422
+
+
+def test_non_ascii_key_is_401(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    r = client.post(url(repo), json=BODY, headers={"X-Editor-Key": "café".encode()})
+    assert r.status_code == 401
+
+
+def test_empty_configured_key_is_503() -> None:
+    client, repo = make(key="")
+    with client:
+        assert client.post(url(repo), json=BODY, headers={"X-Editor-Key": ""}).status_code == 503
+
+
+def test_401_body_identical_minus_correlation_id(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+
+    def body(headers: dict[str, str]) -> dict[str, Any]:
+        err = client.post(url(repo), json=BODY, headers=headers).json()["error"]
+        err.pop("correlation_id")
+        return dict(err)
+
+    assert body({}) == body({"X-Editor-Key": "wrong"})
+
+
+def test_integrity_error_on_insert_is_404(ctx: tuple[TestClient, StubRepo]) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    client, repo = ctx
+
+    def boom(*_: Any) -> Any:
+        raise IntegrityError("s", {}, Exception("fk"))
+
+    repo.add_decision = boom  # type: ignore[method-assign,assignment]
+    r = client.post(url(repo), json=BODY, headers=H)
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
+
+
+def test_503_logs_warning_without_key(capsys: pytest.CaptureFixture[str]) -> None:
+    # configure_logging writes JSON to stderr and stops propagation, so caplog sees nothing.
+    client, repo = make(key=None)
+    with client:
+        client.post(url(repo), json=BODY, headers=H)
+    logged = capsys.readouterr().err
+    assert "editor key not configured" in logged
+    assert KEY not in logged
+
+
+@pytest.mark.parametrize(("limit", "wild"), [(1, 0), (2, 1), (3, 1), (15, 2)])
+def test_queue_uses_real_select_queue(limit: int, wild: int) -> None:
+    from apps.api.deps import get_card_repository as dep
+
+    from signalforge.db.repositories.cards import CardRepository
+
+    items = []
+    for i in range(20):
+        it = _item()
+        it.card.score = 1 - i / 100
+        it.card.novelty = i / 100
+        items.append(it)
+
+    class Real(CardRepository):
+        def __init__(self) -> None:
+            pass
+
+        def queue(self, *, limit: int = 15, wildcard_slots: int = 2, since: datetime) -> Any:  # noqa: ARG002
+            from signalforge.db.repositories.cards import select_queue
+
+            return select_queue(items, limit, wildcard_slots)
+
+    client, _ = make()
+    client.app.dependency_overrides[dep] = lambda: Real()  # type: ignore[attr-defined]
+    with client:
+        r = client.get(f"/cards/queue?limit={limit}")
+    assert r.status_code == 200
+    out = r.json()
+    assert len(out) == limit
+    assert sum(c["wildcard"] for c in out) == wild
+
+
+def test_commit_failure_is_500_not_201() -> None:
+    from apps.api.deps import get_card_repository as dep
+
+    from signalforge.db.repositories.cards import CardRepository
+    from signalforge.db.session import session_scope
+
+    class Sess:
+        def commit(self) -> None:
+            raise RuntimeError("commit failed")
+
+        def rollback(self) -> None: ...
+        def close(self) -> None: ...
+
+    stub = StubRepo()
+
+    def factory() -> Any:
+        return Sess()
+
+    def real_dep() -> Any:
+        with session_scope(factory) as _:  # type: ignore[arg-type]
+            yield stub
+
+    client, _ = make()
+    client.app.dependency_overrides.pop(dep, None)  # type: ignore[attr-defined]
+    client.app.dependency_overrides[dep] = real_dep  # type: ignore[attr-defined]
+    _ = CardRepository
+    with client:
+        r = client.post(url(stub), json=BODY, headers=H)
+    assert r.status_code == 500

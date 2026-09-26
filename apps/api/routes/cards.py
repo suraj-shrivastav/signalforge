@@ -1,11 +1,15 @@
 """Card queue (open read) and editor decisions (key-protected write)."""
 
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 
 from apps.api.deps import get_card_repository
 from apps.api.schemas import CardOut, DecisionIn, DecisionOut, QueueSignalOut
@@ -13,6 +17,7 @@ from signalforge.core.errors import EditorKeyNotConfiguredError
 from signalforge.db.repositories.cards import CardRepository, QueueItem
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def require_editor_key(
@@ -21,11 +26,22 @@ def require_editor_key(
     expected = request.app.state.settings.editor_api_key
     # Fail closed: an unset or empty key never accepts writes.
     if expected is None or not expected.get_secret_value():
+        log.warning("editor key not configured; refusing decision write")
         raise EditorKeyNotConfiguredError("editor key not configured")
     # Bytes so non-ASCII input cannot raise TypeError; same body for missing and wrong.
     supplied = (x_editor_key or "").encode()
     if not secrets.compare_digest(supplied, expected.get_secret_value().encode()):
         raise HTTPException(status_code=401, detail="Invalid or missing editor key")
+
+
+async def decision_body(request: Request) -> DecisionIn:
+    """Parsed after auth (dependency order), so unauthenticated callers never see 422s."""
+    try:
+        return DecisionIn.model_validate(await request.json())
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors(include_url=False, include_context=False)) from exc
+    except ValueError as exc:
+        raise RequestValidationError([{"loc": ("body",), "msg": "invalid JSON"}]) from exc
 
 
 def _card_out(item: QueueItem) -> CardOut:
@@ -53,7 +69,7 @@ def _card_out(item: QueueItem) -> CardOut:
         ),
         score=c.score,
         wildcard=item.wildcard,
-        status=item.status,
+        status=cast(Any, item.status),
         created_at=c.created_at,
     )
 
@@ -65,7 +81,10 @@ def card_queue(
     days: Annotated[int, Query(ge=1, le=30)] = 7,
 ) -> list[CardOut]:
     since = datetime.now(UTC) - timedelta(days=days)
-    return [_card_out(i) for i in repo.queue(limit=limit, since=since)]
+    return [
+        _card_out(i)
+        for i in repo.queue(limit=limit, wildcard_slots=min(2, limit // 2), since=since)
+    ]
 
 
 @router.post(
@@ -76,16 +95,22 @@ def card_queue(
 )
 def add_decision(
     card_id: UUID,
-    body: DecisionIn,
-    repo: Annotated[CardRepository, Depends(get_card_repository)],
+    body: Annotated[DecisionIn, Depends(decision_body)],
+    # scope="function": commit runs before the response is sent, so a failed commit is a 500.
+    repo: Annotated[CardRepository, Depends(get_card_repository, scope="function")],
 ) -> DecisionOut:
     if not repo.exists(card_id):
         raise HTTPException(status_code=404, detail="Card not found")
-    row = repo.add_decision(card_id, body.decision, body.reason_tags, body.note, body.decision_ms)
+    try:
+        row = repo.add_decision(
+            card_id, body.decision, body.reason_tags, body.note, body.decision_ms
+        )
+    except IntegrityError as exc:  # card deleted between exists() and insert
+        raise HTTPException(status_code=404, detail="Card not found") from exc
     return DecisionOut(
         id=row.id,
         card_id=row.topic_card_id,
-        decision=row.decision,
+        decision=cast(Any, row.decision),
         reason_tags=list(row.reason_tags),
         note=row.note,
         decision_ms=row.decision_ms,
