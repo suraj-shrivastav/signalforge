@@ -47,9 +47,12 @@ def _atom_link(entry: ET.Element) -> str:
 
 
 def parse_feed(xml: bytes) -> list[FeedEntry]:
+    lowered = xml.lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered:
+        raise ArtifactValidationError("Feed declares a DTD or entities, which is not allowed")
     try:
         root = ET.fromstring(xml)
-    except ET.ParseError as exc:
+    except (ET.ParseError, ValueError) as exc:
         raise ArtifactValidationError("Feed is not valid XML") from exc
     entries: list[FeedEntry] = []
     for item in root.iter("item"):

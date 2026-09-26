@@ -15,6 +15,7 @@ from signalforge.core.retry import call_with_retry
 
 USER_AGENT = "signalforge/0.1 (+https://github.com/suraj-shrivastav/signalforge)"
 REQUEST_TIMEOUT_S = 10.0
+MAX_BYTES = 5_000_000
 
 
 def fetch_bytes(
@@ -41,12 +42,16 @@ def fetch_bytes(
             retry_after = response.headers.get("Retry-After", "")
             raise RateLimitedError(
                 f"{label} rate limited the request",
-                retry_after_seconds=float(retry_after) if retry_after.isdigit() else None,
+                retry_after_seconds=float(retry_after)
+                if retry_after.isascii() and retry_after.isdigit()
+                else None,
             )
         if status >= httpx.codes.INTERNAL_SERVER_ERROR:
             raise ProviderUnavailableError(f"{label} server error", context={"status": status})
         if status >= httpx.codes.BAD_REQUEST:
             raise ProviderRejectedError(f"{label} rejected the request", context={"status": status})
+        if len(response.content) > MAX_BYTES:
+            raise ProviderRejectedError(f"{label} response too large", context={"status": status})
         return response.content
 
     return call_with_retry(once, sleep=sleep)

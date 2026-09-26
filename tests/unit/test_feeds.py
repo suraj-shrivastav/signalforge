@@ -10,7 +10,7 @@ from signalforge.core.errors import (
     ProviderUnavailableError,
     RateLimitedError,
 )
-from signalforge.plugins.sources._http import fetch_bytes
+from signalforge.plugins.sources._http import MAX_BYTES, fetch_bytes
 from signalforge.plugins.sources.feeds import parse_feed
 
 RSS = b"""<?xml version="1.0"?><rss version="2.0"><channel>
@@ -86,7 +86,7 @@ def test_fetch_5xx_retries_then_unavailable() -> None:
         fetch_bytes(
             _client(httpx.MockTransport(handler)), "https://x.example/", label="X", sleep=_no_sleep
         )
-    assert calls > 1
+    assert calls == 3
 
 
 def test_fetch_4xx_rejected_without_retry() -> None:
@@ -108,18 +108,69 @@ def test_fetch_4xx_rejected_without_retry() -> None:
     ("header", "expected"), [("7", 7.0), ("Wed, 21 Oct 2026 07:28:00 GMT", None)]
 )
 def test_fetch_429_retry_after(header: str, expected: float | None) -> None:
-    transport = httpx.MockTransport(lambda _r: httpx.Response(429, headers={"Retry-After": header}))
-    seen: list[RateLimitedError] = []
+    calls = 0
 
-    def sleep(_: float) -> None:
-        return None
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(429, headers={"Retry-After": header})
 
-    try:
-        fetch_bytes(_client(transport), "https://x.example/", label="X", sleep=sleep)
-    except RateLimitedError as exc:
-        seen.append(exc)
-    assert len(seen) == 1
-    assert seen[0].retry_after_seconds == expected
+    sleeps: list[float] = []
+    with pytest.raises(RateLimitedError) as info:
+        fetch_bytes(
+            _client(httpx.MockTransport(handler)),
+            "https://x.example/",
+            label="X",
+            sleep=sleeps.append,
+        )
+    assert info.value.retry_after_seconds == expected
+    assert calls == 3
+    if expected is not None:
+        assert sleeps == [7.0, 7.0]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'<!DOCTYPE x [<!ENTITY a "b">]><rss><channel/></rss>',
+        b"<!doctype x><rss/>",
+        b'<rss><!entity a "b"></rss>',
+    ],
+)
+def test_rejects_dtd_and_entities(body: bytes) -> None:
+    with pytest.raises(ArtifactValidationError):
+        parse_feed(body)
+
+
+def test_naive_datetime_gets_utc() -> None:
+    xml = (
+        b"<rss><channel><item><title>T</title><link>https://a.example/t</link>"
+        b"<pubDate>2026-09-26T10:00:00</pubDate></item></channel></rss>"
+    )
+    [entry] = parse_feed(xml)
+    assert entry.published == datetime(2026, 9, 26, 10, tzinfo=UTC)
+
+
+def test_fetch_oversize_rejected() -> None:
+    body = b"x" * (MAX_BYTES + 1)
+    client = _client(httpx.MockTransport(lambda _r: httpx.Response(200, content=body)))
+    with pytest.raises(ProviderRejectedError):
+        fetch_bytes(client, "https://x.example/", label="X", sleep=_no_sleep)
+
+
+def test_fetch_timeout_retried() -> None:
+    calls = 0
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("slow")
+
+    with pytest.raises(OperationTimeoutError):
+        fetch_bytes(
+            _client(httpx.MockTransport(handler)), "https://x.example/", label="X", sleep=_no_sleep
+        )
+    assert calls == 3
 
 
 def test_fetch_timeout_maps() -> None:
