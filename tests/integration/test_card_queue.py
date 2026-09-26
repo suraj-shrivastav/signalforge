@@ -138,3 +138,37 @@ def test_since_and_validation(db_session: Session) -> None:
         repo.queue(since=BASE.replace(tzinfo=None))
     with pytest.raises(ArtifactValidationError):
         repo.queue(limit=0, since=SINCE)
+
+
+def test_decision_stats_latest_per_card_and_waiting(db_session: Session) -> None:
+    rows = make_cards(db_session, 5)
+    t0 = datetime(2026, 9, 1, tzinfo=UTC)
+
+    def decide(row: TopicCardRow, decision: str, at: datetime, tags: list[str], ms: int) -> None:
+        db_session.add(
+            EditorDecisionRow(
+                topic_card_id=row.id,
+                decision=decision,
+                reason_tags=tags,
+                note="",
+                decision_ms=ms,
+                decided_at=at,
+            )
+        )
+
+    decide(rows[0], "snoozed", t0, [], 100)
+    decide(rows[0], "accepted", t0 + timedelta(hours=1), ["timely"], 200)  # latest wins
+    decide(rows[1], "rejected", t0, ["stale"], 300)
+    decide(rows[2], "snoozed", t0, [], 400)
+    db_session.flush()
+    stats = CardRepository(db_session).decision_stats(SINCE)
+    assert stats.cards_created == 5
+    assert sorted(d for d, _, _ in stats.decisions) == ["accepted", "rejected", "snoozed"]
+    by_decision = {d: (tags, ms) for d, tags, ms in stats.decisions}
+    assert by_decision["accepted"] == (["timely"], 200)
+    # 2 undecided + 1 snoozed
+    assert stats.waiting == 3
+    future = CardRepository(db_session).decision_stats(datetime.now(UTC) + timedelta(days=1))
+    assert (future.cards_created, future.decisions, future.waiting) == (0, [], 0)
+    with pytest.raises(ArtifactValidationError):
+        CardRepository(db_session).decision_stats(BASE.replace(tzinfo=None))

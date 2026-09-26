@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -50,6 +50,16 @@ def select_queue(items: Sequence[QueueItem], limit: int, wildcard_slots: int) ->
     rest = _ranked(ranked[len(top) :], novelty_first=True)
     wild = [replace(item, wildcard=True) for item in rest[:wildcard_slots]]
     return [*top, *wild]
+
+
+@dataclass(frozen=True)
+class DecisionStats:
+    """Raw inputs for triage metrics over cards created in a window."""
+
+    cards_created: int
+    # (decision, reason_tags, decision_ms), latest decision per card only
+    decisions: list[tuple[str, list[str], int | None]]
+    waiting: int
 
 
 class CardRepository:
@@ -181,3 +191,37 @@ class CardRepository:
             for row, signal, decision in self._session.execute(query).all()
         ]
         return select_queue(items, limit, wildcard_slots)
+
+    def decision_stats(self, since: datetime) -> DecisionStats:
+        """Read-only: cards created at or after ``since`` and their latest decisions."""
+        if since.tzinfo is None:
+            raise ArtifactValidationError("since must be timezone-aware")
+        created = self._session.scalar(
+            select(func.count()).select_from(TopicCardRow).where(TopicCardRow.created_at >= since)
+        )
+        latest = (
+            select(
+                EditorDecisionRow.topic_card_id,
+                EditorDecisionRow.decision,
+                EditorDecisionRow.reason_tags,
+                EditorDecisionRow.decision_ms,
+            )
+            .distinct(EditorDecisionRow.topic_card_id)
+            .order_by(
+                EditorDecisionRow.topic_card_id,
+                EditorDecisionRow.decided_at.desc(),
+                EditorDecisionRow.created_at.desc(),
+            )
+            .subquery()
+        )
+        rows = self._session.execute(
+            select(latest.c.decision, latest.c.reason_tags, latest.c.decision_ms)
+            .join(TopicCardRow, TopicCardRow.id == latest.c.topic_card_id)
+            .where(TopicCardRow.created_at >= since)
+        ).all()
+        decisions = [(str(d), list(tags or []), ms) for d, tags, ms in rows]
+        decided_final = sum(1 for d, _, _ in decisions if d != "snoozed")
+        total = int(created or 0)
+        return DecisionStats(
+            cards_created=total, decisions=decisions, waiting=total - decided_final
+        )

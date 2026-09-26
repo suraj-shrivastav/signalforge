@@ -26,3 +26,5 @@ def bounded_limit(maximum: int) -> Callable[[str], int]:
 
 
 limit = bounded_limit(500)
+
+days = bounded_limit(90)
