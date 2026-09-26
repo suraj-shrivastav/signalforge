@@ -19,6 +19,8 @@
 - TypeScript strict, no `any`. ESLint, Prettier, `check:tokens`, typecheck, tests and build all pass. PRs at most 400 changed lines (CSS and generated lockfile lines excluded), squash-merged, Conventional Commits, no AI trailers.
 - **No AI signalling on public pages.** Public routes (`(public)` group, `feed.xml`, metadata) never show or embed model names, AI-authorship wording, `model_trail`, prompt versions or verification notes. Such data appears only under `/editor`. A test scans the public route sources for these terms.
 - **No em dashes.** No em dash or en dash used as a dash in any UI copy, placeholder text or docs added by this plan.
+- **Icons come from `lucide-react`** (add as a dependency in Task 2). Use them for the theme toggle (`Sun`, `Moon`), header (`Search`, `Menu`, `X`), read time (`Clock`) and button arrows (`ArrowRight`). Icons are decorative (`aria-hidden`) unless they are the only content of a control, which then needs an `aria-label`. Size through a token-based class, no arbitrary values.
+- **Article page layout is centered:** the article column sits centered on the page, and the header block (tags, title, dek, byline, cover) is center aligned. Body text stays left aligned for readability.
 - No real data and no new API endpoints in `lib/api.ts` in this plan. Existing editor pages keep working.
 
 ## Rulings made while planning
