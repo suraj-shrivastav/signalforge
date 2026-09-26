@@ -4,6 +4,7 @@ import argparse
 import logging
 from collections.abc import Sequence
 
+from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from signalforge.core.budget import Budget, BudgetScope
@@ -11,7 +12,7 @@ from signalforge.core.config import get_settings
 from signalforge.core.logging import configure_logging
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
 from signalforge.llm.gateway import LLMGateway, build_gateway
-from signalforge.stages.assess import run_assess
+from signalforge.stages.assess import AssessResult, run_assess
 
 log = logging.getLogger(__name__)
 
@@ -29,19 +30,25 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
+def run(engine: Engine, limit: int) -> AssessResult:
+    """Run one assess pass on ``engine`` (caller owns the engine)."""
     settings = get_settings()
-    configure_logging(settings.log_level)
-    engine = create_db_engine(settings, ConnectionMode.SESSION)
 
     def gateway_factory(session: Session) -> LLMGateway:
         budget = Budget(BudgetScope.TOPIC, settings.budget_limits(BudgetScope.TOPIC))
         return build_gateway(settings, session, budget)
 
+    with create_session_factory(engine)() as session:
+        return run_assess(session, gateway_factory, limit=limit)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    engine = create_db_engine(settings, ConnectionMode.SESSION)
     try:
-        with create_session_factory(engine)() as session:
-            result = run_assess(session, gateway_factory, limit=args.limit)
+        result = run(engine, args.limit)
     finally:
         engine.dispose()
     print(
