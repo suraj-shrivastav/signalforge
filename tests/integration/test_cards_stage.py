@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from signalforge.core.artifacts.signal import RawSignal
+from signalforge.core.artifacts.topic_card import ArticleFormat, RiskFlag, TopicCard
 from signalforge.core.budget import Budget, BudgetLimits, BudgetScope
 from signalforge.core.errors import ProviderRejectedError
 from signalforge.db.models import StageRun, StageRunStatus
@@ -17,6 +18,7 @@ from signalforge.db.repositories.signals import SignalRepository
 from signalforge.llm.gateway import LLMGateway
 from signalforge.llm.providers import FakeProvider
 from signalforge.llm.roles import ModelSpec
+from signalforge.plugins.rankers.rules import score
 from signalforge.stages.assess import run_assess
 from signalforge.stages.cards import run_cards
 
@@ -90,7 +92,24 @@ def test_creates_card_and_rerun_is_noop(db_session: Session) -> None:
     assert (first.considered, first.created, first.failed) == (1, 1, 0)
     row = db_session.scalars(select(TopicCardRow).where(TopicCardRow.model == "acme/m")).one()
     assert row.prompt_version == "card-v1"
-    assert row.score == 0.0
+    expected = TopicCard(
+        signal_id=row.signal_id,
+        what_happened="w",
+        why_it_matters="y",
+        novelty=0.5,
+        signal_strength=0.5,
+        coverage_gap="",
+        suggested_angle="a",
+        format=ArticleFormat.EXPLAINER,
+        evergreen_score=0.5,
+        confidence=0.5,
+        risk_flags=(RiskFlag.HYPE,),
+        prompt_version="card-v1",
+        model="acme/m",
+    )
+    # Assessment relevance is 0.9 (seed_assessed); the stage must feed it to the real scorer.
+    assert row.score == pytest.approx(score(0.9, expected))
+    assert row.score > 0.0
     again = run_cards(db_session, factory([]), limit=1)
     assert again.created == 0
 
