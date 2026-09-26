@@ -44,6 +44,12 @@ class LLMGateway:
         self._budget = budget
         self._session = session
 
+    def model_for(self, role: str) -> str:
+        try:
+            return self._roles[role].model_id
+        except KeyError:
+            raise ConfigurationError("Unknown LLM role", context={"role": role}) from None
+
     def complete_json[T: BaseModel](
         self,
         *,
