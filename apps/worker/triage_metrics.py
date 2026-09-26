@@ -13,6 +13,7 @@ from signalforge.core.config import get_settings
 from signalforge.core.logging import configure_logging
 from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
+from signalforge.stages.cards import PROMPT_VERSION
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     since = datetime.now(UTC) - timedelta(days=args.days)
     try:
         with create_session_factory(engine)() as session:
-            stats = CardRepository(session).decision_stats(since)
+            stats = CardRepository(session).decision_stats(since, prompt_version=PROMPT_VERSION)
     finally:
         engine.dispose()
     print(format_metrics(compute_metrics(stats.cards_created, stats.decisions, stats.waiting)))

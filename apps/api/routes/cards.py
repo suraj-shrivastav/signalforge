@@ -15,6 +15,7 @@ from apps.api.deps import get_card_repository
 from apps.api.schemas import CardOut, DecisionIn, DecisionOut, QueueSignalOut
 from signalforge.core.errors import EditorKeyNotConfiguredError
 from signalforge.db.repositories.cards import CardRepository, QueueItem
+from signalforge.stages.cards import PROMPT_VERSION
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -92,7 +93,12 @@ def card_queue(
     since = datetime.now(UTC) - timedelta(days=days)
     return [
         _card_out(i)
-        for i in repo.queue(limit=limit, wildcard_slots=min(2, limit // 2), since=since)
+        for i in repo.queue(
+            prompt_version=PROMPT_VERSION,
+            limit=limit,
+            wildcard_slots=min(2, limit // 2),
+            since=since,
+        )
     ]
 
 

@@ -29,6 +29,8 @@ log = logging.getLogger(__name__)
 CARDS_STAGE = "cards"
 ROLE = "topic_card"
 PROMPT_VERSION = "card-v1"
+# ponytail: fixed 14-day lookback so old backlog never resurfaces as fresh cards.
+CARD_LOOKBACK_DAYS = 14
 
 _SYSTEM = f"""You draft an article pitch (a topic card) for an editor covering new advancements \
 and innovations in AI.
@@ -107,7 +109,9 @@ def run_cards(
             gateway = gateway_factory(session)
             model = gateway.model_for(ROLE)
             repo = CardRepository(session)
-            for signal, assessment in repo.list_uncarded(PROMPT_VERSION, limit):
+            for signal, assessment in repo.list_uncarded(
+                PROMPT_VERSION, limit, published_within_days=CARD_LOOKBACK_DAYS
+            ):
                 considered += 1
                 system, user = build_messages(signal, assessment)
                 try:

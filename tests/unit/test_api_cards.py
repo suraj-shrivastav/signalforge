@@ -86,6 +86,7 @@ def test_queue_open_read_and_no_internal_fields(ctx: tuple[TestClient, StubRepo]
     r = client.get("/cards/queue?limit=3&days=2")
     assert r.status_code == 200
     assert repo.queue_kwargs["limit"] == 3
+    assert repo.queue_kwargs["prompt_version"] == "card-v1"
     item = r.json()[0]
     assert item["signal"]["title"] == "t"
     assert "llm_call_id" not in item
@@ -256,7 +257,7 @@ def test_queue_uses_real_select_queue(limit: int, wild: int) -> None:
         def __init__(self) -> None:
             pass
 
-        def queue(self, *, limit: int = 15, wildcard_slots: int = 2, since: datetime) -> Any:  # noqa: ARG002
+        def queue(self, *, limit: int = 15, wildcard_slots: int = 2, **_kw: Any) -> Any:
             from signalforge.db.repositories.cards import select_queue
 
             return select_queue(items, limit, wildcard_slots)

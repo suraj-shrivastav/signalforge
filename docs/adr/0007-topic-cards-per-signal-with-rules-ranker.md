@@ -29,6 +29,10 @@ Repeated stories yield duplicate cards until clustering lands. The shared secret
 is weak protection. Weights are guesses until data exists. The relevance gate misses cards if the assessment is conservative. There is no Origin check on the proxy (residual CSRF assumption): this is safe only because the key is never stored in a cookie or any other ambient browser credential. Exit cost: replace the
 proxy with real auth and drop the header check.
 
+## Differences from the PRD
+
+FR-05 mentions a `need_more` decision and a different tag set (too obvious, shallow, saturated, off-vertical, other); the code has 3 decisions and 9 tags with no "other". Snoozed cards stay in the main ranked list (no separate backlog) and drop out of the queue after the 7-day window. `topic_cards.wildcard` exists but is never written (wildcard is computed per request). `ix_topic_cards_score` is unused because sorting happens in Python. The per-run cost bound is the TOPIC budget scope ($0.50) per stage per run, not per day.
+
 ## Follow-ups
 
 - [ ] Real dashboard auth (PRD open question 3)

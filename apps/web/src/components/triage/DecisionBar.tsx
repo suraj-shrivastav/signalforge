@@ -9,7 +9,8 @@ import {
   type ReasonTag,
 } from "@/lib/api";
 import { ReasonTags } from "./ReasonTags";
-import { useEditorKey } from "./TriageBoard";
+import { decisionElapsedMs } from "@/lib/decisionTiming";
+import { useEditorKey, useDecisionClock } from "./TriageBoard";
 
 type SaveState =
   | { kind: "idle" }
@@ -29,7 +30,7 @@ export function DecisionBar({
   const [tags, setTags] = useState<ReasonTag[]>([]);
   const [note, setNote] = useState("");
   const [state, setState] = useState<SaveState>({ kind: "idle" });
-  const [renderedAt] = useState(() => Date.now());
+  const clock = useDecisionClock();
   const saving = state.kind === "saving";
 
   async function submit(decision: DecisionKind) {
@@ -43,13 +44,11 @@ export function DecisionBar({
           decision,
           reason_tags: tags,
           note,
-          decision_ms: Math.min(
-            Math.max(0, Date.now() - renderedAt),
-            3_600_000,
-          ),
+          decision_ms: decisionElapsedMs(Date.now(), clock.since()),
         },
         editorKey,
       );
+      clock.markDecided();
       setState({ kind: "saved", decision });
     } catch (err) {
       const message =

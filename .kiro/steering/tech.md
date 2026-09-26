@@ -83,11 +83,15 @@ Cron, every 30 minutes (cron has a minimal PATH, so use the absolute path from `
 */30 * * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick >> $HOME/signalforge-tick.log 2>&1
 ```
 
-Nightly at 02:00, with the same notes (absolute `uv` path, log under `$HOME`, not rotated), to run a larger cards batch:
+Nightly at 02:15 (offset so it never starts with the 02:00 tick), with the same notes (absolute `uv` path, log under `$HOME`, not rotated), to run a larger cards batch:
 
 ```
-0 2 * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick --cards-limit 100 >> $HOME/signalforge-tick-nightly.log 2>&1
+15 2 * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick --cards-limit 100 >> $HOME/signalforge-tick-nightly.log 2>&1
 ```
+
+Overlapping runs are safe (`ON CONFLICT DO NOTHING`) but waste LLM spend, so keep the two schedules apart and wrap each command in `flock -n /tmp/signalforge-tick.lock` on Linux. macOS has no `flock` by default: use a lockfile check in a wrapper script, or launchd (which does not start a job that is still running).
+
+Cost note: the budget is per stage per run (TOPIC scope, $0.50), not per day; real spend is bounded by the number of new signals.
 
 Pre-commit runs lint, format and types on commit, and pytest on push, using the
 versions in `uv.lock` so it cannot drift from CI.
