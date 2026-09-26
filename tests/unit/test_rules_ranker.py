@@ -68,8 +68,8 @@ def item(n: int, s: float, novelty: float, at: int = 0) -> QueueItem:
 
 
 def test_select_queue_top_and_wildcards() -> None:
-    items = [item(n, n / 20, 1.0 if n == 0 else (0.9 if n == 1 else 0.1)) for n in range(1, 21)]
-    items[0] = item(1, 0.05, 0.9)
+    items = [item(1, 0.05, 0.9)]
+    items += [item(n, n / 20, 0.1) for n in range(2, 21)]
     items.append(item(99, 0.0, 1.0))
     out = select_queue(items, 15, 2)
     ids = [i.card.id.int for i in out]

@@ -25,9 +25,14 @@ class QueueItem:
     status: str  # "proposed" or "snoozed"
 
 
-def _order(item: QueueItem) -> tuple[float, float, str]:
-    """Sort key: score desc, newest first, then id for a stable total order."""
-    return (-item.card.score, -item.card.created_at.timestamp(), str(item.card.id))
+def _ranked(items: Sequence[QueueItem], *, novelty_first: bool = False) -> list[QueueItem]:
+    """Stable total order: score desc, newest first, id; optionally novelty desc before all."""
+    ordered = sorted(items, key=lambda i: str(i.card.id))
+    ordered.sort(key=lambda i: i.card.created_at, reverse=True)
+    ordered.sort(key=lambda i: i.card.score, reverse=True)
+    if novelty_first:
+        ordered.sort(key=lambda i: i.card.novelty, reverse=True)
+    return ordered
 
 
 def _validate(limit: int, wildcard_slots: int) -> None:
@@ -40,9 +45,9 @@ def _validate(limit: int, wildcard_slots: int) -> None:
 def select_queue(items: Sequence[QueueItem], limit: int, wildcard_slots: int) -> list[QueueItem]:
     """Top ``limit - wildcard_slots`` by score, then the most novel leftovers as wildcards."""
     _validate(limit, wildcard_slots)
-    ranked = sorted(items, key=_order)
+    ranked = _ranked(items)
     top = ranked[: limit - wildcard_slots]
-    rest = sorted(ranked[len(top) :], key=lambda i: (-i.card.novelty, *_order(i)))
+    rest = _ranked(ranked[len(top) :], novelty_first=True)
     wild = [replace(item, wildcard=True) for item in rest[:wildcard_slots]]
     return [*top, *wild]
 
