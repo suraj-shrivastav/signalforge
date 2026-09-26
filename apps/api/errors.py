@@ -9,7 +9,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from signalforge.core.errors import ArtifactValidationError, RetryableError, SignalForgeError
+from signalforge.core.errors import (
+    ArtifactValidationError,
+    EditorKeyNotConfiguredError,
+    RetryableError,
+    SignalForgeError,
+)
 from signalforge.core.logging import current_correlation_id
 
 log = logging.getLogger(__name__)
@@ -29,6 +34,8 @@ def error_response(request: Request, status: int, code: str, message: str) -> JS
 
 
 def _code_for(status: int) -> str:
+    if status == 415:
+        return "unsupported_media_type"
     return re.sub(r"\W+", "_", HTTPStatus(status).phrase.lower())
 
 
@@ -45,6 +52,12 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ArtifactValidationError)
     async def _artifact(request: Request, exc: ArtifactValidationError) -> JSONResponse:
         return error_response(request, 422, "validation_error", exc.message)
+
+    @app.exception_handler(EditorKeyNotConfiguredError)
+    async def _editor_key(request: Request, _: EditorKeyNotConfiguredError) -> JSONResponse:
+        return error_response(
+            request, 503, "editor_key_not_configured", "Editor writes are not configured"
+        )
 
     @app.exception_handler(RetryableError)
     async def _retryable(request: Request, exc: RetryableError) -> JSONResponse:
