@@ -1,8 +1,8 @@
-# Triage placeholder UI notes
+# Triage UI notes
 
-Route `/editor/triage` is structure only. There is no styling: no classes, CSS, inline
-styles or colors. Tailwind is not installed yet. Each component carries a
-`TODO(design)` comment. All card text renders as React text nodes.
+Route `/editor/triage` is functional structure styled with the design system in
+`docs/ui/design-system.md` (tokens in `apps/web/src/app/globals.css`, live reference at
+`/design`). Components use token utilities only. All card text renders as React text nodes.
 
 ## Layout blocks
 
@@ -41,7 +41,7 @@ in a URL. `decision_ms` is measured from when the card component rendered.
 | `j` | next card           |
 | `k` | previous card       |
 
-## Pending design decisions (design references and global.css)
+## Pending design decisions
 
-Spacing scale, type scale, color tokens, focus rings, wildcard treatment, and
-dark mode.
+Wildcard treatment and per-component polish of the triage board. Spacing, type,
+color, focus and dark mode are settled in the design system.
