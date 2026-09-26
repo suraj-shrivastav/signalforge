@@ -7,7 +7,7 @@ export function CardView({ card }: { card: Card }) {
   const href = safeHref(card.signal.canonical_url);
   return (
     <article>
-      <h2>{card.signal.title}</h2>
+      <h2 id={`card-${card.id}`}>{card.signal.title}</h2>
       {card.wildcard && <p>Wildcard</p>}
       {card.status === "snoozed" && <p>Snoozed</p>}
       <p>
@@ -17,8 +17,8 @@ export function CardView({ card }: { card: Card }) {
           </a>
         ) : (
           hostOf(card.signal.canonical_url)
-        )}{" "}
-        · {card.signal.source}
+        )}
+        {href && " (opens in new tab)"} · {card.signal.source}
       </p>
       <p>{card.what_happened}</p>
       <p>Why it matters: {card.why_it_matters}</p>
@@ -40,7 +40,7 @@ export function CardView({ card }: { card: Card }) {
         <dt>Risk flags</dt>
         <dd>{card.risk_flags.length ? card.risk_flags.join(", ") : "none"}</dd>
       </dl>
-      <DecisionBar cardId={card.id} />
+      <DecisionBar cardId={card.id} labelledBy={`card-${card.id}`} />
     </article>
   );
 }

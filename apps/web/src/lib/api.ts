@@ -177,7 +177,7 @@ function isNumber(v: unknown): v is number {
 
 function parseCardSignal(value: unknown): CardSignal {
   if (!isRecord(value))
-    throw new ApiError(200, "bad_shape", "signal is not an object");
+    throw new ApiError(502, "bad_shape", "signal is not an object");
   const { id, title, source, canonical_url } = value;
   if (
     !isString(id) ||
@@ -185,14 +185,14 @@ function parseCardSignal(value: unknown): CardSignal {
     !isString(source) ||
     !isString(canonical_url)
   ) {
-    throw new ApiError(200, "bad_shape", "card signal has an unexpected shape");
+    throw new ApiError(502, "bad_shape", "card signal has an unexpected shape");
   }
   return { id, title, source, canonical_url };
 }
 
 export function parseCard(value: unknown): Card {
   const bad = () =>
-    new ApiError(200, "bad_shape", "card has an unexpected shape");
+    new ApiError(502, "bad_shape", "card has an unexpected shape");
   if (!isRecord(value)) throw bad();
   const v = value;
   if (
@@ -237,7 +237,7 @@ export function parseCard(value: unknown): Card {
 
 export function parseQueue(json: unknown): Card[] {
   if (!Array.isArray(json))
-    throw new ApiError(200, "bad_shape", "queue is not a list");
+    throw new ApiError(502, "bad_shape", "queue is not a list");
   return json.map(parseCard);
 }
 
@@ -283,6 +283,7 @@ export async function postDecision(
         "X-Editor-Key": editorKey,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     },
   );
   if (!response.ok) throw await errorFromResponse(response);

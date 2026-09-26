@@ -9,7 +9,8 @@ styles or colors. Tailwind is not installed yet. Each component carries a
 - Queue list: one `article` per card, in API rank order (`GET /cards/queue`).
 - Card detail: `h2` title, wildcard/snoozed markers, source link, what happened,
   why it matters, a `dl` of angle, gap, format and scores.
-- Decision bar: editor key (password input, memory only), reason tags, note,
+- Page-level key field: one editor key password input above the list, memory only.
+- Decision bar: reason tags, note,
   Accept / Reject / Snooze buttons, status line.
 - Reason tags: checkboxes for the nine tags mirrored from `REASON_TAGS`.
 
@@ -19,6 +20,8 @@ styles or colors. Tailwind is not installed yet. Each component carries a
 - Empty queue: message pointing at the cards stage.
 - Error: `role="alert"` message when the server-side fetch or parse fails.
 - Wrong key: 401 shows "Wrong or missing editor key."
+- API not configured: the proxy returns 503 `not_configured`; the page shows a failed state.
+- Validation failure: a 422 from the API shows the failed state with its message.
 - Saving: buttons and tags disabled, "Saving...".
 - Saved: "Saved: <decision>". Failed: status, code and message.
 

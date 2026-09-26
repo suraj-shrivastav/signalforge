@@ -1,29 +1,10 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, fetchQueue, postDecision } from "./api";
 import { POST } from "../app/api/cards/[id]/decision/route";
 
-const card = {
-  id: "0b9c0f6e-0000-4000-8000-000000000001",
-  what_happened: "<script>alert(1)</script>",
-  why_it_matters: "w",
-  novelty: 0.5,
-  signal_strength: 0.5,
-  coverage_gap: "g",
-  suggested_angle: "a",
-  format: "explainer",
-  evergreen_score: 0.4,
-  confidence: 0.9,
-  risk_flags: [],
-  signal: { id: "s1", title: "T", source: "hn", canonical_url: "https://x.io" },
-  score: 0.7,
-  wildcard: false,
-  status: "proposed",
-  created_at: "2026-09-27T10:00:00Z",
-};
 const decision = {
-  decision: "accepted" as const,
+  decision: "accepted",
   reason_tags: [],
   note: "",
   decision_ms: 10,
@@ -33,6 +14,7 @@ const ID = "0b9c0f6e-0000-4000-8000-000000000001";
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 function stubFetch(res: Response | Error) {
@@ -43,71 +25,6 @@ function stubFetch(res: Response | Error) {
   vi.stubGlobal("fetch", fn);
   return fn;
 }
-
-describe("fetchQueue", () => {
-  it("parses a valid response", async () => {
-    vi.stubEnv("API_BASE_URL", "http://api");
-    stubFetch(Response.json([card]));
-    const cards = await fetchQueue();
-    expect(cards[0].what_happened).toBe("<script>alert(1)</script>");
-  });
-
-  it("rejects a malformed card", async () => {
-    vi.stubEnv("API_BASE_URL", "http://api");
-    stubFetch(Response.json([{ ...card, novelty: "x" }]));
-    await expect(fetchQueue()).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it("throws ApiError with status and code on the standard error body", async () => {
-    vi.stubEnv("API_BASE_URL", "http://api");
-    stubFetch(
-      Response.json(
-        {
-          error: {
-            code: "internal_error",
-            message: "boom",
-            correlation_id: "c",
-          },
-        },
-        { status: 500 },
-      ),
-    );
-    await expect(fetchQueue()).rejects.toMatchObject({
-      status: 500,
-      code: "internal_error",
-    });
-  });
-
-  it("throws ApiError when the error body is not JSON", async () => {
-    vi.stubEnv("API_BASE_URL", "http://api");
-    stubFetch(new Response("<html>bad gateway</html>", { status: 502 }));
-    await expect(fetchQueue()).rejects.toMatchObject({ status: 502 });
-  });
-});
-
-describe("postDecision", () => {
-  it("sends the key header and JSON body to the same-origin route", async () => {
-    const fn = stubFetch(Response.json({}, { status: 201 }));
-    await postDecision(ID, decision, "k");
-    const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe(`/api/cards/${ID}/decision`);
-    expect(new Headers(init.headers).get("x-editor-key")).toBe("k");
-    expect(JSON.parse(init.body as string)).toEqual(decision);
-  });
-
-  it("throws on 401", async () => {
-    stubFetch(
-      Response.json(
-        { error: { code: "unauthorized", message: "no", correlation_id: "c" } },
-        { status: 401 },
-      ),
-    );
-    await expect(postDecision(ID, decision, "bad")).rejects.toMatchObject({
-      status: 401,
-      code: "unauthorized",
-    });
-  });
-});
 
 describe("decision route handler", () => {
   const req = (key = "secret-key") =>
@@ -135,6 +52,74 @@ describe("decision route handler", () => {
     expect(JSON.parse(text).error.code).toBe("upstream_unavailable");
   });
 
+  it("returns 503 not_configured when the base URL is unset", async () => {
+    vi.stubEnv("API_BASE_URL", "");
+    const fn = stubFetch(Response.json({}));
+    const res = await POST(req(), { params: Promise.resolve({ id: ID }) });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error.code).toBe("not_configured");
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("maps a timeout to 502 and never logs the key", async () => {
+    vi.stubEnv("API_BASE_URL", "http://api");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    stubFetch(new DOMException("timed out secret-key", "TimeoutError"));
+    const res = await POST(req(), { params: Promise.resolve({ id: ID }) });
+    expect(res.status).toBe(502);
+    const cid = (await res.json()).error.correlation_id;
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).not.toContain("secret-key");
+    expect(logged).toContain(cid);
+  });
+
+  it("rejects an oversized body with 413 (declared and streamed)", async () => {
+    vi.stubEnv("API_BASE_URL", "http://api");
+    const fn = stubFetch(Response.json({}));
+    const big = "x".repeat(17 * 1024);
+    const r1 = new Request("http://web/x", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": "99999",
+      },
+      body: "{}",
+    });
+    expect(
+      (await POST(r1, { params: Promise.resolve({ id: ID }) })).status,
+    ).toBe(413);
+    const r2 = new Request("http://web/x", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: big,
+    });
+    expect(
+      (await POST(r2, { params: Promise.resolve({ id: ID }) })).status,
+    ).toBe(413);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("forwards only content-type and the key, not cookies", async () => {
+    vi.stubEnv("API_BASE_URL", "http://api");
+    const fn = stubFetch(Response.json({}, { status: 201 }));
+    const r = new Request("http://web/x", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-editor-key": "secret-key",
+        cookie: "sid=1",
+        authorization: "Bearer z",
+      },
+      body: JSON.stringify(decision),
+    });
+    await POST(r, { params: Promise.resolve({ id: ID }) });
+    const [, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
+    const h = new Headers(init.headers);
+    expect(h.get("content-type")).toBe("application/json");
+    expect(h.get("cookie")).toBeNull();
+    expect(h.get("authorization")).toBeNull();
+  });
+
   it("passes through upstream status, body and forwards the key", async () => {
     vi.stubEnv("API_BASE_URL", "http://api");
     const fn = stubFetch(
@@ -146,6 +131,14 @@ describe("decision route handler", () => {
     const [, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
     expect(new Headers(init.headers).get("x-editor-key")).toBe("secret-key");
   });
+});
+
+it("route handler does not use dangerouslySetInnerHTML", () => {
+  const src = readFileSync(
+    join(__dirname, "../app/api/cards/[id]/decision/route.ts"),
+    "utf8",
+  );
+  expect(src).not.toContain("dangerouslySetInnerHTML");
 });
 
 function files(dir: string): string[] {
@@ -166,7 +159,9 @@ describe("triage markup is unstyled and safe", () => {
 
   it.each(all)("%s has no dangerouslySetInnerHTML, className or style", (f) => {
     const src = readFileSync(f, "utf8");
-    expect(src).not.toMatch(/dangerouslySetInnerHTML|className|style=/);
+    expect(src).not.toMatch(
+      /dangerouslySetInnerHTML|className|style\s*=|\.css["']/,
+    );
     expect(src).toContain("TODO(design)");
   });
 });

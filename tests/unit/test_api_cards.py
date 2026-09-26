@@ -12,6 +12,7 @@ from apps.api.main import create_app
 from fastapi.testclient import TestClient
 
 from signalforge.core.config import Settings
+from signalforge.core.reason_tags import REASON_TAGS
 from signalforge.db.repositories.cards import QueueItem
 
 DSN = "postgresql://u:p@localhost:5432/db"
@@ -139,7 +140,7 @@ def test_valid_write_is_201(ctx: tuple[TestClient, StubRepo]) -> None:
         {"decision": "maybe"},
         {"reason_tags": ["nope"]},
         {"reason_tags": ["timely", "timely"]},
-        {"reason_tags": ["timely"] * 9},
+        {"reason_tags": [*REASON_TAGS, "timely"]},
         {"note": "x" * 501},
         {"decision_ms": -1},
         {"decision_ms": 3_600_001},
@@ -326,3 +327,10 @@ def test_validation_locations_are_prefixed_with_body(ctx: tuple[TestClient, Stub
     r = client.post(url(repo), json=[1], headers=H)
     assert r.status_code == 422
     assert r.json()["error"]["message"].startswith("body: Input should be a valid dictionary")
+
+
+def test_all_nine_distinct_tags_ok(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    body = {**BODY, "reason_tags": list(REASON_TAGS)}
+    assert len(REASON_TAGS) == 9
+    assert client.post(url(repo), json=body, headers=H).status_code == 201

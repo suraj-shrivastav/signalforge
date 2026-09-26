@@ -1,6 +1,6 @@
 # ADR-0007: Topic cards per signal with a rules-based ranker
 
-**Status:** Accepted
+**Status:** Proposed
 **Date:** 2026-09-27
 **Deciders:** suraj
 **PRD impact:** FR-03 to FR-05, Phase 3 (Topic Intelligence); clustering deferred
@@ -13,21 +13,7 @@ the API has no dashboard auth or CORS.
 
 ## Decision
 
-- One card per signal, not per cluster; `cluster_id` is added later.
-- Cards only for signals whose latest assessment is relevant.
-- Rules-based ranker (weighted sum, weights in one constant); two wildcard
-  slots for high-novelty cards below the cutoff.
-- Writes use a shared secret in `X-Editor-Key` until dashboard auth is decided;
-  reads stay open.
-- Decisions are append-only; the latest decision wins.
-- `format` and `evergreen_score` are generated but unused by ranking for now.
-- Browser writes go through a same-origin Next.js Route Handler that forwards to
-  the API; the API gets no CORS. The handler validates the UUID, uses a timeout,
-  never logs or echoes the key, and maps upstream failure to a 502 error body.
-- In the API, the decision commit happens before the response is sent (a failed
-  commit is a 500, never a false 201), and auth runs before body parsing so
-  unauthenticated callers never see validation errors.
-- The triage UI is an unstyled placeholder until design references arrive.
+We write one card per signal (not per cluster; a nullable `cluster_id` comes with clustering) and only for signals whose latest assessment is relevant; a rules-based ranker scores cards as a weighted sum of relevance, novelty, signal strength and confidence (weights in one constant), and the queue reserves WILDCARD_SLOTS=2 positions for high-novelty cards below the cutoff; editor writes use a shared secret in `X-Editor-Key` until dashboard auth is decided, reads stay open, and decisions are append-only with the latest winning; `format` and `evergreen_score` are generated but unused by ranking; browser writes go through a same-origin Next.js Route Handler that forwards to the API (which gets no CORS), validates the UUID, caps the body at 16 KB, uses timeouts, never logs or echoes the key and maps upstream failure to a 502 error body; in the API the decision commit happens before the response is sent (a failed commit is a 500, never a false 201) and auth runs before body parsing so unauthenticated callers never see validation errors; the triage UI stays an unstyled placeholder until design references arrive.
 
 ## Alternatives considered
 
@@ -40,7 +26,7 @@ the API has no dashboard auth or CORS.
 ## Consequences
 
 Repeated stories yield duplicate cards until clustering lands. The shared secret
-is weak protection. Weights are guesses until data exists. Exit cost: replace the
+is weak protection. Weights are guesses until data exists. The relevance gate misses cards if the assessment is conservative. There is no Origin check on the proxy (residual CSRF assumption): this is safe only because the key is never stored in a cookie or any other ambient browser credential. Exit cost: replace the
 proxy with real auth and drop the header check.
 
 ## Follow-ups

@@ -1,7 +1,7 @@
 // TODO(design): design references and global.css are pending; unstyled on purpose.
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ApiError,
   postDecision,
@@ -9,6 +9,7 @@ import {
   type ReasonTag,
 } from "@/lib/api";
 import { ReasonTags } from "./ReasonTags";
+import { useEditorKey } from "./TriageBoard";
 
 type SaveState =
   | { kind: "idle" }
@@ -16,9 +17,15 @@ type SaveState =
   | { kind: "saved"; decision: DecisionKind }
   | { kind: "failed"; message: string };
 
-export function DecisionBar({ cardId }: { cardId: string }) {
-  // Editor key lives in component state only: never stored or put in a URL.
-  const [editorKey, setEditorKey] = useState("");
+export function DecisionBar({
+  cardId,
+  labelledBy,
+}: {
+  cardId: string;
+  labelledBy: string;
+}) {
+  const editorKey = useEditorKey();
+  const inFlight = useRef(false);
   const [tags, setTags] = useState<ReasonTag[]>([]);
   const [note, setNote] = useState("");
   const [state, setState] = useState<SaveState>({ kind: "idle" });
@@ -26,6 +33,8 @@ export function DecisionBar({ cardId }: { cardId: string }) {
   const saving = state.kind === "saving";
 
   async function submit(decision: DecisionKind) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState({ kind: "saving" });
     try {
       await postDecision(
@@ -50,20 +59,13 @@ export function DecisionBar({ cardId }: { cardId: string }) {
             ? `Failed (${err.status} ${err.code}): ${err.message}`
             : "Failed: network error.";
       setState({ kind: "failed", message });
+    } finally {
+      inFlight.current = false;
     }
   }
 
   return (
-    <form onSubmit={(e) => e.preventDefault()}>
-      <label>
-        Editor key
-        <input
-          type="password"
-          autoComplete="off"
-          value={editorKey}
-          onChange={(e) => setEditorKey(e.target.value)}
-        />
-      </label>
+    <form aria-labelledby={labelledBy} onSubmit={(e) => e.preventDefault()}>
       <ReasonTags selected={tags} onChange={setTags} disabled={saving} />
       <label>
         Note

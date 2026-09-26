@@ -93,7 +93,7 @@ class DecisionIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision: Literal["accepted", "rejected", "snoozed"]
-    reason_tags: list[str] = Field(default_factory=list, max_length=8)
+    reason_tags: list[str] = Field(default_factory=list, max_length=9)
     note: str = Field(default="", max_length=500)
     decision_ms: int | None = Field(default=None, ge=0, le=3_600_000)
 
