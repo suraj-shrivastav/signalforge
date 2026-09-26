@@ -8,12 +8,14 @@ from signalforge.core.protocols import Source
 from signalforge.plugins.sources._http import USER_AGENT as USER_AGENT
 from signalforge.plugins.sources.arxiv import ArxivSource
 from signalforge.plugins.sources.hackernews import HackerNewsSource
+from signalforge.plugins.sources.huggingface import HuggingFacePapersSource
 from signalforge.plugins.sources.rss import RssSource
 
 _FACTORIES: dict[str, Callable[[httpx.Client], Source]] = {
     HackerNewsSource.name: HackerNewsSource,
     RssSource.name: RssSource,
     ArxivSource.name: ArxivSource,
+    HuggingFacePapersSource.name: HuggingFacePapersSource,
 }
 SOURCE_NAMES: tuple[str, ...] = tuple(_FACTORIES)
 

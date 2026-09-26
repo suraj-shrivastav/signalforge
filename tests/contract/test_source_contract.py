@@ -33,11 +33,21 @@ ARXIV_BODY = b"""<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
 <published>2026-09-26T10:00:00Z</published><summary>Abstract.</summary></entry></feed>"""
 
 
+HF_BODY = [
+    {
+        "paper": {"id": "2609.00001", "title": "Paper", "summary": "S.", "upvotes": 5},
+        "publishedAt": "2026-09-26T10:00:00.000Z",
+    }
+]
+
+
 def _respond(request: httpx.Request) -> httpx.Response:
     if "hn.algolia.com" in request.url.host:
         return httpx.Response(200, json=HN_BODY)
     if request.url.host == "export.arxiv.org":
         return httpx.Response(200, content=ARXIV_BODY)
+    if request.url.host == "huggingface.co":
+        return httpx.Response(200, json=HF_BODY)
     return httpx.Response(200, content=RSS_BODY)
 
 
