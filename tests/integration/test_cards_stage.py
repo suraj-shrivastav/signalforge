@@ -24,7 +24,7 @@ from signalforge.stages.cards import run_cards
 
 pytestmark = pytest.mark.integration
 
-BASE = datetime(2026, 9, 24, tzinfo=UTC)
+BASE = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)  # inside the card lookback
 SPEC = ModelSpec("acme/m", "acme")
 
 

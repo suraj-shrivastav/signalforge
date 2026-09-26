@@ -80,7 +80,7 @@ def test_queue_splits_top_and_wildcards(db_session: Session) -> None:
     # The two lowest-scored cards are the most novel, so they become the wildcards.
     rows = make_cards(db_session, 20, novelty=lambda n: 0.99 if n < 2 else 0.1)
     before = [(r.id, r.score, r.wildcard) for r in rows]
-    items = CardRepository(db_session).queue(since=SINCE)
+    items = CardRepository(db_session).queue(prompt_version="card-v1", since=SINCE)
     assert len(items) == 15
     assert [i.card.id for i in items[:13]] == [r.id for r in rows[:13]]
     assert [i.wildcard for i in items] == [False] * 13 + [True] * 2
@@ -99,7 +99,7 @@ def test_decisions_filter_and_snooze(db_session: Session) -> None:
     repo.add_decision(rows[0].id, "accepted", [], "", None)
     repo.add_decision(rows[1].id, "rejected", [], "", None)
     repo.add_decision(rows[2].id, "snoozed", [], "", None)
-    items = repo.queue(since=SINCE)
+    items = repo.queue(prompt_version="card-v1", since=SINCE)
     assert {i.card.id for i in items} == {rows[2].id, rows[3].id}
     assert {i.status for i in items if i.card.id == rows[2].id} == {"snoozed"}
 
@@ -125,7 +125,7 @@ def test_latest_decision_wins_with_explicit_times(db_session: Session) -> None:
                 )
             )
     db_session.flush()
-    items = CardRepository(db_session).queue(since=SINCE)
+    items = CardRepository(db_session).queue(prompt_version="card-v1", since=SINCE)
     assert [i.card.id for i in items] == [later_snooze.id]
     assert items[0].status == "snoozed"
 
@@ -133,11 +133,11 @@ def test_latest_decision_wins_with_explicit_times(db_session: Session) -> None:
 def test_since_and_validation(db_session: Session) -> None:
     make_cards(db_session, 2)
     repo = CardRepository(db_session)
-    assert repo.queue(since=datetime.now(UTC) + timedelta(days=1)) == []
+    assert repo.queue(prompt_version="card-v1", since=datetime.now(UTC) + timedelta(days=1)) == []
     with pytest.raises(ArtifactValidationError):
-        repo.queue(since=BASE.replace(tzinfo=None))
+        repo.queue(prompt_version="card-v1", since=BASE.replace(tzinfo=None))
     with pytest.raises(ArtifactValidationError):
-        repo.queue(limit=0, since=SINCE)
+        repo.queue(prompt_version="card-v1", limit=0, since=SINCE)
 
 
 def test_decision_stats_latest_per_card_and_waiting(db_session: Session) -> None:
@@ -161,14 +161,29 @@ def test_decision_stats_latest_per_card_and_waiting(db_session: Session) -> None
     decide(rows[1], "rejected", t0, ["stale"], 300)
     decide(rows[2], "snoozed", t0, [], 400)
     db_session.flush()
-    stats = CardRepository(db_session).decision_stats(SINCE)
+    stats = CardRepository(db_session).decision_stats(SINCE, prompt_version="card-v1")
     assert stats.cards_created == 5
     assert sorted(d for d, _, _ in stats.decisions) == ["accepted", "rejected", "snoozed"]
     by_decision = {d: (tags, ms) for d, tags, ms in stats.decisions}
     assert by_decision["accepted"] == (["timely"], 200)
     # 2 undecided + 1 snoozed
     assert stats.waiting == 3
-    future = CardRepository(db_session).decision_stats(datetime.now(UTC) + timedelta(days=1))
+    future = CardRepository(db_session).decision_stats(
+        datetime.now(UTC) + timedelta(days=1), prompt_version="card-v1"
+    )
     assert (future.cards_created, future.decisions, future.waiting) == (0, [], 0)
     with pytest.raises(ArtifactValidationError):
-        CardRepository(db_session).decision_stats(BASE.replace(tzinfo=None))
+        CardRepository(db_session).decision_stats(
+            BASE.replace(tzinfo=None), prompt_version="card-v1"
+        )
+
+
+def test_queue_and_stats_ignore_other_prompt_version(db_session: Session) -> None:
+    signals, run = seed(db_session, 2)
+    repo = CardRepository(db_session)
+    repo.insert(card(signals[0], "card-v1"), stage_run_id=run.id, llm_call_id=None, score=0.5)
+    repo.insert(card(signals[1], "card-v2"), stage_run_id=run.id, llm_call_id=None, score=0.5)
+    db_session.flush()
+    items = repo.queue(prompt_version="card-v2", since=SINCE)
+    assert [i.card.prompt_version for i in items] == ["card-v2"]
+    assert repo.decision_stats(SINCE, prompt_version="card-v2").cards_created == 1

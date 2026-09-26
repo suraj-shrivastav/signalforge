@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -103,15 +103,23 @@ class CardRepository:
         return self._session.execute(statement).first() is not None
 
     def list_uncarded(
-        self, prompt_version: str, limit: int
+        self, prompt_version: str, limit: int, *, published_within_days: int = 14
     ) -> list[tuple[Signal, SignalAssessmentRow]]:
-        """Relevant signals with no card for this prompt version, newest first."""
+        """Relevant signals with no card for this prompt version, newest first.
+
+        Only signals published within ``published_within_days`` are considered.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=published_within_days)
         assessment = latest_assessment()
         carded = select(TopicCardRow.signal_id).where(TopicCardRow.prompt_version == prompt_version)
         query = (
             select(Signal, assessment)
             .join(assessment, assessment.signal_id == Signal.id)
-            .where(assessment.is_relevant.is_(True), Signal.id.not_in(carded))
+            .where(
+                assessment.is_relevant.is_(True),
+                Signal.id.not_in(carded),
+                Signal.published_at >= cutoff,
+            )
             .order_by(Signal.published_at.desc(), Signal.id.desc())
             .limit(limit)
         )
@@ -154,9 +162,9 @@ class CardRepository:
         return self._session.scalars(query).first()
 
     def queue(
-        self, *, limit: int = 15, wildcard_slots: int = 2, since: datetime
+        self, *, prompt_version: str, limit: int = 15, wildcard_slots: int = 2, since: datetime
     ) -> list[QueueItem]:
-        """Cards awaiting a decision (none yet, or snoozed) created at or after ``since``."""
+        """Cards of ``prompt_version`` awaiting a decision (none, or snoozed) since ``since``."""
         if since.tzinfo is None:
             raise ArtifactValidationError("since must be timezone-aware")
         _validate(limit, wildcard_slots)
@@ -176,6 +184,7 @@ class CardRepository:
             .outerjoin(latest, latest.c.topic_card_id == TopicCardRow.id)
             .where(
                 TopicCardRow.created_at >= since,
+                TopicCardRow.prompt_version == prompt_version,
                 or_(latest.c.decision.is_(None), latest.c.decision == "snoozed"),
             )
         )
@@ -192,12 +201,14 @@ class CardRepository:
         ]
         return select_queue(items, limit, wildcard_slots)
 
-    def decision_stats(self, since: datetime) -> DecisionStats:
+    def decision_stats(self, since: datetime, *, prompt_version: str) -> DecisionStats:
         """Read-only: cards created at or after ``since`` and their latest decisions."""
         if since.tzinfo is None:
             raise ArtifactValidationError("since must be timezone-aware")
         created = self._session.scalar(
-            select(func.count()).select_from(TopicCardRow).where(TopicCardRow.created_at >= since)
+            select(func.count())
+            .select_from(TopicCardRow)
+            .where(TopicCardRow.created_at >= since, TopicCardRow.prompt_version == prompt_version)
         )
         latest = (
             select(
@@ -217,7 +228,7 @@ class CardRepository:
         rows = self._session.execute(
             select(latest.c.decision, latest.c.reason_tags, latest.c.decision_ms)
             .join(TopicCardRow, TopicCardRow.id == latest.c.topic_card_id)
-            .where(TopicCardRow.created_at >= since)
+            .where(TopicCardRow.created_at >= since, TopicCardRow.prompt_version == prompt_version)
         ).all()
         decisions = [(str(d), list(tags or []), ms) for d, tags, ms in rows]
         decided_final = sum(1 for d, _, _ in decisions if d != "snoozed")

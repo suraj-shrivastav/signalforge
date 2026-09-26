@@ -15,7 +15,7 @@ from signalforge.db.repositories.signals import SignalRepository
 
 pytestmark = pytest.mark.integration
 
-BASE = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
+BASE = datetime.now(UTC).replace(microsecond=0) - timedelta(days=1)  # inside the card lookback
 
 
 def seed(session: Session, count: int) -> tuple[list[RawSignal], StageRun]:
@@ -117,3 +117,11 @@ def test_invalid_decision_rejected(db_session: Session) -> None:
     row = db_session.query(TopicCardRow).one()
     with pytest.raises(IntegrityError):
         repo.add_decision(row.id, "maybe", [], "", None)
+
+
+def test_list_uncarded_respects_lookback(db_session: Session) -> None:
+    signals, run = seed(db_session, 1)
+    assess(db_session, signals[0], run, relevant=True)
+    repo = CardRepository(db_session)
+    assert repo.list_uncarded("card-v1", 10, published_within_days=2)
+    assert repo.list_uncarded("card-v1", 10, published_within_days=0) == []
