@@ -1,0 +1,26 @@
+"""Roles map to models. Stages ask for a role; only this map knows the model."""
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+from signalforge.core.config import Settings
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    model_id: str
+    family: str
+    # None means the price is unknown: cost is then 0 unless the provider reports it.
+    input_usd_per_mtok: Decimal | None = None
+    output_usd_per_mtok: Decimal | None = None
+
+
+RoleMap = dict[str, ModelSpec]
+
+
+def build_roles(settings: Settings) -> RoleMap:
+    model = settings.llm_model_relevance
+    # Family is the model id's namespace ("vendor/model"); it feeds the
+    # writer-vs-judge family check, so it is derived, not configured.
+    family = model.split("/", 1)[0] if "/" in model else "unknown"
+    return {"relevance_filter": ModelSpec(model, family)}

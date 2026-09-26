@@ -8,15 +8,13 @@ default and one place to look it up.
 from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
-from typing import Literal, Self
+from typing import Any, Self
 
 from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from signalforge.core.budget import BudgetLimits, BudgetScope
 from signalforge.core.errors import ConfigurationError
-
-LLMProviderName = Literal["fake", "openrouter"]
 
 
 class Environment(StrEnum):
@@ -50,8 +48,18 @@ class Settings(BaseSettings):
     # transactions. Prepared statements must be disabled on it.
     database_pooler_url: PostgresDsn | None = None
 
-    llm_provider: LLMProviderName = "fake"
-    openrouter_api_key: SecretStr | None = None
+    # Registry key (llm/registry.py), validated when the gateway is built so a
+    # newly registered provider needs no change here.
+    llm_provider: str = "fake"
+    llm_base_url: str | None = None
+    # OPENROUTER_API_KEY is accepted so existing .env files keep working.
+    llm_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("llm_api_key", "LLM_API_KEY", "OPENROUTER_API_KEY"),
+    )
+    llm_model_relevance: str = "openai/gpt-4o-mini"
+    # Vendor-specific request fields, as JSON, merged into the request body.
+    llm_extra_body: dict[str, Any] = Field(default_factory=dict)
 
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.
@@ -73,8 +81,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_credentials_for_live_providers(self) -> Self:
-        if self.llm_provider == "openrouter" and self.openrouter_api_key is None:
-            raise ValueError("OPENROUTER_API_KEY is required when LLM_PROVIDER is 'openrouter'")
+        local = any(h in (self.llm_base_url or "") for h in ("localhost", "127.0.0.1"))
+        if self.llm_provider != "fake" and not local and self.llm_api_key is None:
+            raise ValueError("LLM_API_KEY is required when LLM_PROVIDER is not 'fake'")
         return self
 
     @property
