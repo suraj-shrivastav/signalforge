@@ -1,6 +1,6 @@
 # Triage placeholder UI notes
 
-Route `/triage` is structure only. There is no styling: no classes, CSS, inline
+Route `/editor/triage` is structure only. There is no styling: no classes, CSS, inline
 styles or colors. Tailwind is not installed yet. Each component carries a
 `TODO(design)` comment. All card text renders as React text nodes.
 

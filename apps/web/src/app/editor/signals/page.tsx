@@ -31,9 +31,9 @@ export default async function Home({
       <h1>Signals</h1>
       <p>
         {showAll ? (
-          <Link href="/">Show relevant only</Link>
+          <Link href="/editor/signals">Show relevant only</Link>
         ) : (
-          <Link href="/?all=1">Show all</Link>
+          <Link href="/editor/signals?all=1">Show all</Link>
         )}
       </p>
       {list.items.length === 0 ? (
@@ -74,7 +74,7 @@ export default async function Home({
       )}
       {list.next_cursor && (
         <a
-          href={`/?cursor=${encodeURIComponent(list.next_cursor)}${showAll ? "&all=1" : ""}`}
+          href={`/editor/signals?cursor=${encodeURIComponent(list.next_cursor)}${showAll ? "&all=1" : ""}`}
         >
           Older
         </a>
