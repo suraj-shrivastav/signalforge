@@ -28,7 +28,7 @@ def test_defaults_are_local_and_fake() -> None:
 
     assert settings.environment is Environment.LOCAL
     assert settings.llm_provider == "fake"
-    assert settings.openrouter_api_key is None
+    assert settings.llm_api_key is None
 
 
 def test_worker_always_uses_the_session_connection() -> None:
@@ -64,20 +64,20 @@ def test_supabase_db_string_is_accepted_as_an_alias(monkeypatch: pytest.MonkeyPa
 
 
 def test_live_provider_requires_a_key() -> None:
-    with pytest.raises(ValidationError, match="OPENROUTER_API_KEY"):
-        build(llm_provider="openrouter")
+    with pytest.raises(ValidationError, match="LLM_API_KEY"):
+        build(llm_provider="openai_compatible")
 
 
 def test_live_provider_accepts_a_key() -> None:
-    settings = build(llm_provider="openrouter", openrouter_api_key="sk-test")
+    settings = build(llm_provider="openai_compatible", llm_api_key="sk-test")
 
-    assert settings.openrouter_api_key is not None
-    assert settings.openrouter_api_key.get_secret_value() == "sk-test"
+    assert settings.llm_api_key is not None
+    assert settings.llm_api_key.get_secret_value() == "sk-test"
 
 
 def test_secrets_are_not_exposed_by_repr() -> None:
     """SecretStr keeps keys out of logs and tracebacks."""
-    settings = build(llm_provider="openrouter", openrouter_api_key="sk-leaky")
+    settings = build(llm_provider="openai_compatible", llm_api_key="sk-leaky")
 
     assert "sk-leaky" not in repr(settings)
 
@@ -103,3 +103,27 @@ def test_invalid_config_raises_a_permanent_error(monkeypatch: pytest.MonkeyPatch
 
     assert is_retryable(caught.value) is False
     assert "not-a-postgres-dsn" not in str(caught.value)
+
+
+def test_local_base_url_needs_no_key() -> None:
+    settings = build(llm_provider="openai_compatible", llm_base_url="http://localhost:11434/v1")
+    assert settings.llm_api_key is None
+
+
+def test_openrouter_key_name_is_an_accepted_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", SESSION_DSN)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-old")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.llm_api_key is not None
+    assert settings.llm_api_key.get_secret_value() == "sk-old"
+
+
+def test_extra_body_parses_from_json_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", SESSION_DSN)
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"provider": {"require_parameters": true}}')
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.llm_extra_body == {"provider": {"require_parameters": True}}
