@@ -155,5 +155,5 @@ def run_cards(
                 session.commit()
             log.exception("cards failed")
             raise
-        log.info("cards finished", extra={"considered": considered, "created": created})
+        log.info("cards finished", extra={"considered": considered, "cards_created": created})
     return CardsResult(considered, created, failed, stopped)
