@@ -421,3 +421,42 @@
     margin: var(--space-10) 0;
   }
 }
+
+/* --------------------------------------------------------------------------
+   6. Cover fallback patterns - token-based, chosen by CoverImage slug hash
+   -------------------------------------------------------------------------- */
+@layer components {
+  .cover-v0 {
+    background: repeating-linear-gradient(
+      135deg,
+      var(--sunken-bg) 0 14px,
+      var(--border-color) 14px 15px
+    );
+  }
+
+  .cover-v1 {
+    background:
+      radial-gradient(
+          circle at 30% 40%,
+          var(--border-color) 0 2px,
+          transparent 3px
+        )
+        0 0 / 22px 22px,
+      var(--sunken-bg);
+  }
+
+  .cover-v2 {
+    background:
+      linear-gradient(90deg, var(--border-color) 1px, transparent 1px) 0 0 /
+        28px 100%,
+      var(--sunken-bg);
+  }
+
+  .cover-v3 {
+    background: radial-gradient(
+      120% 90% at 100% 0,
+      var(--border-color),
+      var(--sunken-bg) 60%
+    );
+  }
+}
