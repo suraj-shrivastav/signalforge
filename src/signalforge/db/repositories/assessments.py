@@ -2,11 +2,22 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from signalforge.core.artifacts.assessment import SignalAssessment
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
+
+
+def latest_assessment() -> type[SignalAssessmentRow]:
+    """Alias over each signal's latest assessment (highest prompt version present)."""
+    latest = (
+        select(SignalAssessmentRow)
+        .distinct(SignalAssessmentRow.signal_id)
+        .order_by(SignalAssessmentRow.signal_id, SignalAssessmentRow.prompt_version.desc())
+        .subquery()
+    )
+    return aliased(SignalAssessmentRow, latest)
 
 
 class AssessmentRepository:
