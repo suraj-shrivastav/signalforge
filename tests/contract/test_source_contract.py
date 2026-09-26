@@ -23,8 +23,19 @@ HN_BODY = {
 }
 
 
+RSS_BODY = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+<item><title>Post</title><link>https://example.com/post</link>
+<pubDate>Sat, 26 Sep 2026 10:00:00 GMT</pubDate></item></channel></rss>"""
+
+
+def _respond(request: httpx.Request) -> httpx.Response:
+    if "hn.algolia.com" in request.url.host:
+        return httpx.Response(200, json=HN_BODY)
+    return httpx.Response(200, content=RSS_BODY)
+
+
 def fixture_client() -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=HN_BODY)))
+    return httpx.Client(transport=httpx.MockTransport(_respond))
 
 
 @pytest.mark.parametrize("name", SOURCE_NAMES)
