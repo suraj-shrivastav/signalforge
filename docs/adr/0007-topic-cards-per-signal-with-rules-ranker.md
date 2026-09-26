@@ -37,4 +37,4 @@ FR-05 mentions a `need_more` decision and a different tag set (too obvious, shal
 
 - [ ] Real dashboard auth (PRD open question 3)
 - [ ] Add `cluster_id` with clustering
-- [ ] Apply the design system and global.css to `/triage`
+- [ ] Apply the design system and global.css to `/editor/triage`

@@ -152,7 +152,7 @@ describe("triage markup is unstyled and safe", () => {
   const root = join(__dirname, "..");
   const all = [
     ...files(join(root, "components/triage")),
-    ...files(join(root, "app/triage")),
+    ...files(join(root, "app/editor/triage")),
   ].filter((f) => f.endsWith(".tsx"));
 
   it("finds the triage files", () => expect(all.length).toBeGreaterThan(3));
