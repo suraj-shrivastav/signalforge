@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     ingest_endpoint_enabled: bool = False
     ingest_token: SecretStr | None = None
 
+    # Shared key for editor decision writes (X-Editor-Key). Unset: writes get 503.
+    editor_api_key: SecretStr | None = None
+
     @model_validator(mode="after")
     def _require_token_for_ingest_endpoint(self) -> Self:
         if self.ingest_endpoint_enabled and (

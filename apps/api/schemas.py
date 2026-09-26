@@ -1,9 +1,10 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from signalforge.core.reason_tags import REASON_TAGS
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
 
@@ -57,3 +58,60 @@ class SignalOut(BaseModel):
 class SignalListOut(BaseModel):
     items: list[SignalOut]
     next_cursor: str | None
+
+
+class QueueSignalOut(BaseModel):
+    id: UUID
+    title: str
+    source: str
+    canonical_url: str
+
+
+class CardOut(BaseModel):
+    id: UUID
+    schema_version: int
+    what_happened: str
+    why_it_matters: str
+    novelty: float
+    signal_strength: float
+    coverage_gap: str
+    suggested_angle: str
+    format: str
+    evergreen_score: float
+    confidence: float
+    risk_flags: list[str]
+    prompt_version: str
+    model: str
+    signal: QueueSignalOut
+    score: float
+    wildcard: bool
+    status: str
+    created_at: datetime
+
+
+class DecisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["accepted", "rejected", "snoozed"]
+    reason_tags: list[str] = Field(default_factory=list, max_length=8)
+    note: str = Field(default="", max_length=500)
+    decision_ms: int | None = Field(default=None, ge=0, le=3_600_000)
+
+    @field_validator("reason_tags")
+    @classmethod
+    def _known_unique(cls, tags: list[str]) -> list[str]:
+        if any(tag not in REASON_TAGS for tag in tags):
+            raise ValueError("unknown reason tag")
+        if len(set(tags)) != len(tags):
+            raise ValueError("duplicate reason tags")
+        return tags
+
+
+class DecisionOut(BaseModel):
+    id: UUID
+    card_id: UUID
+    decision: str
+    reason_tags: list[str]
+    note: str
+    decision_ms: int | None
+    decided_at: datetime

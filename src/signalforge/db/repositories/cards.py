@@ -107,6 +107,9 @@ class CardRepository:
         )
         return [(signal, found) for signal, found in self._session.execute(query).all()]
 
+    def exists(self, card_id: uuid.UUID) -> bool:
+        return self._session.get(TopicCardRow, card_id) is not None
+
     def add_decision(
         self,
         card_id: uuid.UUID,

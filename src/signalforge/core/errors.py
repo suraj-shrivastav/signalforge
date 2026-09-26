@@ -73,6 +73,10 @@ class ConfigurationError(PermanentError):
     """Configuration is missing, malformed, or violates a startup invariant."""
 
 
+class EditorKeyNotConfiguredError(ConfigurationError):
+    """The editor write key is unset, so decision writes are refused."""
+
+
 class ArtifactValidationError(PermanentError):
     """A payload failed validation at a boundary (API, LLM output, plugin output, config)."""
 
