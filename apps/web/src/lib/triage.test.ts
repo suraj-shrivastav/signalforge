@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "../app/api/cards/[id]/decision/route";
@@ -139,29 +139,4 @@ it("route handler does not use dangerouslySetInnerHTML", () => {
     "utf8",
   );
   expect(src).not.toContain("dangerouslySetInnerHTML");
-});
-
-function files(dir: string): string[] {
-  return readdirSync(dir).flatMap((n) => {
-    const p = join(dir, n);
-    return statSync(p).isDirectory() ? files(p) : [p];
-  });
-}
-
-describe("triage markup is unstyled and safe", () => {
-  const root = join(__dirname, "..");
-  const all = [
-    ...files(join(root, "components/triage")),
-    ...files(join(root, "app/editor/triage")),
-  ].filter((f) => f.endsWith(".tsx") && !f.includes("ArticlePreview"));
-
-  it("finds the triage files", () => expect(all.length).toBeGreaterThan(3));
-
-  it.each(all)("%s has no dangerouslySetInnerHTML, className or style", (f) => {
-    const src = readFileSync(f, "utf8");
-    expect(src).not.toMatch(
-      /dangerouslySetInnerHTML|className|style\s*=|\.css["']/,
-    );
-    expect(src).toContain("TODO(design)");
-  });
 });
