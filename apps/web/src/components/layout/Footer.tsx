@@ -16,6 +16,9 @@ export function Footer() {
           <a href="/feed.xml" className="hover:text-ink">
             RSS
           </a>
+          <Link href="/editor/signals" className="hover:text-ink">
+            Editor
+          </Link>
         </nav>
       </Container>
     </footer>

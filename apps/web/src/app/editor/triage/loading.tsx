@@ -1,4 +1,3 @@
-// TODO(design): design references and global.css are pending; unstyled on purpose.
 export default function Loading() {
   return (
     <main>

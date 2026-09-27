@@ -1,12 +1,11 @@
-// TODO(design): design references and global.css are pending; unstyled on purpose.
-import { ApiError, fetchQueue, type Card } from "@/lib/api";
+import { ApiError, fetchQueue, type Card as CardData } from "@/lib/api";
+import { Card } from "@/components/ui/Card";
 import { TriageBoard } from "@/components/triage/TriageBoard";
-import { CardView } from "@/components/triage/CardView";
 
 export const dynamic = "force-dynamic";
 
 export default async function TriagePage() {
-  let cards: Card[];
+  let cards: CardData[];
   try {
     cards = await fetchQueue();
   } catch (err) {
@@ -20,24 +19,26 @@ export default async function TriagePage() {
     );
     return (
       <main>
-        <h1>Triage</h1>
-        <p role="alert">
-          Could not load the queue. Check that the API is running.
-        </p>
+        <h1 className="mb-6 text-h2 text-ink">Triage</h1>
+        <Card className="p-6">
+          <p role="alert" className="text-ink">
+            Could not load the queue. Check that the API is running.
+          </p>
+        </Card>
       </main>
     );
   }
   return (
     <main>
-      <h1>Triage</h1>
+      <h1 className="mb-6 text-h2 text-ink">Triage</h1>
       {cards.length === 0 ? (
-        <p>The queue is empty. Run the cards stage, then reload.</p>
+        <Card className="p-6">
+          <p className="text-ink">
+            The queue is empty. Run the cards stage, then reload.
+          </p>
+        </Card>
       ) : (
-        <TriageBoard>
-          {cards.map((card) => (
-            <CardView key={card.id} card={card} />
-          ))}
-        </TriageBoard>
+        <TriageBoard cards={cards} />
       )}
     </main>
   );

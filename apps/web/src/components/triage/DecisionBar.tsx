@@ -1,4 +1,3 @@
-// TODO(design): design references and global.css are pending; unstyled on purpose.
 "use client";
 
 import { useRef, useState } from "react";
@@ -8,6 +7,7 @@ import {
   type DecisionKind,
   type ReasonTag,
 } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 import { ReasonTags } from "./ReasonTags";
 import { decisionElapsedMs } from "@/lib/decisionTiming";
 import { useEditorKey, useDecisionClock } from "./TriageBoard";
@@ -64,35 +64,49 @@ export function DecisionBar({
   }
 
   return (
-    <form aria-labelledby={labelledBy} onSubmit={(e) => e.preventDefault()}>
+    <form
+      aria-labelledby={labelledBy}
+      onSubmit={(e) => e.preventDefault()}
+      className="space-y-4"
+    >
       <ReasonTags selected={tags} onChange={setTags} disabled={saving} />
-      <label>
-        Note
+      <label className="block">
+        <span className="mb-1 block text-small font-medium text-ink">Note</span>
         <textarea
           maxLength={500}
           value={note}
           disabled={saving}
           onChange={(e) => setNote(e.target.value)}
+          className="w-full rounded-control border border-line bg-surface px-3 py-2 text-small text-ink"
         />
       </label>
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => submit("accepted")}
-      >
-        Accept
-      </button>
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => submit("rejected")}
-      >
-        Reject
-      </button>
-      <button type="button" disabled={saving} onClick={() => submit("snoozed")}>
-        Snooze
-      </button>
-      <p role="status">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="primary"
+          disabled={saving}
+          onClick={() => submit("accepted")}
+        >
+          Accept
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={saving}
+          onClick={() => submit("rejected")}
+        >
+          Reject
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={saving}
+          onClick={() => submit("snoozed")}
+        >
+          Snooze
+        </Button>
+      </div>
+      <p role="status" className="text-small text-muted">
         {state.kind === "saving" && "Saving..."}
         {state.kind === "saved" && `Saved: ${state.decision}`}
         {state.kind === "failed" && state.message}
