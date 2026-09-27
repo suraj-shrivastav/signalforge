@@ -31,8 +31,8 @@ At a conceptual level:
 Two environment variables control this, both set via environment and never
 committed:
 
-- `EDITOR_UI_PASSWORD` — the shared password checked on login.
-- `EDITOR_COOKIE_SECRET` — the HMAC secret used to sign and verify the
+- `EDITOR_UI_PASSWORD`: the shared password checked on login.
+- `EDITOR_COOKIE_SECRET`: the HMAC secret used to sign and verify the
   session cookie. If unset, it falls back to `EDITOR_UI_PASSWORD`, so the
   feature works with only one variable configured. A real deployment should
   set both, as independent secrets, so that rotating the login password does
