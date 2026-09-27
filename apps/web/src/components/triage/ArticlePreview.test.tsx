@@ -24,7 +24,6 @@ describe("ArticlePreview", () => {
   });
 
   it("contains no em dash or en dash", () => {
-    const text = document.body.textContent ?? "";
     render(<ArticlePreview article={mockArticle} />);
     expect(document.body.textContent).not.toMatch(/[—–]/);
   });

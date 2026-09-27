@@ -24,7 +24,7 @@ export function ReasonTags({
             <label
               key={tag}
               className={cx(
-                "inline-flex cursor-pointer items-center gap-1 rounded-pill px-3 py-1 text-caption transition-colors",
+                "tag-checkbox-label inline-flex cursor-pointer items-center gap-1 rounded-pill px-3 py-1 text-caption transition-colors",
                 checked
                   ? "bg-ink text-page"
                   : "bg-sunken text-muted hover:text-ink",

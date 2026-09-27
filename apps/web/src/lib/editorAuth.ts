@@ -40,7 +40,7 @@ async function importHmacKey(secret: string): Promise<CryptoKey> {
 
 /** Returns the configured cookie secret, falling back to EDITOR_UI_PASSWORD. */
 export function getCookieSecret(): string | undefined {
-  return process.env.EDITOR_COOKIE_SECRET ?? process.env.EDITOR_UI_PASSWORD;
+  return process.env.EDITOR_COOKIE_SECRET || process.env.EDITOR_UI_PASSWORD;
 }
 
 export async function signSession(

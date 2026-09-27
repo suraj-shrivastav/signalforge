@@ -420,6 +420,13 @@
     border-top: var(--border-width-hairline) solid var(--color-line);
     margin: var(--space-10) 0;
   }
+
+  /* Wraps an sr-only checkbox: the checkbox itself can't show
+     :focus-visible, so the label mirrors it when the checkbox has it. */
+  .tag-checkbox-label:has(:focus-visible) {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+  }
 }
 
 /* --------------------------------------------------------------------------

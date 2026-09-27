@@ -96,7 +96,7 @@ export function TriageBoard({ cards }: { cards: CardData[] }) {
             ))}
           </div>
           <div className="md:col-span-2">
-            {selected && <CardView card={selected} />}
+            {selected && <CardView key={selected.id} card={selected} />}
           </div>
         </div>
       </EditorKeyContext.Provider>

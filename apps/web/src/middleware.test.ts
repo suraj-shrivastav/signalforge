@@ -42,6 +42,33 @@ describe("editor auth middleware", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("redirects to login when the cookie is expired", async () => {
+    const expiredIssuedAt = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    const cookieValue = await signSession("test-password", expiredIssuedAt);
+    const request = new NextRequest(
+      new URL("http://localhost/editor/signals"),
+      { headers: { cookie: `${COOKIE_NAME}=${cookieValue}` } },
+    );
+    const response = await middleware(request);
+    expect([307, 308]).toContain(response.status);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/editor/login");
+  });
+
+  it("redirects to login when the cookie is tampered with", async () => {
+    const cookieValue = await signSession("test-password", Date.now());
+    const [issuedAt, signature] = cookieValue.split(".");
+    const tampered = `${issuedAt}.${signature.slice(0, -1)}${signature.at(-1) === "a" ? "b" : "a"}`;
+    const request = new NextRequest(
+      new URL("http://localhost/editor/signals"),
+      { headers: { cookie: `${COOKIE_NAME}=${tampered}` } },
+    );
+    const response = await middleware(request);
+    expect([307, 308]).toContain(response.status);
+    const location = new URL(response.headers.get("location") ?? "");
+    expect(location.pathname).toBe("/editor/login");
+  });
+
   it("passes through non-editor paths untouched", async () => {
     const home = await middleware(
       new NextRequest(new URL("http://localhost/")),
