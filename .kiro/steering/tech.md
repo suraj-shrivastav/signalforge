@@ -95,3 +95,18 @@ Cost note: the budget is per stage per run (TOPIC scope, $0.50), not per day; re
 
 Pre-commit runs lint, format and types on commit, and pytest on push, using the
 versions in `uv.lock` so it cannot drift from CI.
+
+## Editor console auth
+
+The editor console (`apps/web/src/app/editor`) sits behind a single shared
+password, not per-user accounts. Two environment variables control it, both
+set via environment, never committed:
+
+- `EDITOR_UI_PASSWORD` — the shared password checked on login.
+- `EDITOR_COOKIE_SECRET` — the HMAC secret used to sign the session cookie.
+  Falls back to `EDITOR_UI_PASSWORD` if unset, so the feature works with only
+  one variable configured, but a real deployment should set both to
+  independent secrets.
+
+See `docs/ui/editor-console.md` for how the auth flow and the mock article
+fixture work.
