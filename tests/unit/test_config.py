@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from signalforge.core.config import Environment, Settings, get_settings
 from signalforge.core.errors import ConfigurationError, is_retryable
+from signalforge.llm.roles import build_roles
 
 SESSION_DSN = "postgresql://postgres.ref:pw@aws-0-eu-west-2.pooler.supabase.com:5432/postgres"
 POOLER_DSN = "postgresql://postgres.ref:pw@aws-0-eu-west-2.pooler.supabase.com:6543/postgres"
@@ -29,6 +30,24 @@ def test_defaults_are_local_and_fake() -> None:
     assert settings.environment is Environment.LOCAL
     assert settings.llm_provider == "fake"
     assert settings.llm_api_key is None
+    assert settings.tavily_api_key is None
+
+
+def test_tavily_key_reads_its_plain_env_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", SESSION_DSN)
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.tavily_api_key is not None
+    assert settings.tavily_api_key.get_secret_value() == "test-key"
+    assert "test-key" not in repr(settings)
+
+
+def test_research_extraction_role_uses_configured_model() -> None:
+    spec = build_roles(build(llm_model_research_extraction="acme/extract"))["research_extraction"]
+
+    assert (spec.model_id, spec.family) == ("acme/extract", "acme")
 
 
 def test_worker_always_uses_the_session_connection() -> None:

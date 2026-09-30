@@ -58,8 +58,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("llm_api_key", "LLM_API_KEY", "OPENROUTER_API_KEY"),
     )
+    # Secondary-source search for the research stage. Unset: no Tavily lookups.
+    tavily_api_key: SecretStr | None = None
     llm_model_relevance: str = "openai/gpt-4o-mini"
     llm_model_topic_card: str = "openai/gpt-4o-mini"
+    llm_model_research_extraction: str = "openai/gpt-4o-mini"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
 
