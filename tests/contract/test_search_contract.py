@@ -2,7 +2,8 @@
 
 import httpx
 
-from signalforge.core.protocols import SearchProvider, SearchResult
+from signalforge.core.protocols import PageFetcher, SearchProvider, SearchResult
+from signalforge.plugins.search.direct_fetch import DirectFetcher
 from signalforge.plugins.search.tavily import TavilyClient
 
 TAVILY_BODY = {
@@ -28,3 +29,12 @@ def test_tavily_satisfies_the_protocol_and_returns_search_results() -> None:
     for result in results:
         assert isinstance(result, SearchResult)
         assert result.url.startswith("https://")
+
+
+def test_direct_fetcher_satisfies_the_page_fetcher_protocol() -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, text="<html></html>"))
+    )
+    fetcher = DirectFetcher(client, sleep=lambda _: None, resolve=lambda _: ["93.184.216.34"])
+    assert isinstance(fetcher, PageFetcher)
+    assert fetcher.fetch_html("https://example.com/") == "<html></html>"
