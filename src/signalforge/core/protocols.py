@@ -44,3 +44,16 @@ class SearchProvider(Protocol):
         Raises a :class:`signalforge.core.errors.SignalForgeError` on failure.
         """
         ...
+
+
+@runtime_checkable
+class PageFetcher(Protocol):
+    """Fetches one web page's HTML (PRD §24 search layer)."""
+
+    def fetch_html(self, url: str) -> str:
+        """Return the decoded HTML body of ``url``.
+
+        Raises a :class:`signalforge.core.errors.SignalForgeError` on any failure,
+        including a refused (unsafe or robots-disallowed) URL.
+        """
+        ...
