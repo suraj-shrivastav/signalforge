@@ -22,7 +22,12 @@ from signalforge.stages.research import ROLE, run_research
 
 pytestmark = pytest.mark.integration
 
-PRIMARY_TEXT = "The model beats the prior best by a wide margin in every benchmark tested."
+PRIMARY_TEXT = (
+    "<html><body><article><h1>Model release</h1>"
+    "<p>The model beats the prior best by a wide margin in every benchmark tested.</p>"
+    "<p>Researchers confirmed the results across multiple independent evaluation runs "
+    "conducted over several weeks.</p></article></body></html>"
+)
 DEFAULT_LIMITS = BudgetLimits(max_cost_usd=Decimal("1"))
 
 
