@@ -11,6 +11,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from signalforge.core.errors import (
+    ArtifactValidationError,
     OperationTimeoutError,
     ProviderRejectedError,
     ProviderUnavailableError,
@@ -91,6 +92,6 @@ class TavilyClient:
         try:
             return _Response.model_validate_json(response.content).results
         except ValidationError as exc:
-            raise ProviderRejectedError(
+            raise ArtifactValidationError(
                 "Unexpected Tavily response shape", context={"errors": exc.error_count()}
             ) from exc

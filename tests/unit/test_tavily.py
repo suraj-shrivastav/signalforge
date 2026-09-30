@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from signalforge.core.errors import (
+    ArtifactValidationError,
     OperationTimeoutError,
     ProviderRejectedError,
     ProviderUnavailableError,
@@ -117,7 +118,7 @@ def test_malformed_body_is_rejected_and_not_retried(payload: bytes) -> None:
         calls["n"] += 1
         return httpx.Response(200, content=payload)
 
-    with pytest.raises(ProviderRejectedError):
+    with pytest.raises(ArtifactValidationError):
         tavily(handler).search("q")
     assert calls["n"] == 1
 
@@ -136,7 +137,7 @@ def _raise_timeout(request: httpx.Request) -> httpx.Response:
         (lambda _: httpx.Response(401), ProviderRejectedError),
         (lambda _: httpx.Response(429), RateLimitedError),
         (lambda _: httpx.Response(503), ProviderUnavailableError),
-        (lambda _: httpx.Response(200, content=b"<html>"), ProviderRejectedError),
+        (lambda _: httpx.Response(200, content=b"<html>"), ArtifactValidationError),
         (_raise_connect, ProviderUnavailableError),
         (_raise_timeout, OperationTimeoutError),
     ],
