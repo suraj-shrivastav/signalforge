@@ -201,6 +201,63 @@ def test_secondary_search_failure_does_not_fail_card(db_session: Session) -> Non
     assert row.status == "researched"
 
 
+def test_blank_secondary_title_falls_back_to_hostname(db_session: Session) -> None:
+    card = seed_card(db_session)
+    fetcher = FakeFetcher(
+        {
+            "https://example.com/article": PRIMARY_TEXT,
+            "https://sec.example.com/": PRIMARY_TEXT,
+        }
+    )
+    result = run_research(
+        db_session,
+        gateway_factory(
+            [
+                claims_reply("beats the prior best by a wide margin"),
+                claims_reply("beats the prior best by a wide margin"),
+            ]
+        ),
+        fetcher,
+        FakeSearch([SearchResult(url="https://sec.example.com/", title="")]),
+        budget_limits=DEFAULT_LIMITS,
+    )
+    assert result.researched == 1
+    row = row_for(db_session, card.id)
+    assert row.status == "researched"
+    secondary = next(doc for doc in row.documents if not doc["is_primary"])
+    assert secondary["title"] == "sec.example.com"
+
+
+def test_claim_text_with_apostrophe_is_stored_unescaped(db_session: Session) -> None:
+    card = seed_card(db_session)
+    text = (
+        "<html><body><article><h1>Model release</h1>"
+        "<p>The model's accuracy improved significantly across every benchmark tested "
+        "by the independent research team.</p></article></body></html>"
+    )
+    fetcher = FakeFetcher({"https://example.com/article": text})
+    result = run_research(
+        db_session,
+        gateway_factory(
+            [
+                claims_reply(
+                    "The model's accuracy improved significantly",
+                    "The model's accuracy improved significantly",
+                )
+            ]
+        ),
+        fetcher,
+        FakeSearch([]),
+        budget_limits=DEFAULT_LIMITS,
+    )
+    assert result.researched == 1
+    row = row_for(db_session, card.id)
+    assert len(row.claims) == 1
+    assert row.claims[0]["text"] == "The model's accuracy improved significantly"
+    assert "&#x27;" not in row.claims[0]["text"]
+    assert "&quot;" not in row.claims[0]["text"]
+
+
 class _PricedProvider:
     name = "priced-fake"
 
