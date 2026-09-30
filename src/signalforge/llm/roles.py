@@ -29,4 +29,5 @@ def build_roles(settings: Settings) -> RoleMap:
     return {
         "relevance_filter": _spec(settings.llm_model_relevance),
         "topic_card": _spec(settings.llm_model_topic_card),
+        "research_extraction": _spec(settings.llm_model_research_extraction),
     }
