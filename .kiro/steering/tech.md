@@ -110,3 +110,25 @@ set via environment, never committed:
 
 See `docs/ui/editor-console.md` for how the auth flow and the mock article
 fixture work.
+
+## Research stage
+
+`run_research` (`src/signalforge/stages/research.py`) turns an accepted topic
+card into a `research_packages` row: it fetches the card's primary source
+directly, finds secondary sources via Tavily, extracts clean text with
+`trafilatura`, and runs one `research_extraction` LLM call per document to
+pull candidate claims, each checked against the source text for a verbatim
+quote before being kept. Budget is per card (`BudgetScope.TOPIC`, ~$0.50).
+
+Two things new to this stage:
+
+- `TAVILY_API_KEY`: Tavily's search API key, used only by
+  `plugins/search/tavily.py`. Never printed or logged. Set via environment,
+  never committed.
+- `trafilatura`: HTML-to-clean-text extraction, used only by
+  `stages/research_extraction.py`.
+
+No CLI or scheduler entrypoint wires this stage in yet (same as `assess` and
+`cards` before their own worker scripts landed) — it is called directly, the
+same way `run_assess`/`run_cards` were before `apps/worker/assess.py` and
+`apps/worker/cards.py` were written.
