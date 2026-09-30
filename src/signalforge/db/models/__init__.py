@@ -3,11 +3,13 @@
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.ops import LLMCall, StageRun, StageRunStatus
+from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
 
 __all__ = [
     "EditorDecisionRow",
     "LLMCall",
+    "ResearchPackageRow",
     "Signal",
     "SignalAssessmentRow",
     "StageRun",
