@@ -95,11 +95,11 @@ def _extract_document_claims(
     """Run one document's LLM extraction call and return span-checked claims."""
     user = (
         "<topic>\n"
-        f"{escape(card.what_happened)}\n"
-        f"{escape(card.why_it_matters)}\n"
+        f"{escape(card.what_happened, quote=False)}\n"
+        f"{escape(card.why_it_matters, quote=False)}\n"
         "</topic>\n"
         "<document>\n"
-        f"{escape(clean_text[:MAX_DOCUMENT_CHARS])}\n"
+        f"{escape(clean_text[:MAX_DOCUMENT_CHARS], quote=False)}\n"
         "</document>"
     )
     reply = gateway.complete_json(
@@ -116,7 +116,7 @@ def _extract_document_claims(
             (
                 doc_index,
                 ResearchClaim(
-                    text=candidate.text.strip(),
+                    text=unescape(candidate.text).strip(),
                     evidence_span=unescaped_span,
                     document_indices=(doc_index,),
                 ),
@@ -180,7 +180,7 @@ def _process_card(
         documents.append(
             _build_document(
                 url=result.url,
-                title=result.title,
+                title=result.title.strip() or hostname,
                 source_label=hostname,
                 is_primary=False,
                 clean_text=secondary_text,
@@ -244,6 +244,10 @@ def run_research(
     considered = researched = needs_more_info = failed = 0
     with correlation_id(str(run_id)):
         try:
+            # Fail fast on a misconfigured role, same as run_assess, rather than burning
+            # through the whole accepted queue one card at a time (each card's own
+            # SignalForgeError handler below would otherwise mark every card "failed").
+            gateway_factory(session, Budget(BudgetScope.TOPIC, budget_limits)).model_for(ROLE)
             repo = ResearchRepository(session)
             cards = repo.list_accepted_unresearched(limit)
             for card, signal in cards:

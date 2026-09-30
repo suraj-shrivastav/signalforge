@@ -118,13 +118,25 @@ card into a `research_packages` row: it fetches the card's primary source
 directly, finds secondary sources via Tavily, extracts clean text with
 `trafilatura`, and runs one `research_extraction` LLM call per document to
 pull candidate claims, each checked against the source text for a verbatim
-quote before being kept. Budget is per card (`BudgetScope.TOPIC`, ~$0.50).
+quote before being kept. Budget is per card (`BudgetScope.TOPIC`, ~$0.50). A
+card lands on `needs_more_info` when the primary source can't be fetched or
+no claims survive the verbatim-quote check, and on `failed` when its budget
+runs out or a hard error occurs.
 
-Two things new to this stage:
+The primary and secondary fetches go through `DirectFetcher`
+(`plugins/search/direct_fetch.py`), which refuses non-public and
+localhost-style hosts before every request and redirect hop, and honours
+`robots.txt` — fetched URLs are untrusted third-party input.
 
-- `TAVILY_API_KEY`: Tavily's search API key, used only by
-  `plugins/search/tavily.py`. Never printed or logged. Set via environment,
-  never committed.
+Things new to this stage:
+
+- `TAVILY_API_KEY`: Tavily's search API key, read into `Settings`
+  (`core/config.py`) and passed to `TavilyClient`'s constructor by whatever
+  wires it up. Never printed or logged. Set via environment, never
+  committed. No caller currently skips Tavily lookups when this is unset;
+  that's aspirational, not implemented behavior.
+- `LLM_MODEL_RESEARCH_EXTRACTION`: the model for the `research_extraction`
+  role, alongside the other `LLM_MODEL_*` settings.
 - `trafilatura`: HTML-to-clean-text extraction, used only by
   `stages/research_extraction.py`.
 

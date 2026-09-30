@@ -193,6 +193,19 @@ def test_429_honours_retry_after() -> None:
     assert sleeps == [7.0]
 
 
+def test_429_retry_after_sleep_is_capped() -> None:
+    responses = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "999999999"}),
+            httpx.Response(200, text=HTML),
+        ]
+    )
+    sleeps: list[float] = []
+    fetch, _ = fetcher(serve(lambda _: next(responses)), sleep=sleeps.append)
+    assert fetch.fetch_html("https://example.com/") == HTML
+    assert sleeps == [30.0]
+
+
 def test_a_page_timeout_maps_to_operation_timeout() -> None:
     fetch, _ = fetcher(serve(_raise_timeout))
     with pytest.raises(OperationTimeoutError):

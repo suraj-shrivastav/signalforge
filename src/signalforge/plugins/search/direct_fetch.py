@@ -22,6 +22,7 @@ USER_AGENT = "signalforge/0.1 (+https://github.com/suraj-shrivastav/signalforge)
 REQUEST_TIMEOUT_S = 10.0
 MAX_BYTES = 5_000_000
 MAX_REDIRECTS = 5
+_MAX_RETRY_SLEEP_S = 30.0
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
@@ -54,7 +55,9 @@ class DirectFetcher:
         resolve: Callable[[str], list[str]] = _default_resolve,
     ) -> None:
         self._client = client
-        self._sleep = sleep
+        # The page host is untrusted (unlike plugins/sources callers, which only talk to
+        # known, trusted source APIs), so a malicious Retry-After can't stall the worker.
+        self._sleep = lambda seconds: sleep(min(seconds, _MAX_RETRY_SLEEP_S))
         self._resolve = resolve
         self._robots: dict[str, RobotFileParser] = {}
 
