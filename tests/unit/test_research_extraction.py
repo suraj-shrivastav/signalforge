@@ -12,6 +12,10 @@ _HTML = """
 </body></html>
 """
 
+_SAME: tuple[float, ...] = (1.0, 0.0)
+_DISAGREE: tuple[float, ...] = (0.7, 0.7)  # cosine with _SAME is ~0.7, between the two thresholds
+_UNRELATED: tuple[float, ...] = (0.0, 1.0)
+
 
 def _claim(text: str, span: str | None = None, indices: tuple[int, ...] = (0,)) -> ResearchClaim:
     return ResearchClaim(text=text, evidence_span=span or text, document_indices=indices)
@@ -57,32 +61,35 @@ def test_span_exists_false_for_blank_span() -> None:
     assert not span_exists("", "Model X reaches 90% accuracy on Y.")
 
 
-def test_merge_claims_combines_identical_text() -> None:
+def test_merge_claims_combines_similar_embeddings() -> None:
     a = _claim("X does Y", "X does Y")
-    b = _claim("X does Y", "X does Y exactly", indices=(1,))
-    merged = merge_claims([(0, a), (1, b)])
+    b = _claim("X does Y, roughly", "X does Y exactly", indices=(1,))
+    merged, gaps = merge_claims([(0, a), (1, b)], [_SAME, _SAME])
     assert len(merged) == 1
     assert merged[0].document_indices == (0, 1)
-    assert merged[0].evidence_span == "X does Y"
+    assert gaps == ""
 
 
-def test_merge_claims_keeps_distinct_claims_separate() -> None:
-    merged = merge_claims([(0, _claim("X does Y")), (0, _claim("X does Z"))])
+def test_merge_claims_keeps_dissimilar_claims_separate() -> None:
+    merged, gaps = merge_claims(
+        [(0, _claim("X does Y")), (0, _claim("X does Z"))], [_SAME, _UNRELATED]
+    )
     assert len(merged) == 2
+    assert gaps == ""
+
+
+def test_merge_claims_flags_disagreement_band() -> None:
+    merged, gaps = merge_claims(
+        [(0, _claim("X does Y")), (1, _claim("X does not do Y"))], [_SAME, _DISAGREE]
+    )
+    assert len(merged) == 2
+    assert "Document 0 and Document 1" in gaps
 
 
 def test_merge_claims_uses_candidate_index_sorted_and_unique() -> None:
-    # The tuple's int is the source of truth, not the claim's own document_indices.
     claim = _claim("X does Y", indices=(9,))
-    merged = merge_claims([(3, claim), (1, claim), (3, claim)])
+    merged, _ = merge_claims([(3, claim), (1, claim), (3, claim)], [_SAME, _SAME, _SAME])
     assert merged[0].document_indices == (1, 3)
-
-
-def test_merge_claims_groups_after_strip_but_case_sensitive() -> None:
-    merged = merge_claims(
-        [(0, _claim("X does Y")), (1, _claim("  X does Y ")), (2, _claim("x does y"))]
-    )
-    assert [c.document_indices for c in merged] == [(0, 1), (2,)]
 
 
 def test_merge_claims_preserves_first_seen_order_and_first_claim_fields() -> None:
@@ -92,9 +99,14 @@ def test_merge_claims_preserves_first_seen_order_and_first_claim_fields() -> Non
         document_indices=(0,),
         status=ClaimStatus.SUPPORTED,
     )
-    merged = merge_claims(
-        [(0, first), (1, _claim("A claim")), (2, _claim("B claim", "other span")), (0, _claim("C"))]
-    )
+    candidates = [
+        (0, first),
+        (1, _claim("A claim")),
+        (2, _claim("B claim", "other span")),
+        (0, _claim("C")),
+    ]
+    embeddings: list[tuple[float, ...]] = [_SAME, _UNRELATED, _SAME, (0.0, -1.0)]
+    merged, _ = merge_claims(candidates, embeddings)
     assert [c.text for c in merged] == ["B claim", "A claim", "C"]
     assert merged[0].evidence_span == "B span"
     assert merged[0].status is ClaimStatus.SUPPORTED
@@ -102,9 +114,9 @@ def test_merge_claims_preserves_first_seen_order_and_first_claim_fields() -> Non
 
 
 def test_merge_claims_empty_returns_empty_tuple() -> None:
-    assert merge_claims([]) == ()
+    assert merge_claims([], []) == ((), "")
 
 
 def test_merge_claims_rejects_negative_document_index() -> None:
     with pytest.raises(ValidationError):
-        merge_claims([(-1, _claim("X does Y"))])
+        merge_claims([(-1, _claim("X does Y"))], [_SAME])

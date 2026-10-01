@@ -20,6 +20,7 @@ def make_document(**overrides: object) -> ResearchDocument:
         "source_label": "Example",
         "is_primary": True,
         "raw_text_ref": "sha256:abc",
+        "text": "A post body.",
         "fetched_at": datetime(2026, 9, 27, 12, 0, tzinfo=UTC),
     }
     return ResearchDocument(**{**fields, **overrides})  # type: ignore[arg-type]

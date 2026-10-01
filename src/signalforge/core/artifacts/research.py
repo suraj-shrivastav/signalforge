@@ -39,12 +39,9 @@ class ResearchDocument(BaseModel):
     source_label: str = Field(min_length=1)
     is_primary: bool
     raw_text_ref: str = Field(
-        min_length=1,
-        description=(
-            "Opaque deterministic id for the fetched text. Raw text is not persisted in V1 "
-            "and no store resolves this ref yet."
-        ),
+        min_length=1, description="Deterministic id for ``text``, stable across re-fetches."
     )
+    text: str = Field(min_length=1, description="Extracted clean article text, capped length.")
     fetched_at: datetime
 
 
@@ -60,7 +57,7 @@ class ResearchClaim(BaseModel):
 
 
 class ResearchPackage(Artifact):
-    SCHEMA_VERSION: ClassVar[int] = 1
+    SCHEMA_VERSION: ClassVar[int] = 2
 
     card_id: UUID
     status: ResearchStatus = ResearchStatus.RESEARCHING

@@ -32,6 +32,14 @@ class ProviderReply:
     cost_usd: Decimal | None = None
 
 
+@dataclass(frozen=True)
+class EmbeddingReply:
+    vectors: list[tuple[float, ...]]
+    input_tokens: int
+    latency_ms: int
+    cost_usd: Decimal | None = None
+
+
 class LLMProvider(Protocol):
     name: str
 
@@ -44,14 +52,19 @@ class LLMProvider(Protocol):
         timeout_s: float,
     ) -> ProviderReply: ...
 
+    def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply: ...
+
 
 class FakeProvider:
     """Returns queued replies with zero cost. No network."""
 
     name = "fake"
 
-    def __init__(self, replies: list[str]) -> None:
+    def __init__(
+        self, replies: list[str], embeddings: list[list[tuple[float, ...]]] | None = None
+    ) -> None:
         self._replies = list(replies)
+        self._embeddings = list(embeddings or [])
 
     def chat(
         self,
@@ -64,6 +77,13 @@ class FakeProvider:
         if not self._replies:
             raise ProviderRejectedError("FakeProvider has no queued replies")
         return ProviderReply(self._replies.pop(0), input_tokens=0, output_tokens=0, latency_ms=0)
+
+    def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
+        if not self._embeddings:
+            # No queued vectors: give every text the same embedding, which merges them all.
+            return EmbeddingReply([(1.0, 0.0)] * len(texts), input_tokens=0, latency_ms=0)
+        vectors = self._embeddings.pop(0)
+        return EmbeddingReply(vectors, input_tokens=0, latency_ms=0)
 
 
 def _error_message(response: httpx.Response) -> str:
@@ -89,6 +109,7 @@ class OpenAICompatibleProvider:
         extra_body: dict[str, Any] | None = None,
     ) -> None:
         self._url = base_url.rstrip("/") + "/chat/completions"
+        self._embed_url = base_url.rstrip("/") + "/embeddings"
         self._api_key = api_key
         self._client = client
         self._extra_headers = extra_headers or {}
@@ -136,6 +157,51 @@ class OpenAICompatibleProvider:
                 context={"status": status, "detail": _error_message(response)},
             )
         return self._parse(response, latency_ms)
+
+    def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
+        headers = dict(self._extra_headers)
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+        body: dict[str, Any] = {"model": model, "input": texts}
+
+        started = time.monotonic()
+        try:
+            response = self._client.post(
+                self._embed_url, json=body, headers=headers, timeout=timeout_s
+            )
+        except httpx.TimeoutException as exc:
+            raise OperationTimeoutError("LLM request timed out") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError("LLM request failed") from exc
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        status = response.status_code
+        if status == 429:
+            retry_after = response.headers.get("Retry-After")
+            raise RateLimitedError(
+                "LLM provider rate limited",
+                retry_after_seconds=float(retry_after)
+                if retry_after and retry_after.replace(".", "", 1).isdigit()
+                else None,
+            )
+        if status in _RETRYABLE_STATUS:
+            raise ProviderUnavailableError("LLM provider unavailable", context={"status": status})
+        if status >= 400:
+            raise ProviderRejectedError(
+                "LLM provider rejected the request",
+                context={"status": status, "detail": _error_message(response)},
+            )
+        try:
+            data = response.json()
+            vectors = [tuple(float(x) for x in item["embedding"]) for item in data["data"]]
+            usage = data.get("usage") or {}
+            return EmbeddingReply(
+                vectors=vectors,
+                input_tokens=int(usage.get("prompt_tokens", 0)),
+                latency_ms=latency_ms,
+            )
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ProviderUnavailableError("LLM provider returned a malformed reply") from exc
 
     @staticmethod
     def _parse(response: httpx.Response, latency_ms: int) -> ProviderReply:

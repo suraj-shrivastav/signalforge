@@ -65,6 +65,7 @@ def package(card_id: UUID) -> ResearchPackage:
                 source_label="example",
                 is_primary=True,
                 raw_text_ref="ref-1",
+                text="Doc body.",
                 fetched_at=datetime.now(UTC),
             ),
         ),
