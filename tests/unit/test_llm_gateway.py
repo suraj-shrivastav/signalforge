@@ -209,6 +209,9 @@ def test_a_third_provider_plugs_in_by_registration_alone() -> None:
         def chat(self, *a: Any, **k: Any) -> ProviderReply:
             return ProviderReply(GOOD, 1, 1, 1)
 
+        def embed(self, *a: Any, **k: Any) -> Any:
+            raise NotImplementedError
+
     register_provider("dummy", lambda settings: Dummy())
     settings = Settings(  # type: ignore[call-arg]
         _env_file=None,

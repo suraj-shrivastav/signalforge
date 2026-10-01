@@ -16,9 +16,9 @@ from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.db.repositories.signals import SignalRepository
 from signalforge.llm.gateway import LLMGateway
-from signalforge.llm.providers import FakeProvider, ProviderReply
+from signalforge.llm.providers import EmbeddingReply, FakeProvider, ProviderReply
 from signalforge.llm.roles import ModelSpec
-from signalforge.stages.research import ROLE, run_research
+from signalforge.stages.research import EMBEDDING_ROLE, ROLE, run_research
 
 pytestmark = pytest.mark.integration
 
@@ -60,7 +60,8 @@ def gateway_factory(replies: list[str]) -> Callable[[Session, Budget], LLMGatewa
     provider = FakeProvider(replies)
 
     def make(session: Session, budget: Budget) -> LLMGateway:
-        return LLMGateway(provider, {ROLE: ModelSpec("acme/m", "acme")}, budget, session)
+        roles = {ROLE: ModelSpec("acme/m", "acme"), EMBEDDING_ROLE: ModelSpec("acme/e", "acme")}
+        return LLMGateway(provider, roles, budget, session)
 
     return make
 
@@ -268,13 +269,17 @@ class _PricedProvider:
             claims_reply("beats the prior best"), input_tokens=100, output_tokens=50, latency_ms=1
         )
 
+    def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
+        return EmbeddingReply([(1.0, 0.0)] * len(texts), input_tokens=10, latency_ms=1)
+
 
 def test_written_row_has_nonzero_cost_calls_tokens(db_session: Session) -> None:
     card = seed_card(db_session)
     fetcher = FakeFetcher({"https://example.com/article": PRIMARY_TEXT})
 
     def make(session: Session, budget: Budget) -> LLMGateway:
-        return LLMGateway(_PricedProvider(), {ROLE: ModelSpec("acme/m", "acme")}, budget, session)
+        roles = {ROLE: ModelSpec("acme/m", "acme"), EMBEDDING_ROLE: ModelSpec("acme/e", "acme")}
+        return LLMGateway(_PricedProvider(), roles, budget, session)
 
     result = run_research(db_session, make, fetcher, FakeSearch([]), budget_limits=DEFAULT_LIMITS)
     assert result.researched == 1

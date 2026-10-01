@@ -42,6 +42,7 @@ log = logging.getLogger(__name__)
 
 RESEARCH_STAGE = "research"
 ROLE = "research_extraction"
+EMBEDDING_ROLE = "claim_embedding"
 PROMPT_VERSION = "research-v1"
 MAX_DOCUMENT_CHARS = 8000
 SECONDARY_RESULT_CAP = 3
@@ -79,12 +80,14 @@ def _build_document(
     *, url: str, title: str, source_label: str, is_primary: bool, clean_text: str
 ) -> ResearchDocument:
     raw_text_ref = "sha256:" + hashlib.sha256(clean_text.encode()).hexdigest()
+    stored_text = clean_text[:MAX_DOCUMENT_CHARS]
     return ResearchDocument(
         url=url,
         title=title,
         source_label=source_label,
         is_primary=is_primary,
         raw_text_ref=raw_text_ref,
+        text=stored_text,
         fetched_at=datetime.now(UTC),
     )
 
@@ -208,7 +211,23 @@ def _process_card(
             )
             continue
 
-    merged_claims = merge_claims(candidates)
+    if candidates:
+        try:
+            embeddings = gateway.embed(
+                role=EMBEDDING_ROLE,
+                texts=[claim.text for _, claim in candidates],
+                stage_run_id=run_id,
+            )
+        except BudgetExceededError:
+            return ResearchPackage(
+                card_id=card.id,
+                produced_by=run_id,
+                parent_ids=(card.id,),
+                status=ResearchStatus.FAILED,
+            )
+        merged_claims, gaps_and_disagreements = merge_claims(candidates, embeddings)
+    else:
+        merged_claims, gaps_and_disagreements = (), ""
     status = ResearchStatus.RESEARCHED if merged_claims else ResearchStatus.NEEDS_MORE_INFO
     return ResearchPackage(
         card_id=card.id,
@@ -217,6 +236,7 @@ def _process_card(
         status=status,
         documents=tuple(documents),
         claims=merged_claims,
+        gaps_and_disagreements=gaps_and_disagreements,
     )
 
 
@@ -247,7 +267,9 @@ def run_research(
             # Fail fast on a misconfigured role, same as run_assess, rather than burning
             # through the whole accepted queue one card at a time (each card's own
             # SignalForgeError handler below would otherwise mark every card "failed").
-            gateway_factory(session, Budget(BudgetScope.TOPIC, budget_limits)).model_for(ROLE)
+            fail_fast_gateway = gateway_factory(session, Budget(BudgetScope.TOPIC, budget_limits))
+            fail_fast_gateway.model_for(ROLE)
+            fail_fast_gateway.model_for(EMBEDDING_ROLE)
             repo = ResearchRepository(session)
             cards = repo.list_accepted_unresearched(limit)
             for card, signal in cards:

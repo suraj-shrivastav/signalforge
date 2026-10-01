@@ -13,7 +13,7 @@ from signalforge.core.errors import ArtifactValidationError, ConfigurationError
 from signalforge.core.logging import log_llm_call
 from signalforge.core.retry import call_with_retry
 from signalforge.db.models import LLMCall
-from signalforge.llm.providers import LLMProvider, ProviderReply
+from signalforge.llm.providers import EmbeddingReply, LLMProvider, ProviderReply
 from signalforge.llm.registry import get_provider
 from signalforge.llm.roles import ModelSpec, RoleMap, build_roles
 
@@ -33,6 +33,14 @@ def _cost(spec: ModelSpec, reply: ProviderReply) -> Decimal:
         spec.input_usd_per_mtok * reply.input_tokens
         + spec.output_usd_per_mtok * reply.output_tokens
     ) / _MILLION
+
+
+def _embed_cost(spec: ModelSpec, reply: EmbeddingReply) -> Decimal:
+    if reply.cost_usd is not None:
+        return reply.cost_usd
+    if spec.input_usd_per_mtok is None:
+        return Decimal(0)
+    return spec.input_usd_per_mtok * reply.input_tokens / _MILLION
 
 
 class LLMGateway:
@@ -90,6 +98,37 @@ class LLMGateway:
         raise ArtifactValidationError(
             "LLM output failed validation after repair", context={"role": role, "error": error}
         )
+
+    def embed(
+        self, *, role: str, texts: list[str], stage_run_id: uuid.UUID
+    ) -> list[tuple[float, ...]]:
+        """Embed ``texts`` in one batched call; records cost/tokens like ``complete_json``."""
+        try:
+            spec = self._roles[role]
+        except KeyError:
+            raise ConfigurationError("Unknown LLM role", context={"role": role}) from None
+        self._budget.check()
+        reply = call_with_retry(
+            lambda: self._provider.embed(spec.model_id, texts, timeout_s=TIMEOUT_S)
+        )
+        cost = _embed_cost(spec, reply)
+        self._budget.record(cost, tokens=reply.input_tokens)
+        self._session.add(
+            LLMCall(
+                stage_run_id=stage_run_id,
+                role=role,
+                provider=self._provider.name,
+                model=spec.model_id,
+                model_family=spec.family,
+                input_tokens=reply.input_tokens,
+                output_tokens=0,
+                cost_usd=cost,
+                latency_ms=reply.latency_ms,
+                succeeded=True,
+                error=None,
+            )
+        )
+        return reply.vectors
 
     def _chat(self, spec: ModelSpec, messages: list[dict[str, str]]) -> ProviderReply:
         return call_with_retry(

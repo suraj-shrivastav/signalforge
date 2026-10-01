@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     llm_model_relevance: str = "openai/gpt-4o-mini"
     llm_model_topic_card: str = "openai/gpt-4o-mini"
     llm_model_research_extraction: str = "openai/gpt-4o-mini"
+    llm_model_claim_embedding: str = "openai/text-embedding-3-small"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
 
