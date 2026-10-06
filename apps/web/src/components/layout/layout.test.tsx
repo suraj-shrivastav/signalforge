@@ -29,6 +29,12 @@ describe("public sources", () => {
       /model|\bAI\b|AI-generated|written by AI|author(ship)?|generated|\bLLM\b|\bGPT\b|prompt_version/i,
     );
   });
+  // Article drafts carry editor-only fields; public code must never read them.
+  it.each(all)("%s reads no editor-only draft fields", (f) => {
+    expect(readFileSync(f, "utf8")).not.toMatch(
+      /review_?summary|evidence_?span|cost_?usd|editor\/drafts|\btemplate\b/i,
+    );
+  });
 });
 
 describe("Header", () => {
