@@ -58,6 +58,13 @@ class LLMGateway:
         except KeyError:
             raise ConfigurationError("Unknown LLM role", context={"role": role}) from None
 
+    def family_for(self, role: str) -> str:
+        """Model family for ``role``; FR-08's writer-vs-judge check compares these."""
+        try:
+            return self._roles[role].family
+        except KeyError:
+            raise ConfigurationError("Unknown LLM role", context={"role": role}) from None
+
     def complete_json[T: BaseModel](
         self,
         *,
