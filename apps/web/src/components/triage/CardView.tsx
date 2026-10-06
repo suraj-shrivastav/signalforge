@@ -2,9 +2,8 @@ import type { Card as CardData } from "@/lib/api";
 import { hostOf, safeHref } from "@/lib/format";
 import { Card } from "@/components/ui/Card";
 import { Tag } from "@/components/ui/Tag";
-import { mockArticle } from "@/lib/mock/article";
-import { ArticlePreview } from "./ArticlePreview";
 import { DecisionBar } from "./DecisionBar";
+import { DraftPanel } from "./DraftPanel";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -75,7 +74,7 @@ export function CardView({ card }: { card: CardData }) {
         </p>
         <DecisionBar cardId={card.id} labelledBy={`card-${card.id}`} />
         <div className="mt-8 border-t border-line pt-6">
-          <ArticlePreview article={mockArticle} />
+          <DraftPanel cardId={card.id} />
         </div>
       </article>
     </Card>
