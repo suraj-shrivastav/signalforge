@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     llm_model_topic_card: str = "openai/gpt-4o-mini"
     llm_model_research_extraction: str = "openai/gpt-4o-mini"
     llm_model_claim_embedding: str = "openai/text-embedding-3-small"
+    # Writer and judge must resolve to different families (PRD FR-08); the drafting
+    # stage refuses to start otherwise, so keep these defaults in separate namespaces.
+    llm_model_article_writer: str = "openai/gpt-4o-mini"
+    llm_model_claim_judge: str = "google/gemini-2.0-flash-001"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
 

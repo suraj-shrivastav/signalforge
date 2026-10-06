@@ -31,4 +31,6 @@ def build_roles(settings: Settings) -> RoleMap:
         "topic_card": _spec(settings.llm_model_topic_card),
         "research_extraction": _spec(settings.llm_model_research_extraction),
         "claim_embedding": _spec(settings.llm_model_claim_embedding),
+        "article_writer": _spec(settings.llm_model_article_writer),
+        "claim_judge": _spec(settings.llm_model_claim_judge),
     }

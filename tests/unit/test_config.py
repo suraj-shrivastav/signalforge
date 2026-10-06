@@ -50,6 +50,24 @@ def test_research_extraction_role_uses_configured_model() -> None:
     assert (spec.model_id, spec.family) == ("acme/extract", "acme")
 
 
+def test_article_writer_role_uses_configured_model() -> None:
+    spec = build_roles(build(llm_model_article_writer="acme/writer"))["article_writer"]
+
+    assert (spec.model_id, spec.family) == ("acme/writer", "acme")
+
+
+def test_claim_judge_role_uses_configured_model() -> None:
+    spec = build_roles(build(llm_model_claim_judge="other/judge"))["claim_judge"]
+
+    assert (spec.model_id, spec.family) == ("other/judge", "other")
+
+
+def test_default_writer_and_judge_are_different_families() -> None:
+    roles = build_roles(build())
+
+    assert roles["article_writer"].family != roles["claim_judge"].family
+
+
 def test_worker_always_uses_the_session_connection() -> None:
     settings = build(database_pooler_url=POOLER_DSN)
 
