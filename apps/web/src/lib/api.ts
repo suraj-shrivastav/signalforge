@@ -288,3 +288,161 @@ export async function postDecision(
   );
   if (!response.ok) throw await errorFromResponse(response);
 }
+
+// Mirrors ArticleDraft in src/signalforge/core/artifacts/article.py (editor-only).
+export const ARTICLE_TEMPLATES = [
+  "news_brief",
+  "explainer",
+  "paper_breakdown",
+  "comparison",
+] as const;
+export type ArticleTemplate = (typeof ARTICLE_TEMPLATES)[number];
+
+export const CLAIM_STATUSES = [
+  "verified",
+  "supported",
+  "uncertain",
+  "conflicting",
+  "unverified",
+] as const;
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
+
+export type DraftStatus = "drafting" | "drafted" | "needs_more_info" | "failed";
+
+export type DraftSection = { heading: string; paragraphs: string[] };
+export type DraftClaim = {
+  text: string;
+  evidence_span: string;
+  document_indices: number[];
+  status: ClaimStatus;
+};
+export type DraftSource = { label: string; url: string };
+export type DraftCover = {
+  src: string | null;
+  alt: string;
+  credit: string | null;
+};
+export type ArticleBody = {
+  title: string;
+  dek: string;
+  sections: DraftSection[];
+  claims: DraftClaim[];
+  sources: DraftSource[];
+  cover: DraftCover;
+};
+export type EditorDraft = {
+  card_id: string;
+  status: DraftStatus;
+  template: ArticleTemplate;
+  draft: ArticleBody | null;
+  review_summary: string;
+};
+
+const DRAFT_STATUSES: readonly string[] = [
+  "drafting",
+  "drafted",
+  "needs_more_info",
+  "failed",
+];
+
+function badDraft(): ApiError {
+  return new ApiError(502, "bad_shape", "draft has an unexpected shape");
+}
+
+function isStringList(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every(isString);
+}
+
+function isOneOf<T extends string>(options: readonly T[], v: unknown): v is T {
+  return isString(v) && (options as readonly string[]).includes(v);
+}
+
+function parseBody(value: unknown): ArticleBody {
+  if (!isRecord(value)) throw badDraft();
+  const { title, dek, sections, claims, sources, cover } = value;
+  if (
+    !isString(title) ||
+    !isString(dek) ||
+    !Array.isArray(sections) ||
+    !Array.isArray(claims) ||
+    !Array.isArray(sources) ||
+    !isRecord(cover) ||
+    !isString(cover.alt)
+  ) {
+    throw badDraft();
+  }
+  return {
+    title,
+    dek,
+    sections: sections.map((s: unknown) => {
+      if (!isRecord(s) || !isString(s.heading) || !isStringList(s.paragraphs))
+        throw badDraft();
+      return { heading: s.heading, paragraphs: s.paragraphs };
+    }),
+    claims: claims.map((c: unknown) => {
+      if (
+        !isRecord(c) ||
+        !isString(c.text) ||
+        !isString(c.evidence_span) ||
+        !Array.isArray(c.document_indices) ||
+        !c.document_indices.every(isNumber) ||
+        !isOneOf(CLAIM_STATUSES, c.status)
+      )
+        throw badDraft();
+      return {
+        text: c.text,
+        evidence_span: c.evidence_span,
+        document_indices: c.document_indices,
+        status: c.status,
+      };
+    }),
+    sources: sources.map((s: unknown) => {
+      if (!isRecord(s) || !isString(s.label) || !isString(s.url))
+        throw badDraft();
+      return { label: s.label, url: s.url };
+    }),
+    cover: {
+      src: isString(cover.src) ? cover.src : null,
+      alt: cover.alt,
+      credit: isString(cover.credit) ? cover.credit : null,
+    },
+  };
+}
+
+export function parseEditorDraft(json: unknown): EditorDraft {
+  if (!isRecord(json)) throw badDraft();
+  const { card_id, status, template, draft, review_summary } = json;
+  if (
+    !isString(card_id) ||
+    !isOneOf(DRAFT_STATUSES, status) ||
+    !isOneOf(ARTICLE_TEMPLATES, template) ||
+    !isString(review_summary)
+  ) {
+    throw badDraft();
+  }
+  return {
+    card_id,
+    status: status as DraftStatus,
+    template,
+    draft: draft == null ? null : parseBody(draft),
+    review_summary,
+  };
+}
+
+// Runs in the browser through the same-origin proxy. Returns null when no draft exists.
+export async function fetchEditorDraft(
+  cardId: string,
+  editorKey: string,
+): Promise<EditorDraft | null> {
+  const response = await fetch(
+    `/api/editor/drafts/${encodeURIComponent(cardId)}`,
+    {
+      headers: { "X-Editor-Key": editorKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw await errorFromResponse(response);
+  return parseEditorDraft(await response.json());
+}

@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, fetchQueue, parseSignalList, postDecision } from "./api";
+import {
+  ApiError,
+  fetchEditorDraft,
+  fetchQueue,
+  parseEditorDraft,
+  parseSignalList,
+  postDecision,
+} from "./api";
 import { formatScore } from "./format";
 
 const item = {
@@ -182,5 +189,64 @@ describe("postDecision", () => {
       status: 401,
       code: "unauthorized",
     });
+  });
+});
+
+const DRAFT = {
+  card_id: ID,
+  status: "drafted",
+  template: "explainer",
+  review_summary: "",
+  cost_usd: "0.1",
+  draft: {
+    title: "T",
+    dek: "D",
+    sections: [{ heading: "H", paragraphs: ["P"] }],
+    claims: [
+      {
+        text: "c",
+        evidence_span: "s",
+        document_indices: [0],
+        status: "supported",
+      },
+    ],
+    sources: [{ label: "l", url: "https://example.com" }],
+    cover: { src: null, alt: "A", credit: null },
+  },
+};
+
+describe("parseEditorDraft", () => {
+  it("parses the backend shape and drops unknown fields", () => {
+    const draft = parseEditorDraft(DRAFT);
+    expect(draft.template).toBe("explainer");
+    expect(draft.draft?.sources).toEqual([
+      { label: "l", url: "https://example.com" },
+    ]);
+    expect(draft).not.toHaveProperty("cost_usd");
+  });
+  it("accepts a failed draft with a null body", () => {
+    expect(
+      parseEditorDraft({ ...DRAFT, status: "failed", draft: null }).draft,
+    ).toBeNull();
+  });
+  it.each([
+    { ...DRAFT, template: "Explainer" },
+    { ...DRAFT, draft: { ...DRAFT.draft, claims: [{ text: "c" }] } },
+  ])("rejects an unexpected shape", (bad) => {
+    expect(() => parseEditorDraft(bad)).toThrow(ApiError);
+  });
+});
+
+describe("fetchEditorDraft", () => {
+  it("sends the key to the same-origin proxy", async () => {
+    const fn = stubFetch(Response.json(DRAFT));
+    await fetchEditorDraft(ID, "k");
+    const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`/api/editor/drafts/${ID}`);
+    expect(new Headers(init.headers).get("x-editor-key")).toBe("k");
+  });
+  it("returns null when the card has no draft", async () => {
+    stubFetch(Response.json({}, { status: 404 }));
+    expect(await fetchEditorDraft(ID, "k")).toBeNull();
   });
 });
