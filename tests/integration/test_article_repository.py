@@ -132,6 +132,16 @@ def test_insert_without_body_stores_empty_object(db_session: Session) -> None:
     assert (row.status, row.draft) == ("failed", {})
 
 
+def test_get_returns_row_or_none(db_session: Session) -> None:
+    card_id = seed_researched(db_session, "https://example.com/a8", ResearchStatus.RESEARCHED)
+    repo = ArticleDraftRepository(db_session)
+    assert repo.get(card_id) is None
+    repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=0, tokens=0)
+    found = repo.get(card_id)
+    assert found is not None
+    assert found.draft["title"] == "Title"
+
+
 def test_insert_duplicate_card_id_returns_false(db_session: Session) -> None:
     card_id = seed_researched(db_session, "https://example.com/a7", ResearchStatus.RESEARCHED)
     repo = ArticleDraftRepository(db_session)

@@ -1,9 +1,11 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.reason_tags import REASON_TAGS
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
@@ -115,3 +117,80 @@ class DecisionOut(BaseModel):
     note: str
     decision_ms: int | None
     decided_at: datetime
+
+
+class ArticleDraftOut(BaseModel):
+    """Editor-only view: every field, including the review summary and spend."""
+
+    card_id: UUID
+    status: Literal["drafting", "drafted", "needs_more_info", "failed"]
+    template: Literal["news_brief", "explainer", "paper_breakdown", "comparison"]
+    draft: ArticleBody | None
+    review_summary: str
+    cost_usd: Decimal
+    calls: int
+    tokens: int
+    created_at: datetime
+
+
+class PublicSectionOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    heading: str
+    paragraphs: list[str]
+
+
+class PublicClaimOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    status: str
+    source_indices: list[int]
+
+
+class PublicSourceOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    url: str
+
+
+class PublicCoverOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    src: str | None
+    alt: str
+    credit: str | None
+
+
+class PublicArticleOut(BaseModel):
+    """Reader-facing shape. An explicit allow-list, so a new editor-only field on the
+    artifact never reaches a public response by default (2026-09-27 spec)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    dek: str
+    sections: list[PublicSectionOut]
+    claims: list[PublicClaimOut]
+    sources: list[PublicSourceOut]
+    cover: PublicCoverOut
+
+    @classmethod
+    def from_body(cls, body: ArticleBody) -> "PublicArticleOut":
+        return cls(
+            title=body.title,
+            dek=body.dek,
+            sections=[
+                PublicSectionOut(heading=s.heading, paragraphs=list(s.paragraphs))
+                for s in body.sections
+            ],
+            claims=[
+                PublicClaimOut(
+                    text=c.text, status=c.status.value, source_indices=list(c.document_indices)
+                )
+                for c in body.claims
+            ],
+            sources=[PublicSourceOut(label=s.label, url=s.url) for s in body.sources],
+            cover=PublicCoverOut(src=body.cover.src, alt=body.cover.alt, credit=body.cover.credit),
+        )

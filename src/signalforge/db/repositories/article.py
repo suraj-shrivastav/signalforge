@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -64,3 +65,8 @@ class ArticleDraftRepository:
             .returning(ArticleDraftRow.id)
         )
         return self._session.execute(statement).first() is not None
+
+    def get(self, card_id: UUID) -> ArticleDraftRow | None:
+        return self._session.scalars(
+            select(ArticleDraftRow).where(ArticleDraftRow.card_id == card_id)
+        ).one_or_none()
