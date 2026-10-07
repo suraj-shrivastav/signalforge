@@ -62,20 +62,22 @@ uv run alembic upgrade head                                    # apply migration
 uv run python -m apps.worker.ingest hackernews --hours 48      # fetch and store
 uv run python -m apps.worker.assess --limit 25               # summarize and score unassessed signals (needs LLM_PROVIDER + key)
 uv run python -m apps.worker.cards --limit 25                # build topic cards for relevant signals (needs LLM_MODEL_TOPIC_CARD)
+uv run python -m apps.worker.research --limit 10             # research accepted cards (TAVILY_API_KEY optional: primary source only without it)
+uv run python -m apps.worker.draft --limit 10                # draft and verify researched cards (needs LLM_MODEL_ARTICLE_WRITER and LLM_MODEL_CLAIM_JUDGE, different families)
 uv run python -m apps.worker.triage_metrics --days 14          # editor triage numbers (read only)
-uv run python -m apps.worker.tick --hours 24 --assess-limit 25 --cards-limit 25  # ingest every source, then assess, then cards
+uv run python -m apps.worker.tick --hours 24 --assess-limit 25 --cards-limit 25 --research-limit 10 --draft-limit 10  # ingest, assess, cards, research, draft
 uv run uvicorn --factory apps.api.main:create_app --port 8000  # API
 cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
 TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests
 ```
 
-Scheduling: `tick` ingests all sources, then assesses, then builds topic cards (assess and cards need `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_MODEL_RELEVANCE` and `LLM_MODEL_TOPIC_CARD` in `.env`; both are skipped when the provider is `fake`; the editor API needs `EDITOR_API_KEY` in `.env`, set it to your own secret and never commit it). One failing stage never stops the later ones. Exit codes:
+Scheduling: `tick` ingests all sources, then assesses, builds topic cards, researches accepted cards and drafts researched ones (the LLM stages need `LLM_PROVIDER`, `LLM_BASE_URL` and the `LLM_MODEL_*` settings in `.env`; all four are skipped when the provider is `fake`; research uses `TAVILY_API_KEY` for secondary sources when set; the editor API needs `EDITOR_API_KEY` in `.env`, set it to your own secret and never commit it). One failing stage never stops the later ones. Exit codes:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | at least one source ingested and assess and cards ok or skipped |
+| 0 | at least one source ingested and every LLM stage ok or skipped |
 | 1 | every source failed |
-| 2 | ingest ok but assess or cards failed |
+| 2 | ingest ok but an LLM stage failed |
 
 Cron, every 30 minutes (cron has a minimal PATH, so use the absolute path from `which uv`, or set `PATH=` in the crontab; the log is not rotated):
 
@@ -140,7 +142,8 @@ Things new to this stage:
 - `trafilatura`: HTML-to-clean-text extraction, used only by
   `stages/research_extraction.py`.
 
-No CLI or scheduler entrypoint wires this stage in yet (same as `assess` and
-`cards` before their own worker scripts landed) — it is called directly, the
-same way `run_assess`/`run_cards` were before `apps/worker/assess.py` and
-`apps/worker/cards.py` were written.
+`apps/worker/research.py` runs it, and `tick` runs it after cards. Without
+`TAVILY_API_KEY` the worker skips the secondary search and researches from the
+primary source only (it logs a warning). `apps/worker/draft.py` runs the draft
+stage (`stages/draft.py`) on researched cards, after research in `tick`, with
+the per-article budget (`BudgetScope.ARTICLE`, ~$1.50).
