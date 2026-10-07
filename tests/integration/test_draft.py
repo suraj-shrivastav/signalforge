@@ -186,5 +186,12 @@ def test_same_family_roles_fail_fast_before_any_card(db_session: Session) -> Non
     with pytest.raises(ConfigurationError):
         run_draft(db_session, factory([], judge_family="acme"), budget_limits=LIMITS)
     assert db_session.query(ArticleDraftRow).filter_by(card_id=card.id).count() == 0
-    failed = db_session.query(StageRun).filter_by(stage="draft").one()
-    assert failed.status == StageRunStatus.FAILED
+    # Latest run, not .one(): a shared dev database already holds real draft runs.
+    latest = (
+        db_session.query(StageRun)
+        .filter_by(stage="draft")
+        .order_by(StageRun.created_at.desc())
+        .first()
+    )
+    assert latest is not None
+    assert latest.status == StageRunStatus.FAILED

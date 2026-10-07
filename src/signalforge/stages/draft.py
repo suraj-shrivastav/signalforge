@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 DRAFT_STAGE = "draft"
 WRITER_ROLE = "article_writer"
 JUDGE_ROLE = "claim_judge"
-PROMPT_VERSION = "draft-v1"
+PROMPT_VERSION = "draft-v2"
 MAX_DOCUMENT_CHARS = 8000
 _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 
@@ -90,6 +90,10 @@ Rules:
 - No em dashes and no en dashes used as dashes; use commas, colons, periods or parentheses.
 - No first-person or experiential claims, and no mention of AI, models or generation.
 - Plain, specific language. No hype.
+- Length is a hard requirement, checked by word count: the dek plus all paragraphs must
+  total at least the stated minimum and at most the maximum. Fill every section of the
+  skeleton, use every research claim, and explain context from the documents to reach
+  the minimum. Never add facts the documents do not contain.
 
 Reply with JSON only, exactly this shape:
 {"title": string, "dek": string,
@@ -161,7 +165,8 @@ def _writer_user(package: ResearchPackage, template: ArticleTemplate) -> str:
     )
     return (
         f"Template: {template.value}. Skeleton: {_SKELETONS[template]}\n"
-        f"Length: {low} to {high} words across the dek and paragraphs.\n"
+        f"Length: at least {low} and at most {high} words across the dek and paragraphs "
+        f"(a draft under {low} words is rejected).\n"
         f"{_documents_block(package)}\n<research_claims>\n{claims}\n</research_claims>"
     )
 
