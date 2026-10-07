@@ -107,7 +107,11 @@ class OpenAICompatibleProvider:
         *,
         extra_headers: dict[str, str] | None = None,
         extra_body: dict[str, Any] | None = None,
+        max_output_tokens: int | None = None,
     ) -> None:
+        # Without a cap, routers such as OpenRouter reserve credit for the model's full
+        # output window and reject the call, and one runaway reply can blow a budget.
+        self._max_output_tokens = max_output_tokens
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._embed_url = base_url.rstrip("/") + "/embeddings"
         self._api_key = api_key
@@ -129,6 +133,8 @@ class OpenAICompatibleProvider:
         body: dict[str, Any] = {"model": model, "messages": messages}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+        if self._max_output_tokens is not None:
+            body["max_tokens"] = self._max_output_tokens
         body.update(self._extra_body)
 
         started = time.monotonic()

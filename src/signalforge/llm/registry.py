@@ -40,6 +40,7 @@ def _openai_compatible(settings: Settings) -> LLMProvider:
         settings.llm_api_key,
         httpx.Client(),
         extra_body=settings.llm_extra_body,
+        max_output_tokens=settings.llm_max_output_tokens,
     )
 
 

@@ -1,6 +1,7 @@
 # ruff: noqa: ARG002, ARG005
 """Gateway tests. No network: providers are fakes or httpx.MockTransport."""
 
+import json
 import logging
 import uuid
 from decimal import Decimal
@@ -120,9 +121,25 @@ def test_reported_cost_wins() -> None:
     assert rec.rows[0].cost_usd == Decimal("0.0042")
 
 
-def http_provider(handler: Any, key: str = "sk-secret") -> OpenAICompatibleProvider:
+def http_provider(
+    handler: Any, key: str = "sk-secret", max_output_tokens: int | None = None
+) -> OpenAICompatibleProvider:
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    return OpenAICompatibleProvider("https://x.test/v1/", SecretStr(key), client)
+    return OpenAICompatibleProvider(
+        "https://x.test/v1/", SecretStr(key), client, max_output_tokens=max_output_tokens
+    )
+
+
+@pytest.mark.parametrize(("cap", "expected"), [(4096, 4096), (None, None)])
+def test_max_output_tokens_sent_only_when_set(cap: int | None, expected: int | None) -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return ok(req)
+
+    chat(http_provider(handler, max_output_tokens=cap))
+    assert json.loads(seen[0].content).get("max_tokens") == expected
 
 
 def ok(_: httpx.Request) -> httpx.Response:
