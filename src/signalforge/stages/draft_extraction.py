@@ -12,6 +12,7 @@ from signalforge.core.artifacts.research import ClaimStatus, ResearchDocument, R
 from signalforge.stages.research_extraction import span_exists
 
 PAPER_SOURCE_TYPE = "paper"
+BLOG_SOURCE_TYPE = "blog"
 COMPARISON_TAG = "comparison"
 RELEASE_TAGS = frozenset({"release", "launch"})
 _RELEASE_TITLE = re.compile(
@@ -41,13 +42,17 @@ _BANNED_PHRASES = re.compile(
 def select_template(
     *, source_type: str, card_format: str, topics: Sequence[str], title: str
 ) -> ArticleTemplate:
-    """First match wins: paper, then comparison, then release/launch, else explainer."""
+    """First match wins: paper, then comparison, then release/launch, else explainer.
+
+    A post from a lab or vendor blog (the RSS sources) counts as a release signal: those
+    feeds announce models, results and launches, and rarely use the words themselves.
+    """
     tags = {topic.strip().lower() for topic in topics}
     if source_type == PAPER_SOURCE_TYPE:
         return ArticleTemplate.PAPER_BREAKDOWN
     if card_format == COMPARISON_TAG or COMPARISON_TAG in tags:
         return ArticleTemplate.COMPARISON
-    if tags & RELEASE_TAGS or _RELEASE_TITLE.search(title):
+    if source_type == BLOG_SOURCE_TYPE or tags & RELEASE_TAGS or _RELEASE_TITLE.search(title):
         return ArticleTemplate.NEWS_BRIEF
     return ArticleTemplate.EXPLAINER
 
