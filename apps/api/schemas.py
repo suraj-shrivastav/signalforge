@@ -133,6 +133,18 @@ class ArticleDraftOut(BaseModel):
     created_at: datetime
 
 
+class ArticleDraftSummaryOut(BaseModel):
+    """Editor-only list row: enough to pick a draft to open."""
+
+    card_id: UUID
+    status: Literal["drafting", "drafted", "needs_more_info", "failed"]
+    template: Literal["news_brief", "explainer", "paper_breakdown", "comparison"]
+    title: str
+    signal_title: str
+    claim_counts: dict[str, int]
+    created_at: datetime
+
+
 class PublicSectionOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

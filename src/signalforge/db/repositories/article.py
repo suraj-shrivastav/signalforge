@@ -66,6 +66,17 @@ class ArticleDraftRepository:
         )
         return self._session.execute(statement).first() is not None
 
+    def list_recent(self, limit: int) -> list[tuple[ArticleDraftRow, str]]:
+        """Newest drafts first, each with its source signal's title."""
+        query = (
+            select(ArticleDraftRow, Signal.title)
+            .join(TopicCardRow, TopicCardRow.id == ArticleDraftRow.card_id)
+            .join(Signal, Signal.id == TopicCardRow.signal_id)
+            .order_by(ArticleDraftRow.created_at.desc(), ArticleDraftRow.id.desc())
+            .limit(limit)
+        )
+        return [(row, title) for row, title in self._session.execute(query).all()]
+
     def get(self, card_id: UUID) -> ArticleDraftRow | None:
         return self._session.scalars(
             select(ArticleDraftRow).where(ArticleDraftRow.card_id == card_id)

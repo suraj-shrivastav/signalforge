@@ -19,6 +19,7 @@ export default function EditorLayout({ children }: { children: ReactNode }) {
         <div className="flex gap-6">
           <Link href="/editor/signals">Signals</Link>
           <Link href="/editor/triage">Triage</Link>
+          <Link href="/editor/drafts">Drafts</Link>
         </div>
         <form action={logout}>
           <Button type="submit" variant="ghost" size="sm">
