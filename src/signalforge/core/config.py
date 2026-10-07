@@ -66,13 +66,13 @@ class Settings(BaseSettings):
     llm_model_claim_embedding: str = "openai/text-embedding-3-small"
     # Writer and judge must resolve to different families (PRD FR-08); the drafting
     # stage refuses to start otherwise, so keep these defaults in separate namespaces.
-    llm_model_article_writer: str = "openai/gpt-4.1-mini"
+    llm_model_article_writer: str = "anthropic/claude-fable-5.1"
     llm_model_claim_judge: str = "google/gemini-2.5-flash-lite"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
-    # Output cap sent as max_tokens on every chat call. 4096 fits a 1000-word draft as
-    # JSON with room to spare.
-    llm_max_output_tokens: int = Field(default=4096, ge=1)
+    # Output cap sent as max_tokens on every chat call. Reasoning models spend part of it
+    # thinking before the reply, so it leaves room for that plus a 1000-word draft as JSON.
+    llm_max_output_tokens: int = Field(default=16_384, ge=1)
 
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.
