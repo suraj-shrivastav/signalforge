@@ -36,7 +36,13 @@ from signalforge.db.models.signals import Signal
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.llm.gateway import LLMGateway
 from signalforge.stages.ingest import _ENTITY_NAMESPACE, _MAX_ERROR_CHARS, _sha
-from signalforge.stages.research_extraction import extract_clean_text, merge_claims, span_exists
+from signalforge.stages.research_extraction import (
+    extract_clean_text,
+    merge_claims,
+    page_title,
+    reference_links,
+    span_exists,
+)
 
 log = logging.getLogger(__name__)
 
@@ -44,8 +50,10 @@ RESEARCH_STAGE = "research"
 ROLE = "research_extraction"
 EMBEDDING_ROLE = "claim_embedding"
 PROMPT_VERSION = "research-v1"
-MAX_DOCUMENT_CHARS = 8000
+# Large enough for a paper's method and results sections, not just its abstract.
+MAX_DOCUMENT_CHARS = 30_000
 SECONDARY_RESULT_CAP = 3
+REFERENCE_LINK_CAP = 3
 
 _SYSTEM = """You extract factual claims from one document for a research package.
 
@@ -90,6 +98,19 @@ def _build_document(
         text=stored_text,
         fetched_at=datetime.now(UTC),
     )
+
+
+def _fetch_reference(fetcher: PageFetcher, urls: tuple[str, ...]) -> tuple[str, str] | None:
+    """First of ``urls`` that yields clean text, as (html, text). Failures are skipped."""
+    for url in urls:
+        try:
+            html = fetcher.fetch_html(url)
+        except SignalForgeError:
+            continue
+        text = extract_clean_text(html)
+        if text is not None:
+            return html, text
+    return None
 
 
 def _extract_document_claims(
@@ -162,6 +183,32 @@ def _process_card(
         )
     )
     texts.append(primary_text)
+    seen_urls = {signal.canonical_url}
+    seen_texts = {documents[0].raw_text_ref}
+
+    def add_secondary(url: str, title: str, clean_text: str) -> None:
+        document = _build_document(
+            url=url,
+            title=title,
+            source_label=urllib.parse.urlsplit(url).hostname or url,
+            is_primary=False,
+            clean_text=clean_text,
+        )
+        # A mirror of a page already held is not independent evidence.
+        if document.raw_text_ref in seen_texts:
+            return
+        seen_texts.add(document.raw_text_ref)
+        documents.append(document)
+        texts.append(clean_text)
+
+    # Step 4: papers, model cards and repos the primary source itself cites.
+    for link in reference_links(html, signal.canonical_url, limit=REFERENCE_LINK_CAP):
+        seen_urls.add(link.url)
+        fetched = _fetch_reference(fetcher, link.fetch_urls)
+        if fetched is not None:
+            reference_html, reference_text = fetched
+            hostname = urllib.parse.urlsplit(link.url).hostname or link.url
+            add_secondary(link.url, page_title(reference_html) or hostname, reference_text)
 
     # Step 5-6: secondary search and documents.
     try:
@@ -170,8 +217,9 @@ def _process_card(
         log.warning("secondary search failed", extra={"card_id": str(card.id)})
         results = []
     for result in results:
-        if result.url == signal.canonical_url:
+        if result.url in seen_urls:
             continue
+        seen_urls.add(result.url)
         try:
             secondary_html = fetcher.fetch_html(result.url)
             secondary_text = extract_clean_text(secondary_html)
@@ -180,16 +228,7 @@ def _process_card(
         if secondary_text is None:
             continue
         hostname = urllib.parse.urlsplit(result.url).hostname or result.url
-        documents.append(
-            _build_document(
-                url=result.url,
-                title=result.title.strip() or hostname,
-                source_label=hostname,
-                is_primary=False,
-                clean_text=secondary_text,
-            )
-        )
-        texts.append(secondary_text)
+        add_secondary(result.url, result.title.strip() or hostname, secondary_text)
 
     # Step 7-8: per-document extraction, span check, merge.
     candidates: list[tuple[int, ResearchClaim]] = []

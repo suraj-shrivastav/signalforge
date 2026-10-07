@@ -5,6 +5,10 @@ FR-08's LLM judge: cheap, exact, and it never needs a model call.
 """
 
 import math
+import re
+from dataclasses import dataclass
+from html import unescape
+from urllib.parse import urljoin, urlsplit
 
 import trafilatura
 
@@ -88,3 +92,87 @@ def merge_claims(
             ResearchClaim.model_validate({**first_claim.model_dump(), "document_indices": indices})
         )
     return tuple(merged), " ".join(disagreements)
+
+
+_HREF = re.compile(r"""href\s*=\s*["']([^"'#]+)""", re.IGNORECASE)
+_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_ARXIV_ID = re.compile(r"^/(?:abs|pdf|html)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?/?$")
+_REPO_PATH = re.compile(r"^/[^/]+/[^/]+/?$")
+# Repackaged weights (quantised builds) repeat the model card, so they add nothing.
+_REPACKAGED = re.compile(r"gguf|awq|gptq|mlx|onnx", re.IGNORECASE)
+# Site sections that look like "org/name" but are not model repos.
+_HF_NON_MODEL_PATHS = frozenset(
+    {
+        "blog", "changelog", "datasets", "docs", "enterprise", "join", "learn", "login",
+        "models", "new", "organizations", "papers", "posts", "pricing", "settings",
+        "spaces", "tasks",
+    }
+)  # fmt: skip
+# Lower rank is fetched first: papers, then model cards, then model repos, then code.
+_PAPER, _MODEL_CARD, _MODEL_REPO, _CODE = range(4)
+
+
+@dataclass(frozen=True)
+class ReferenceLink:
+    """A paper, model card or repo the primary source cites, to fetch as evidence."""
+
+    url: str
+    fetch_urls: tuple[str, ...]
+
+
+def _rank(url: str) -> tuple[int, ReferenceLink] | None:
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    path = parts.path
+    if host == "arxiv.org" and (match := _ARXIV_ID.match(path)):
+        paper = match.group(1)
+        # The HTML render carries the full text; the abstract page is the fallback.
+        abs_url = f"https://arxiv.org/abs/{paper}"
+        return _PAPER, ReferenceLink(abs_url, (f"https://arxiv.org/html/{paper}", abs_url))
+    if host == "openreview.net" and path.startswith("/forum"):
+        return _PAPER, ReferenceLink(url, (url,))
+    if host == "huggingface.co" and path.startswith("/papers/"):
+        return _PAPER, ReferenceLink(url, (url,))
+    if re.search(r"model[_-]card", path, re.IGNORECASE):
+        return _MODEL_CARD, ReferenceLink(url, (url,))
+    if (
+        host == "huggingface.co"
+        and _REPO_PATH.match(path)
+        and not _REPACKAGED.search(path)
+        and path.split("/")[1] not in _HF_NON_MODEL_PATHS
+    ):
+        return _MODEL_REPO, ReferenceLink(url, (url,))
+    if host == "github.com" and _REPO_PATH.match(path):
+        return _CODE, ReferenceLink(url, (url,))
+    return None
+
+
+def reference_links(html: str, base_url: str, *, limit: int) -> list[ReferenceLink]:
+    """Up to ``limit`` papers, model cards and repos linked from ``html``, best first.
+
+    Deterministic: the same page always yields the same links in the same order.
+    """
+    base = urlsplit(base_url)
+    ranked: dict[str, tuple[int, int, ReferenceLink]] = {}
+    for position, raw in enumerate(_HREF.findall(html)):
+        absolute = urljoin(base_url, unescape(raw.strip()))
+        parts = urlsplit(absolute)
+        if parts.scheme not in {"http", "https"}:
+            continue
+        clean = parts._replace(query="", fragment="").geturl().rstrip("/")
+        if parts.hostname == base.hostname and parts.path.rstrip("/") == base.path.rstrip("/"):
+            continue
+        hit = _rank(clean)
+        if hit is not None and hit[1].url not in ranked:
+            ranked[hit[1].url] = (hit[0], position, hit[1])
+    ordered = sorted(ranked.values(), key=lambda item: (item[0], item[1]))
+    return [link for _, _, link in ordered[:limit]]
+
+
+def page_title(html: str) -> str | None:
+    """The document's <title>, whitespace-collapsed, or None."""
+    match = _TITLE.search(html)
+    if not match:
+        return None
+    title = " ".join(unescape(match.group(1)).split())
+    return title or None
