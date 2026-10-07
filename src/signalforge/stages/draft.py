@@ -61,7 +61,7 @@ DRAFT_STAGE = "draft"
 WRITER_ROLE = "article_writer"
 JUDGE_ROLE = "claim_judge"
 PROMPT_VERSION = "draft-v2"
-MAX_DOCUMENT_CHARS = 8000
+MAX_DOCUMENT_CHARS = 30_000
 _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 
 _SKELETONS: dict[ArticleTemplate, str] = {

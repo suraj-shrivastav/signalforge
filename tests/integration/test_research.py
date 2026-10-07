@@ -28,6 +28,17 @@ PRIMARY_TEXT = (
     "<p>Researchers confirmed the results across multiple independent evaluation runs "
     "conducted over several weeks.</p></article></body></html>"
 )
+SECONDARY_TEXT = (
+    "<html><body><article><h1>Coverage</h1>"
+    "<p>Reviewers said the model beats the prior best by a wide margin on the public "
+    "leaderboard, according to an independent write-up published this week.</p>"
+    "</article></body></html>"
+)
+PAPER_TEXT = (
+    "<html><head><title>The Paper Title</title></head><body><article><h1>Method</h1>"
+    "<p>We train the model with a two-stage curriculum and report that it beats the prior "
+    "best by a wide margin on five held-out evaluation suites.</p></article></body></html>"
+)
 DEFAULT_LIMITS = BudgetLimits(max_cost_usd=Decimal("1"))
 
 
@@ -207,7 +218,7 @@ def test_blank_secondary_title_falls_back_to_hostname(db_session: Session) -> No
     fetcher = FakeFetcher(
         {
             "https://example.com/article": PRIMARY_TEXT,
-            "https://sec.example.com/": PRIMARY_TEXT,
+            "https://sec.example.com/": SECONDARY_TEXT,
         }
     )
     result = run_research(
@@ -287,3 +298,47 @@ def test_written_row_has_nonzero_cost_calls_tokens(db_session: Session) -> None:
     assert row.calls > 0
     assert row.tokens > 0
     assert row.cost_usd >= Decimal("0")
+
+
+def test_cited_paper_is_fetched_as_a_document(db_session: Session) -> None:
+    card = seed_card(db_session)
+    primary = PRIMARY_TEXT.replace(
+        "</article>", '<a href="https://arxiv.org/pdf/2609.02849v2">paper</a></article>'
+    )
+    fetcher = FakeFetcher(
+        {
+            "https://example.com/article": primary,
+            # The full-text render is unavailable, so the abstract page is used.
+            "https://arxiv.org/html/2609.02849": ProviderRejectedError("404"),
+            "https://arxiv.org/abs/2609.02849": PAPER_TEXT,
+        }
+    )
+    span = "beats the prior best by a wide margin"
+    result = run_research(
+        db_session,
+        gateway_factory([claims_reply(span), claims_reply(span)]),
+        fetcher,
+        FakeSearch([SearchResult(url="https://arxiv.org/abs/2609.02849", title="dup")]),
+        budget_limits=DEFAULT_LIMITS,
+    )
+    assert result.researched == 1
+    docs = row_for(db_session, card.id).documents
+    assert [(d["url"], d["source_label"], d["title"]) for d in docs[1:]] == [
+        ("https://arxiv.org/abs/2609.02849", "arxiv.org", "The Paper Title")
+    ]
+
+
+def test_mirror_of_the_primary_is_dropped(db_session: Session) -> None:
+    card = seed_card(db_session)
+    fetcher = FakeFetcher(
+        {"https://example.com/article": PRIMARY_TEXT, "https://mirror.example.net/": PRIMARY_TEXT}
+    )
+    result = run_research(
+        db_session,
+        gateway_factory([claims_reply("beats the prior best by a wide margin")]),
+        fetcher,
+        FakeSearch([SearchResult(url="https://mirror.example.net/", title="Mirror")]),
+        budget_limits=DEFAULT_LIMITS,
+    )
+    assert result.researched == 1
+    assert len(row_for(db_session, card.id).documents) == 1

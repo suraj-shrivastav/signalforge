@@ -2,7 +2,13 @@ import pytest
 from pydantic import ValidationError
 
 from signalforge.core.artifacts.research import ClaimStatus, ResearchClaim
-from signalforge.stages.research_extraction import extract_clean_text, merge_claims, span_exists
+from signalforge.stages.research_extraction import (
+    extract_clean_text,
+    merge_claims,
+    page_title,
+    reference_links,
+    span_exists,
+)
 
 _HTML = """
 <html><body>
@@ -120,3 +126,44 @@ def test_merge_claims_empty_returns_empty_tuple() -> None:
 def test_merge_claims_rejects_negative_document_index() -> None:
     with pytest.raises(ValidationError):
         merge_claims([(-1, _claim("X does Y"))], [_SAME])
+
+
+_LINKS = """
+<a href="/blog/other-post">nav</a>
+<a href="https://example.com/post#top">self</a>
+<a href="https://github.com/org/repo">code</a>
+<a href="https://huggingface.co/org/model-GGUF">quantised</a>
+<a href="https://huggingface.co/org/model?x=1">model</a>
+<a href="https://ai.example.dev/docs/model_card_2">card</a>
+<a href='https://arxiv.org/pdf/2609.10712v1'>paper two</a>
+<a href="https://arxiv.org/abs/2609.02849">paper one</a>
+<a href="https://arxiv.org/abs/2609.02849v3">paper one again</a>
+<a href="https://huggingface.co/blog/x">hf blog</a>
+<a href="https://huggingface.co/join/discord">hf discord</a>
+<a href="javascript:alert(1)">bad</a>
+"""
+
+
+def test_reference_links_ranked_papers_first_and_deduplicated() -> None:
+    links = reference_links(_LINKS, "https://example.com/post", limit=10)
+    assert [link.url for link in links] == [
+        "https://arxiv.org/abs/2609.10712",
+        "https://arxiv.org/abs/2609.02849",
+        "https://ai.example.dev/docs/model_card_2",
+        "https://huggingface.co/org/model",
+        "https://github.com/org/repo",
+    ]
+    assert links[0].fetch_urls == (
+        "https://arxiv.org/html/2609.10712",
+        "https://arxiv.org/abs/2609.10712",
+    )
+
+
+def test_reference_links_respects_limit_and_handles_no_links() -> None:
+    assert len(reference_links(_LINKS, "https://example.com/post", limit=2)) == 2
+    assert reference_links("<p>no links</p>", "https://example.com/post", limit=3) == []
+
+
+def test_page_title() -> None:
+    assert page_title("<title>\n A &amp; B </title>") == "A & B"
+    assert page_title("<p>none</p>") is None
