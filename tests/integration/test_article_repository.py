@@ -142,6 +142,15 @@ def test_get_returns_row_or_none(db_session: Session) -> None:
     assert found.draft["title"] == "Title"
 
 
+def test_list_recent_returns_drafts_with_signal_title(db_session: Session) -> None:
+    card_id = seed_researched(db_session, "https://example.com/a9", ResearchStatus.RESEARCHED)
+    repo = ArticleDraftRepository(db_session)
+    repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=0, tokens=0)
+    rows = repo.list_recent(100)
+    assert (card_id, "Title") in [(row.card_id, title) for row, title in rows]
+    assert len(repo.list_recent(1)) == 1
+
+
 def test_insert_duplicate_card_id_returns_false(db_session: Session) -> None:
     card_id = seed_researched(db_session, "https://example.com/a7", ResearchStatus.RESEARCHED)
     repo = ArticleDraftRepository(db_session)

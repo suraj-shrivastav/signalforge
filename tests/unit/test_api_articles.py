@@ -67,6 +67,10 @@ class StubRepo:
     def get(self, card_id: UUID) -> Any:
         return self.rows.get(card_id)
 
+    def list_recent(self, limit: int) -> list[tuple[Any, str]]:
+        self.limit = limit
+        return [(row, "Signal title") for row in self.rows.values()]
+
 
 @pytest.fixture
 def ctx() -> Iterator[tuple[TestClient, StubRepo]]:
@@ -107,6 +111,32 @@ def test_failed_draft_has_null_body(ctx: tuple[TestClient, StubRepo]) -> None:
 
 def test_missing_draft_is_404(ctx: tuple[TestClient, StubRepo]) -> None:
     assert ctx[0].get(f"/editor/drafts/{uuid4()}", headers=H).status_code == 404
+
+
+def test_draft_list_requires_key(ctx: tuple[TestClient, StubRepo]) -> None:
+    assert ctx[0].get("/editor/drafts").status_code == 401
+
+
+def test_draft_list_summarises_each_draft(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    repo.add(BODY.model_dump(mode="json"))
+    repo.add({})
+    r = client.get("/editor/drafts?limit=5", headers=H)
+    assert r.status_code == 200
+    assert repo.limit == 5
+    full, empty = r.json()
+    assert (full["title"], full["signal_title"], full["claim_counts"]) == (
+        "Title",
+        "Signal title",
+        {"verified": 1},
+    )
+    assert (empty["title"], empty["claim_counts"]) == ("", {})
+    assert "review_summary" not in full
+
+
+@pytest.mark.parametrize("q", ["limit=0", "limit=101"])
+def test_draft_list_limit_validated(ctx: tuple[TestClient, StubRepo], q: str) -> None:
+    assert ctx[0].get(f"/editor/drafts?{q}", headers=H).status_code == 422
 
 
 def _keys(value: object) -> set[str]:

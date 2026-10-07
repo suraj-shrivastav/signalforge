@@ -446,3 +446,62 @@ export async function fetchEditorDraft(
   if (!response.ok) throw await errorFromResponse(response);
   return parseEditorDraft(await response.json());
 }
+
+export type DraftSummary = {
+  card_id: string;
+  status: DraftStatus;
+  template: ArticleTemplate;
+  title: string;
+  signal_title: string;
+  claim_counts: Partial<Record<ClaimStatus, number>>;
+  created_at: string;
+};
+
+function parseDraftSummary(value: unknown): DraftSummary {
+  if (!isRecord(value)) throw badDraft();
+  const { card_id, status, template, title, signal_title, claim_counts } =
+    value;
+  if (
+    !isString(card_id) ||
+    !isOneOf(DRAFT_STATUSES, status) ||
+    !isOneOf(ARTICLE_TEMPLATES, template) ||
+    !isString(title) ||
+    !isString(signal_title) ||
+    !isRecord(claim_counts) ||
+    !isString(value.created_at)
+  ) {
+    throw badDraft();
+  }
+  const counts: Partial<Record<ClaimStatus, number>> = {};
+  for (const s of CLAIM_STATUSES) {
+    const n = claim_counts[s];
+    if (isNumber(n)) counts[s] = n;
+  }
+  return {
+    card_id,
+    status: status as DraftStatus,
+    template,
+    title,
+    signal_title,
+    claim_counts: counts,
+    created_at: value.created_at,
+  };
+}
+
+export function parseDraftList(json: unknown): DraftSummary[] {
+  if (!Array.isArray(json)) throw badDraft();
+  return json.map(parseDraftSummary);
+}
+
+// Runs in the browser through the same-origin proxy.
+export async function fetchDraftList(
+  editorKey: string,
+): Promise<DraftSummary[]> {
+  const response = await fetch("/api/editor/drafts", {
+    headers: { "X-Editor-Key": editorKey },
+    cache: "no-store",
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!response.ok) throw await errorFromResponse(response);
+  return parseDraftList(await response.json());
+}
