@@ -5,6 +5,8 @@ from typing import Any
 import pytest
 from apps.worker import assess as assess_mod
 from apps.worker import cards as cards_mod
+from apps.worker import draft as draft_mod
+from apps.worker import research as research_mod
 from apps.worker import tick
 
 from signalforge.core.errors import SignalForgeError
@@ -30,6 +32,7 @@ def _setup(
     provider: str = "openai",
     assess_raises: bool = False,
     cards_raises: bool = False,
+    research_raises: bool = False,
     bugs: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     calls: dict[str, Any] = {
@@ -80,9 +83,23 @@ def _setup(
             raise RuntimeError("cards down")
         return SimpleNamespace(considered=2, created=2, failed=0, stopped_on_budget=False)
 
+    def fake_research(_e: object, limit: int) -> SimpleNamespace:
+        calls["order"].append("research")
+        calls["research_limit"] = limit
+        if research_raises:
+            raise RuntimeError("research down")
+        return SimpleNamespace(considered=1, researched=1, needs_more_info=0, failed=0)
+
+    def fake_draft(_e: object, limit: int) -> SimpleNamespace:
+        calls["order"].append("draft")
+        calls["draft_limit"] = limit
+        return SimpleNamespace(considered=1, drafted=1, needs_more_info=0, failed=0)
+
     monkeypatch.setattr(cards_mod, "run", fake_cards)
     monkeypatch.setattr(tick, "run_ingest", fake_ingest)
     monkeypatch.setattr(assess_mod, "run", fake_assess)
+    monkeypatch.setattr(research_mod, "run", fake_research)
+    monkeypatch.setattr(draft_mod, "run", fake_draft)
     return calls
 
 
@@ -132,6 +149,8 @@ def test_bad_args_rejected() -> None:
         ["--assess-limit", "501"],
         ["--cards-limit", "0"],
         ["--cards-limit", "201"],
+        ["--research-limit", "51"],
+        ["--draft-limit", "0"],
     ):
         with pytest.raises(SystemExit):
             tick.parse_args(argv)
@@ -158,7 +177,7 @@ def test_cards_run_after_assess_with_limit(
 ) -> None:
     calls = _setup(monkeypatch, failing=set())
     assert tick.main(["--cards-limit", "7"]) == 0
-    assert calls["order"][-2:] == ["assess", "cards"]
+    assert calls["order"].index("cards") == calls["order"].index("assess") + 1
     assert calls["cards_limit"] == 7
     assert "cards: considered=2 created=2" in capsys.readouterr().out
 
@@ -197,3 +216,36 @@ def test_fake_provider_skips_cards_with_message(
     assert tick.main([]) == 0
     assert calls["cards"] == 0
     assert "cards: skipped (fake provider)" in capsys.readouterr().out
+
+
+def test_research_then_draft_run_last_with_limits(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = _setup(monkeypatch, failing=set())
+    assert tick.main(["--research-limit", "3", "--draft-limit", "4"]) == 0
+    assert calls["order"][-4:] == ["assess", "cards", "research", "draft"]
+    assert (calls["research_limit"], calls["draft_limit"]) == (3, 4)
+    out = capsys.readouterr().out
+    assert "research: considered=1 researched=1" in out
+    assert "draft: considered=1 drafted=1" in out
+
+
+def test_research_failure_still_runs_draft_exit_2(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = _setup(monkeypatch, failing=set(), research_raises=True)
+    assert tick.main([]) == 2
+    assert calls["order"][-1] == "draft"
+    assert "research: FAILED" in capsys.readouterr().out
+
+
+def test_fake_provider_skips_research_and_draft(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls = _setup(monkeypatch, failing=set(), provider="fake")
+    assert tick.main([]) == 0
+    assert "research" not in calls["order"]
+    assert "draft" not in calls["order"]
+    out = capsys.readouterr().out
+    assert "research: skipped (fake provider)" in out
+    assert "draft: skipped (fake provider)" in out

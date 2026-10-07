@@ -1,21 +1,23 @@
 """CLI: ``uv run python -m apps.worker.tick`` (cron entry point).
 
-Ingests every source, then assesses, then builds topic cards. One failing
-source or stage never stops the later ones. Assess and cards are still attempted
-when all sources failed (there may be a backlog).
-Exit codes: 0 = at least one source ingested and assess/cards ok or skipped;
-1 = every source failed (even if assess or cards also failed);
-2 = ingest ok but assess or cards failed.
+Ingests every source, then assesses, builds topic cards, researches accepted
+cards and drafts researched ones. One failing source or stage never stops the
+later ones. The LLM stages are still attempted when all sources failed (there
+may be a backlog).
+Exit codes: 0 = at least one source ingested and every LLM stage ok or skipped;
+1 = every source failed (even if an LLM stage also failed);
+2 = ingest ok but an LLM stage failed.
 """
 
 import argparse
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 
 import httpx
+from sqlalchemy import Engine
 
-from apps.worker import assess, cards
+from apps.worker import assess, cards, draft, research
 from apps.worker._args import MAX_HOURS, bounded_limit, hours, limit
 from signalforge.core.config import get_settings
 from signalforge.core.logging import configure_logging
@@ -33,7 +35,58 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cards-limit", type=bounded_limit(200), default=25, help="max signals to card (1..200)"
     )
+    parser.add_argument(
+        "--research-limit",
+        type=bounded_limit(research.MAX_LIMIT),
+        default=10,
+        help=f"max accepted cards to research (1..{research.MAX_LIMIT})",
+    )
+    parser.add_argument(
+        "--draft-limit",
+        type=bounded_limit(draft.MAX_LIMIT),
+        default=10,
+        help=f"max researched cards to draft (1..{draft.MAX_LIMIT})",
+    )
     return parser.parse_args(argv)
+
+
+def _llm_stages(engine: Engine, args: argparse.Namespace) -> list[tuple[str, Callable[[], str]]]:
+    """LLM stages in pipeline order; each returns its one-line summary."""
+
+    def run_assess() -> str:
+        r = assess.run(engine, args.assess_limit)
+        return (
+            f"considered={r.considered} assessed={r.assessed} relevant={r.relevant} "
+            f"failed={r.failed} stopped_on_budget={r.stopped_on_budget}"
+        )
+
+    def run_cards() -> str:
+        r = cards.run(engine, args.cards_limit)
+        return (
+            f"considered={r.considered} created={r.created} failed={r.failed} "
+            f"stopped_on_budget={r.stopped_on_budget}"
+        )
+
+    def run_research() -> str:
+        r = research.run(engine, args.research_limit)
+        return (
+            f"considered={r.considered} researched={r.researched} "
+            f"needs_more_info={r.needs_more_info} failed={r.failed}"
+        )
+
+    def run_draft() -> str:
+        r = draft.run(engine, args.draft_limit)
+        return (
+            f"considered={r.considered} drafted={r.drafted} "
+            f"needs_more_info={r.needs_more_info} failed={r.failed}"
+        )
+
+    return [
+        ("assess", run_assess),
+        ("cards", run_cards),
+        ("research", run_research),
+        ("draft", run_draft),
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -57,33 +110,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     continue
                 succeeded += 1
                 print(f"{name}: fetched={result.fetched} inserted={result.inserted}")
-        if settings.llm_provider == "fake":
-            log.info("assess skipped: LLM_PROVIDER is fake")
-            print("assess: skipped (fake provider)")
-            log.info("cards skipped: LLM_PROVIDER is fake")
-            print("cards: skipped (fake provider)")
-        else:
+        for name, step in _llm_stages(engine, args):
+            if settings.llm_provider == "fake":
+                log.info("%s skipped: LLM_PROVIDER is fake", name)
+                print(f"{name}: skipped (fake provider)")
+                continue
             try:
-                res = assess.run(engine, args.assess_limit)
-                print(
-                    f"assess: considered={res.considered} assessed={res.assessed} "
-                    f"relevant={res.relevant} failed={res.failed} "
-                    f"stopped_on_budget={res.stopped_on_budget}"
-                )
+                print(f"{name}: {step()}")
             except Exception:
                 stage_failed = True
-                log.exception("assess failed")
-                print("assess: FAILED")
-            try:
-                made = cards.run(engine, args.cards_limit)
-                print(
-                    f"cards: considered={made.considered} created={made.created} "
-                    f"failed={made.failed} stopped_on_budget={made.stopped_on_budget}"
-                )
-            except Exception:
-                stage_failed = True
-                log.exception("cards failed")
-                print("cards: FAILED")
+                log.exception("%s failed", name)
+                print(f"{name}: FAILED")
     finally:
         engine.dispose()
     if not succeeded:

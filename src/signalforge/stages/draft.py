@@ -328,11 +328,12 @@ def run_draft(
         try:
             # Fail fast on a misconfigured role or a shared writer/judge family (FR-08)
             # before any card is touched.
-            _check_families(gateway_factory(session, Budget(BudgetScope.TOPIC, budget_limits)))
+            _check_families(gateway_factory(session, Budget(BudgetScope.ARTICLE, budget_limits)))
             repo = ArticleDraftRepository(session)
             for card, signal, package_row in repo.list_researched_undrafted(limit):
                 considered += 1
-                budget = Budget(BudgetScope.TOPIC, budget_limits)
+                # Writer + judge for one article: the PRD's per-article budget.
+                budget = Budget(BudgetScope.ARTICLE, budget_limits)
                 gateway = gateway_factory(session, budget)
                 template = _template_for(card, signal)
                 try:
