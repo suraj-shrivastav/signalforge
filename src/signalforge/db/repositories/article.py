@@ -60,6 +60,56 @@ class ArticleDraftRepository:
         )
         return [(card, signal, pkg) for card, signal, pkg in self._session.execute(query).all()]
 
+    def list_revisions(
+        self, limit: int
+    ) -> list[tuple[TopicCardRow, Signal, ResearchPackageRow, ArticleDraftRow]]:
+        """Drafts the editor sent back (review_status 'revise'), oldest review first."""
+        query = (
+            select(TopicCardRow, Signal, ResearchPackageRow, ArticleDraftRow)
+            .join(Signal, Signal.id == TopicCardRow.signal_id)
+            .join(ResearchPackageRow, ResearchPackageRow.card_id == TopicCardRow.id)
+            .join(ArticleDraftRow, ArticleDraftRow.card_id == TopicCardRow.id)
+            .where(
+                ArticleDraftRow.review_status == "revise",
+                ResearchPackageRow.status == ResearchStatus.RESEARCHED.value,
+            )
+            .order_by(ArticleDraftRow.reviewed_at.asc(), ArticleDraftRow.id.asc())
+            .limit(limit)
+        )
+        return [tuple(r) for r in self._session.execute(query).all()]
+
+    def replace_revision(
+        self,
+        row: ArticleDraftRow,
+        draft: ArticleDraft,
+        *,
+        cost_usd: Decimal,
+        calls: int,
+        tokens: int,
+    ) -> None:
+        """Swap in a redrafted body, return the draft to the editor and log the redraft.
+
+        The previous summary and the editor's note go to the review log; cost accumulates.
+        """
+        assert draft.draft is not None
+        event = {
+            "type": "redraft",
+            "note": row.review_note,
+            "previous_summary": row.review_summary,
+            "at": datetime.now(UTC).isoformat(),
+        }
+        row.draft = draft.model_dump(mode="json")["draft"]
+        row.status = draft.status.value
+        row.template = draft.template.value
+        row.review_summary = draft.review_summary
+        row.failure_reason = None
+        row.review_status = "pending"
+        row.review_log = [*row.review_log, event]
+        row.cost_usd = row.cost_usd + cost_usd
+        row.calls = row.calls + calls
+        row.tokens = row.tokens + tokens
+        self._session.flush()
+
     def insert(
         self,
         draft: ArticleDraft,

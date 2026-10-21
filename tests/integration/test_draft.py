@@ -17,6 +17,7 @@ from signalforge.core.artifacts.signal import RawSignal
 from signalforge.core.budget import Budget, BudgetLimits
 from signalforge.core.errors import ConfigurationError
 from signalforge.db.models import ArticleDraftRow, StageRun, StageRunStatus, TopicCardRow
+from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.db.repositories.signals import SignalRepository
@@ -219,3 +220,40 @@ def test_failed_draft_records_reason_and_is_retried_only_on_request(db_session: 
     assert redone.status != "failed"
     assert redone.failure_reason is None
     assert db_session.query(ArticleDraftRow).filter_by(card_id=card.id).count() == 1
+
+
+def test_revise_redrafts_with_the_editor_note_and_keeps_the_draft_on_failure(
+    db_session: Session,
+) -> None:
+    card = seed(db_session)
+    run_draft(db_session, factory([writer(), judge(True, True)]), budget_limits=LIMITS)
+    draft = row(db_session, card)
+    first_calls = draft.calls
+    ArticleDraftRepository(db_session).save_review(
+        draft, "revise", "Lead with the benchmark margin", {"type": "review"}
+    )
+
+    assert run_draft(db_session, factory([]), budget_limits=LIMITS, revise=True).considered == 1
+    db_session.expire_all()
+    kept = row(db_session, card)
+    assert (kept.review_status, kept.calls) == ("revise", first_calls)
+
+    provider = FakeProvider([writer(paragraph="Redone."), judge(True, True)])
+
+    def make(session: Session, budget: Budget) -> LLMGateway:
+        roles = {
+            WRITER_ROLE: ModelSpec("acme/w", "acme"),
+            JUDGE_ROLE: ModelSpec("other/j", "other"),
+        }
+        return LLMGateway(provider, roles, budget, session)
+
+    result = run_draft(db_session, make, budget_limits=LIMITS, revise=True)
+    assert (result.considered, result.drafted) == (1, 1)
+    db_session.expire_all()
+    redone = row(db_session, card)
+    assert redone.review_status == "pending"
+    assert redone.calls > first_calls
+    assert redone.review_log[-1]["type"] == "redraft"
+    assert redone.review_log[-1]["note"] == "Lead with the benchmark margin"
+    assert redone.draft["sections"][0]["paragraphs"][0] == "Redone."
+    assert run_draft(db_session, make, budget_limits=LIMITS, revise=True).considered == 0

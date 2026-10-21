@@ -119,7 +119,7 @@ def test_insert_writes_draft_and_totals(db_session: Session) -> None:
     row = db_session.query(ArticleDraftRow).filter_by(card_id=card_id).one()
     assert (row.status, row.template, row.review_summary) == ("drafted", "explainer", "ok")
     assert row.draft["title"] == "Title"
-    assert row.draft["sections"] == [{"heading": "H", "paragraphs": ["P"]}]
+    assert row.draft["sections"] == [{"heading": "H", "citations": [], "paragraphs": ["P"]}]
     assert (row.cost_usd, row.calls, row.tokens) == (Decimal("0.25"), 2, 900)
 
 

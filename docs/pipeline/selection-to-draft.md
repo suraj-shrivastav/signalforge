@@ -572,3 +572,8 @@ sequenceDiagram
   API->>DB: select article_drafts joined to topic_cards and signals
   API-->>UI: status, template, title, claim counts
 ```
+
+
+### Revise
+
+An editor decision of `revise` with a note leaves the draft in review. `python -m apps.worker.draft --revise` redrafts every such draft with the note added to the writer brief, replaces the body, returns it to `pending` and logs a `redraft` event (note and previous summary) in the review log. A failed redraft keeps the editor's version and the `revise` status. Cost, calls and tokens accumulate on the row.

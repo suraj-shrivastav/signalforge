@@ -30,10 +30,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="redraft cards whose draft failed; the failed row is replaced",
     )
+    parser.add_argument(
+        "--revise",
+        action="store_true",
+        help="redraft drafts the editor sent back, using the editor's note",
+    )
     return parser.parse_args(argv)
 
 
-def run(engine: Engine, limit: int, *, retry_failed: bool = False) -> DraftResult:
+def run(
+    engine: Engine, limit: int, *, retry_failed: bool = False, revise: bool = False
+) -> DraftResult:
     """Run one draft pass on ``engine`` (caller owns the engine)."""
     settings = get_settings()
 
@@ -47,6 +54,7 @@ def run(engine: Engine, limit: int, *, retry_failed: bool = False) -> DraftResul
             budget_limits=settings.budget_limits(BudgetScope.ARTICLE),
             limit=limit,
             retry_failed=retry_failed,
+            revise=revise,
         )
 
 
@@ -56,7 +64,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
     engine = create_db_engine(settings, ConnectionMode.SESSION)
     try:
-        result = run(engine, args.limit, retry_failed=args.retry_failed)
+        result = run(engine, args.limit, retry_failed=args.retry_failed, revise=args.revise)
     finally:
         engine.dispose()
     print(
