@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 DRAFT_STAGE = "draft"
 WRITER_ROLE = "article_writer"
 JUDGE_ROLE = "claim_judge"
-PROMPT_VERSION = "draft-v3"
+PROMPT_VERSION = "draft-v4"
 _MAX_REASON_CHARS = 500
 _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 
@@ -97,6 +97,14 @@ Grounding rules (hard requirements, checked by code and by a second model):
 - Do not write a sentence you cannot cite. No uncited transitions, opinions or background.
 - If the claims cannot support the stated minimum length, write fewer words. Never pad.
   A short grounded article is correct; a padded one is rejected.
+
+Structure (for readers and for search and answer engines that quote the top of a page):
+- The dek is the answer first: one sentence stating the main finding with its key number, name
+  or date, taken from the claims. Do not tease; say the finding.
+- Each paragraph opens with its main point, then the supporting detail.
+- Where the claims fit it, phrase a section heading as the question the section answers
+  (for example "What did the benchmark measure?"). Keep a plain heading when a question
+  would be forced.
 
 Style:
 - No em dashes and no en dashes used as dashes; use commas, colons, periods or parentheses.

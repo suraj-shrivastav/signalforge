@@ -103,6 +103,10 @@ def score(result: ArticleDraft) -> dict[str, Any]:
         "number_mismatch": numbers,
         "judge_rejected": rejected,
         "cited_claims": len(body.claims) if body else 0,
+        "dek_has_number": bool(body and re.search(r"\d", body.dek)),
+        "question_headings": sum(sec.heading.rstrip().endswith("?") for sec in body.sections)
+        if body
+        else 0,
         "grounded_rate": round(1 - (uncited + numbers + rejected) / sentences, 3)
         if sentences
         else 0.0,
