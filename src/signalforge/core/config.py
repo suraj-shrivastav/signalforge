@@ -95,6 +95,12 @@ class Settings(BaseSettings):
         "An editor reviewed and approved this article before it was published."
     )
 
+    # Run research then draft in the API process right after an editor accepts a card.
+    # Off by default. The cap counts research packages created in the last 24 hours, so a
+    # burst of accepts cannot spend without limit.
+    auto_pipeline_on_accept: bool = False
+    auto_pipeline_daily_cap: int = Field(default=10, ge=1)
+
     # IndexNow: tells Bing and other participating engines about new or changed URLs.
     # Both must be set (SITE_URL matches the web app's, INDEXNOW_KEY is also served by the web
     # app at /indexnow-key.txt). Leave either empty to turn the ping off.

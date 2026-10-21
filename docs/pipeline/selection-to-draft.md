@@ -577,3 +577,8 @@ sequenceDiagram
 ### Revise
 
 An editor decision of `revise` with a note leaves the draft in review. `python -m apps.worker.draft --revise` redrafts every such draft with the note added to the writer brief, replaces the body, returns it to `pending` and logs a `redraft` event (note and previous summary) in the review log. A failed redraft keeps the editor's version and the `revise` status. Cost, calls and tokens accumulate on the row.
+
+
+### Run on accept
+
+Set `AUTO_PIPELINE_ON_ACCEPT=true` on the API to research and draft right after an editor accepts a card. The accept response returns first; a background task (`apps/api/auto_pipeline.py`) then runs `research` and `draft` for up to 3 cards, one pass at a time. `AUTO_PIPELINE_DAILY_CAP` (default 10) limits research packages created in the last 24 hours; at the cap the pass is skipped and logged. Off by default. This is an in-process stopgap for the job queue (ADR-0003): a restart loses a running pass, and the next accept or `tick` picks the cards up again.
