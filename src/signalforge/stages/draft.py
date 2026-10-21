@@ -36,7 +36,7 @@ from signalforge.core.errors import (
     SignalForgeError,
 )
 from signalforge.core.logging import correlation_id
-from signalforge.db.models import StageRun, StageRunStatus
+from signalforge.db.models import ArticleDraftRow, StageRun, StageRunStatus
 from signalforge.db.models.cards import TopicCardRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
@@ -442,7 +442,9 @@ def run_draft(
     budget_limits: BudgetLimits,
     limit: int = 10,
     retry_failed: bool = False,
+    revise: bool = False,
 ) -> DraftResult:
+    """Draft researched cards. With ``revise``, redraft the ones the editor sent back."""
     started_at = datetime.now(UTC)
     run = StageRun(
         stage=DRAFT_STAGE,
@@ -462,9 +464,15 @@ def run_draft(
             # before any card is touched.
             _check_families(gateway_factory(session, Budget(BudgetScope.ARTICLE, budget_limits)))
             repo = ArticleDraftRepository(session)
-            for card, signal, package_row in repo.list_researched_undrafted(
-                limit, retry_failed=retry_failed
-            ):
+            work: list[tuple[TopicCardRow, Signal, ResearchPackageRow, ArticleDraftRow | None]]
+            if revise:
+                work = list(repo.list_revisions(limit))
+            else:
+                work = [
+                    (c, s, p, None)
+                    for c, s, p in repo.list_researched_undrafted(limit, retry_failed=retry_failed)
+                ]
+            for card, signal, package_row, existing in work:
                 considered += 1
                 # Writer + judge for one article: the PRD's per-article budget.
                 budget = Budget(BudgetScope.ARTICLE, budget_limits)
@@ -472,9 +480,10 @@ def run_draft(
                 template = _template_for(card, signal)
                 failure_reason: str | None = None
                 try:
-                    draft = _process_card(
-                        gateway, _package(package_row), template, run_id, card.suggested_angle
-                    )
+                    brief = card.suggested_angle
+                    if existing is not None:
+                        brief = f"{brief}\nEditor revision request: {existing.review_note}"
+                    draft = _process_card(gateway, _package(package_row), template, run_id, brief)
                 except SignalForgeError as exc:
                     # Same typed text the failed llm_calls row carries; no secrets in it.
                     failure_reason = f"{type(exc).__name__}: {exc}"[:_MAX_REASON_CHARS]
@@ -495,13 +504,24 @@ def run_draft(
                     needs_more_info += 1
                 else:
                     failed += 1
-                repo.insert(
-                    draft,
-                    cost_usd=budget.spent_usd,
-                    calls=budget.calls,
-                    tokens=budget.tokens,
-                    failure_reason=failure_reason,
-                )
+                if existing is not None:
+                    # A failed redraft leaves the editor's version and the revise status alone.
+                    if draft.status is not DraftStatus.FAILED:
+                        repo.replace_revision(
+                            existing,
+                            draft,
+                            cost_usd=budget.spent_usd,
+                            calls=budget.calls,
+                            tokens=budget.tokens,
+                        )
+                else:
+                    repo.insert(
+                        draft,
+                        cost_usd=budget.spent_usd,
+                        calls=budget.calls,
+                        tokens=budget.tokens,
+                        failure_reason=failure_reason,
+                    )
                 session.commit()
             run.status = StageRunStatus.SUCCEEDED
             run.finished_at = datetime.now(UTC)
