@@ -373,3 +373,20 @@ def test_build_gateway_routes_writer_to_writer_endpoint() -> None:
     )
     gw = build_gateway(settings, Recorder(), budget())  # type: ignore[arg-type]
     assert set(gw._role_providers) == {"article_writer"}
+
+
+def test_embed_extra_body_is_sent_with_embedding_requests() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(
+            200, json={"data": [{"embedding": [1.0, 0.0]}], "usage": {"prompt_tokens": 1}}
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = OpenAICompatibleProvider(
+        "https://x.test/v1/", SecretStr("k"), client, embed_extra_body={"input_type": "passage"}
+    )
+    provider.embed("m", ["a"], timeout_s=1)
+    assert json.loads(seen[0].content) == {"model": "m", "input": ["a"], "input_type": "passage"}

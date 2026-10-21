@@ -370,10 +370,17 @@ def _package(row: ResearchPackageRow) -> ResearchPackage:
 def _check_families(gateway: LLMGateway) -> None:
     gateway.model_for(WRITER_ROLE)
     gateway.model_for(JUDGE_ROLE)
-    if gateway.family_for(WRITER_ROLE) == gateway.family_for(JUDGE_ROLE):
+    if gateway.model_for(WRITER_ROLE) == gateway.model_for(JUDGE_ROLE):
         raise ConfigurationError(
-            "Writer and judge roles must use different model families",
-            context={"family": gateway.family_for(WRITER_ROLE)},
+            "Writer and judge roles must use different models",
+            context={"model": gateway.model_for(WRITER_ROLE)},
+        )
+    if gateway.family_for(WRITER_ROLE) == gateway.family_for(JUDGE_ROLE):
+        # Owner decision 2026-10-21: only NVIDIA-hosted Nemotron models are reachable, so a
+        # different model of the same family is accepted. Cross-family is still preferred.
+        log.warning(
+            "writer and judge share a model family; verification is less independent",
+            extra={"family": gateway.family_for(WRITER_ROLE)},
         )
 
 

@@ -112,6 +112,7 @@ class OpenAICompatibleProvider:
         extra_headers: dict[str, str] | None = None,
         extra_body: dict[str, Any] | None = None,
         max_output_tokens: int | None = None,
+        embed_extra_body: dict[str, Any] | None = None,
     ) -> None:
         # Without a cap, routers such as OpenRouter reserve credit for the model's full
         # output window and reject the call, and one runaway reply can blow a budget.
@@ -122,6 +123,7 @@ class OpenAICompatibleProvider:
         self._client = client
         self._extra_headers = extra_headers or {}
         self._extra_body = extra_body or {}
+        self._embed_extra_body = embed_extra_body or {}
 
     def chat(
         self,
@@ -174,7 +176,7 @@ class OpenAICompatibleProvider:
         headers = dict(self._extra_headers)
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
-        body: dict[str, Any] = {"model": model, "input": texts}
+        body: dict[str, Any] = {"model": model, "input": texts, **self._embed_extra_body}
 
         started = time.monotonic()
         try:

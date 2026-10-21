@@ -18,10 +18,11 @@ from signalforge.core.artifacts.research import (
     ResearchStatus,
 )
 from signalforge.core.budget import Budget, BudgetLimits, BudgetScope
+from signalforge.core.errors import ConfigurationError
 from signalforge.llm.gateway import LLMGateway
 from signalforge.llm.providers import FakeProvider, ProviderReply
 from signalforge.llm.roles import ModelSpec
-from signalforge.stages.draft import JUDGE_ROLE, WRITER_ROLE, _process_card
+from signalforge.stages.draft import JUDGE_ROLE, WRITER_ROLE, _check_families, _process_card
 from signalforge.stages.draft_extraction import (
     evidence_window,
     sentence_problems,
@@ -202,3 +203,26 @@ def test_evidence_window_is_bounded_and_falls_back_to_the_quote() -> None:
     assert len(window) <= len(SPAN) + 40
     orphan = ResearchClaim(text="x", evidence_span="not in doc", document_indices=(0,))
     assert evidence_window(orphan, pkg.documents) == "not in doc"
+
+
+def _gateway(writer_model: str, judge_model: str) -> LLMGateway:
+    def family(model: str) -> str:
+        return model.split("/")[0]
+
+    roles = {
+        WRITER_ROLE: ModelSpec(writer_model, family(writer_model)),
+        JUDGE_ROLE: ModelSpec(judge_model, family(judge_model)),
+    }
+    budget = Budget(BudgetScope.ARTICLE, BudgetLimits(max_cost_usd=Decimal("1")))
+    return LLMGateway(FakeProvider([]), roles, budget, Recorder())  # type: ignore[arg-type]
+
+
+def test_writer_and_judge_must_be_different_models() -> None:
+    with pytest.raises(ConfigurationError):
+        _check_families(_gateway("nvidia/a", "nvidia/a"))
+
+
+def test_same_family_different_model_is_allowed(caplog: pytest.LogCaptureFixture) -> None:
+    _check_families(_gateway("nvidia/big", "nvidia/small"))
+    assert "share a model family" in caplog.text
+    _check_families(_gateway("nvidia/big", "google/small"))
