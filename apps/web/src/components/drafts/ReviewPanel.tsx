@@ -4,6 +4,7 @@ import {
   fetchEditorDraft,
   postDraftAction,
   publishDraft,
+  unpublishArticle,
   type DraftFlag,
   type EditorDraft,
 } from "@/lib/api";
@@ -43,6 +44,17 @@ export function ReviewPanel({ draft, editorKey, onUpdated }: Props) {
     setError("");
     try {
       await publishDraft(draft.card_id, analysis, editorKey);
+      const fresh = await fetchEditorDraft(draft.card_id, editorKey);
+      if (fresh) onUpdated(fresh);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed.");
+    }
+  }
+
+  async function unpublish(slug: string) {
+    setError("");
+    try {
+      await unpublishArticle(slug, editorKey);
       const fresh = await fetchEditorDraft(draft.card_id, editorKey);
       if (fresh) onUpdated(fresh);
     } catch (err) {
@@ -133,12 +145,17 @@ export function ReviewPanel({ draft, editorKey, onUpdated }: Props) {
         </div>
       )}
       {draft.published_slug && (
-        <p className="mt-4 text-small">
-          Published:{" "}
-          <a href={`/articles/${draft.published_slug}`} className="underline">
-            /articles/{draft.published_slug}
-          </a>
-        </p>
+        <div className="mt-4 space-y-2">
+          <p className="text-small">
+            Published:{" "}
+            <a href={`/articles/${draft.published_slug}`} className="underline">
+              /articles/{draft.published_slug}
+            </a>
+          </p>
+          <Button onClick={() => unpublish(draft.published_slug!)}>
+            Unpublish
+          </Button>
+        </div>
       )}
       {error && (
         <p role="alert" className="mt-2 text-small text-ink">

@@ -105,6 +105,34 @@ describe("ReviewPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("unpublishes a published article through the proxy and refreshes", async () => {
+    const calls: string[] = [];
+    const onUpdated = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return url.endsWith("/unpublish")
+          ? Response.json({ slug: "my-article", status: "unpublished" })
+          : Response.json({ ...draft, review_status: "approved" });
+      }),
+    );
+    render(
+      <ReviewPanel
+        draft={{
+          ...draft,
+          review_status: "approved",
+          published_slug: "my-article",
+        }}
+        editorKey="k"
+        onUpdated={onUpdated}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Unpublish" }));
+    await vi.waitFor(() => expect(onUpdated).toHaveBeenCalled());
+    expect(calls[0]).toBe("/api/editor/articles/my-article/unpublish");
+  });
+
   it("hides the controls once the draft is decided", () => {
     render(
       <ReviewPanel
