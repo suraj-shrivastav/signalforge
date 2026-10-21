@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     )
     # Secondary-source search for the research stage. Unset: no Tavily lookups.
     tavily_api_key: SecretStr | None = None
+    # Optional separate endpoint for the article writer only (e.g. NVIDIA's OpenAI-compatible
+    # API); every other role keeps using llm_base_url.
+    llm_writer_base_url: str | None = None
+    llm_writer_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("llm_writer_api_key", "LLM_WRITER_API_KEY", "NVIDIA_API"),
+    )
+    llm_timeout_article_writer_s: float = Field(default=180.0, gt=0)
     llm_model_relevance: str = "openai/gpt-4o-mini"
     llm_model_topic_card: str = "openai/gpt-4o-mini"
     llm_model_research_extraction: str = "openai/gpt-4o-mini"
@@ -73,6 +81,9 @@ class Settings(BaseSettings):
     # Output cap sent as max_tokens on every chat call. Reasoning models spend part of it
     # thinking before the reply, so it leaves room for that plus a 1000-word draft as JSON.
     llm_max_output_tokens: int = Field(default=16_384, ge=1)
+    # Writer cap. Routers such as OpenRouter reject a call (402) when the account cannot
+    # afford the full cap, so a 250 to 1000 word JSON article gets a tight one.
+    llm_max_output_tokens_article_writer: int = Field(default=6_000, ge=1)
 
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.

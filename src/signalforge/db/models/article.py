@@ -32,6 +32,8 @@ class ArticleDraftRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersionM
         JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     review_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Why the card failed (typed error text, no secrets); NULL unless status is 'failed'.
+    failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal("0"), server_default=text("0")
     )

@@ -48,28 +48,22 @@ def factory(
     return make
 
 
-def writer(claims: list[dict[str, Any]], paragraph: str = FILLER) -> str:
+def writer(extra: list[dict[str, Any]] | None = None, paragraph: str = FILLER) -> str:
+    """A reply whose every sentence cites research claim 0, plus optional extra sentences."""
+    body = [{"text": paragraph, "claim_ids": [0]}, *(extra or [])]
     return json.dumps(
         {
             "title": "A model beats the prior best",
-            "dek": "What the new results show.",
-            "sections": [{"heading": "The short version", "paragraphs": [paragraph]}],
-            "claims": claims,
+            "dek": {"text": "What the new results show.", "claim_ids": [0]},
+            "sections": [{"heading": "The short version", "paragraphs": [{"sentences": body}]}],
             "cover_alt": "Benchmark chart",
         }
     )
 
 
 def judge(*supported: bool) -> str:
-    return json.dumps({"claims": [{"index": i, "supported": s} for i, s in enumerate(supported)]})
-
-
-def claim(span: str = SPAN) -> dict[str, Any]:
-    return {
-        "text": "The model beats the prior best.",
-        "evidence_span": span,
-        "document_indices": [0],
-    }
+    verdicts = [{"index": i, "supported": v} for i, v in enumerate(supported)]
+    return json.dumps({"sentences": verdicts})
 
 
 def seed(session: Session) -> TopicCardRow:
@@ -133,7 +127,7 @@ def row(session: Session, card: TopicCardRow) -> ArticleDraftRow:
 
 def test_clean_draft_is_drafted_with_verified_claim(db_session: Session) -> None:
     card = seed(db_session)
-    result = run_draft(db_session, factory([writer([claim()]), judge(True)]), budget_limits=LIMITS)
+    result = run_draft(db_session, factory([writer(), judge(True, True)]), budget_limits=LIMITS)
     assert (result.considered, result.drafted) == (1, 1)
     draft = row(db_session, card)
     assert (draft.status, draft.template) == ("drafted", "explainer")
@@ -142,28 +136,29 @@ def test_clean_draft_is_drafted_with_verified_claim(db_session: Session) -> None
     assert draft.calls == 2
 
 
-def test_span_check_failure_marks_claim_unverified(db_session: Session) -> None:
+def test_uncited_sentence_needs_more_info(db_session: Session) -> None:
     card = seed(db_session)
-    replies = [writer([claim(), claim("not in the document")]), judge(True, True)]
+    extra = [{"text": "It is free for everyone.", "claim_ids": []}]
+    replies = [writer(extra), judge(True, True)]
     result = run_draft(db_session, factory(replies), budget_limits=LIMITS)
-    assert result.drafted == 1
+    assert result.needs_more_info == 1
     draft = row(db_session, card)
-    assert [c["status"] for c in draft.draft["claims"]] == ["verified", "unverified"]
-    assert "quote was not found" in draft.review_summary
+    assert draft.status == "needs_more_info"
+    assert "uncited sentence: 'It is free for everyone.'" in draft.review_summary
 
 
 def test_judge_disagreement_marks_claim_uncertain(db_session: Session) -> None:
     card = seed(db_session)
-    replies = [writer([claim(), claim()]), judge(True, False)]
-    run_draft(db_session, factory(replies), budget_limits=LIMITS)
+    run_draft(db_session, factory([writer(), judge(True, False)]), budget_limits=LIMITS)
     draft = row(db_session, card)
-    assert [c["status"] for c in draft.draft["claims"]] == ["verified", "uncertain"]
-    assert "judge does not confirm" in draft.review_summary
+    assert draft.status == "needs_more_info"
+    assert [c["status"] for c in draft.draft["claims"]] == ["uncertain"]
+    assert "judge does not confirm sentence" in draft.review_summary
 
 
 def test_publish_gate_failure_needs_more_info(db_session: Session) -> None:
     card = seed(db_session)
-    replies = [writer([claim()], paragraph=FILLER + " \u2014 aside"), judge(True)]
+    replies = [writer(paragraph=FILLER + " \u2014 aside"), judge(True, True)]
     result = run_draft(db_session, factory(replies), budget_limits=LIMITS)
     assert result.needs_more_info == 1
     draft = row(db_session, card)
@@ -175,7 +170,7 @@ def test_publish_gate_failure_needs_more_info(db_session: Session) -> None:
 def test_budget_exhausted_mid_card_fails_with_empty_draft(db_session: Session) -> None:
     card = seed(db_session)
     limits = BudgetLimits(max_cost_usd=Decimal("1"), max_calls=1)
-    result = run_draft(db_session, factory([writer([claim()]), judge(True)]), budget_limits=limits)
+    result = run_draft(db_session, factory([writer(), judge(True, True)]), budget_limits=limits)
     assert result.failed == 1
     draft = row(db_session, card)
     assert (draft.status, draft.draft, draft.calls) == ("failed", {}, 1)
@@ -195,3 +190,28 @@ def test_same_family_roles_fail_fast_before_any_card(db_session: Session) -> Non
     )
     assert latest is not None
     assert latest.status == StageRunStatus.FAILED
+
+
+def test_failed_draft_records_reason_and_is_retried_only_on_request(db_session: Session) -> None:
+    card = seed(db_session)
+    run_draft(db_session, factory([]), budget_limits=LIMITS)  # no queued reply: provider error
+    failed = row(db_session, card)
+    assert failed.status == "failed"
+    assert failed.failure_reason is not None
+    assert failed.failure_reason.startswith("ProviderRejectedError:")
+
+    plain = run_draft(db_session, factory([writer(), judge(True, True)]), budget_limits=LIMITS)
+    assert plain.considered == 0
+
+    retried = run_draft(
+        db_session,
+        factory([writer(), judge(True, True)]),
+        budget_limits=LIMITS,
+        retry_failed=True,
+    )
+    assert retried.considered == 1
+    db_session.expire_all()
+    redone = row(db_session, card)
+    assert redone.status != "failed"
+    assert redone.failure_reason is None
+    assert db_session.query(ArticleDraftRow).filter_by(card_id=card.id).count() == 1

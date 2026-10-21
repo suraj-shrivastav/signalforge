@@ -17,6 +17,7 @@ from signalforge.core.errors import (
     ArtifactValidationError,
     BudgetExceededError,
     ProviderRejectedError,
+    ProviderUnavailableError,
 )
 from signalforge.db.models import LLMCall
 from signalforge.llm.gateway import LLMGateway, build_gateway
@@ -245,3 +246,130 @@ def test_a_third_provider_plugs_in_by_registration_alone() -> None:
     )
     assert out.score == 3
     assert rec.rows[0].provider == "dummy"
+
+
+def test_failed_provider_attempts_are_recorded_per_attempt() -> None:
+    class Rejects:
+        name = "p"
+
+        def chat(self, *a: Any, **k: Any) -> ProviderReply:
+            raise ProviderRejectedError(
+                "LLM provider rejected the request", context={"status": 402}
+            )
+
+    rec = Recorder()
+    b = budget()
+    with pytest.raises(ProviderRejectedError):
+        ask(gateway(Rejects(), rec, b))
+
+    (row,) = rec.rows
+    assert row.succeeded is False
+    assert row.model == "m/x"
+    assert row.error is not None
+    assert row.error.startswith("ProviderRejectedError:")
+    assert "402" in row.error
+    assert b.calls == 0
+
+
+def test_every_retried_attempt_gets_a_row() -> None:
+    class Down:
+        name = "p"
+
+        def chat(self, *a: Any, **k: Any) -> ProviderReply:
+            raise ProviderUnavailableError("down")
+
+    rec = Recorder()
+    with pytest.raises(ProviderUnavailableError):
+        ask(gateway(Down(), rec))
+    assert len(rec.rows) == 3
+    assert not any(r.succeeded for r in rec.rows)
+
+
+def test_truncated_reply_fails_without_a_repair_retry() -> None:
+    class Cut:
+        name = "p"
+        calls = 0
+
+        def chat(self, *a: Any, **k: Any) -> ProviderReply:
+            self.calls += 1
+            return ProviderReply('{"score":', 10, 6000, 5, finish_reason="length")
+
+    provider = Cut()
+    rec = Recorder()
+    with pytest.raises(ArtifactValidationError, match="truncated"):
+        ask(gateway(provider, rec))
+    assert provider.calls == 1
+    assert rec.rows[0].succeeded is False
+    assert rec.rows[0].error == "output truncated at token cap"
+
+
+def test_role_cap_is_sent_to_the_provider() -> None:
+    seen: list[dict[str, Any]] = []
+
+    class Spy:
+        name = "p"
+
+        def chat(self, *a: Any, **k: Any) -> ProviderReply:
+            seen.append(k)
+            return ProviderReply(GOOD, 1, 1, 1)
+
+    ask(gateway(Spy(), Recorder(), max_output_tokens=6000))
+    ask(gateway(Spy(), Recorder()))
+    assert seen[0]["max_tokens"] == 6000
+    assert "max_tokens" not in seen[1]
+
+
+def test_http_role_cap_overrides_global_cap_and_finish_reason_is_read() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(req)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": GOOD}, "finish_reason": "length"}],
+                "usage": {},
+            },
+        )
+
+    reply = http_provider(handler, max_output_tokens=16_384).chat(
+        "m", [], json_mode=True, timeout_s=1, max_tokens=6000
+    )
+    assert json.loads(seen[0].content)["max_tokens"] == 6000
+    assert reply.finish_reason == "length"
+
+
+def test_writer_role_uses_its_own_provider_and_timeout() -> None:
+    seen: list[tuple[str, float]] = []
+
+    class Named:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def chat(self, *a: Any, timeout_s: float, **k: Any) -> ProviderReply:
+            seen.append((self.name, timeout_s))
+            return ProviderReply(GOOD, 1, 1, 1)
+
+    roles = {"w": ModelSpec("n/x", "n", timeout_s=180.0), "o": ModelSpec("m/x", "m")}
+    gw = LLMGateway(
+        Named("main"),  # type: ignore[arg-type]
+        roles,
+        budget(),
+        Recorder(),  # type: ignore[arg-type]
+        role_providers={"w": Named("writer")},  # type: ignore[dict-item]
+    )
+    for role in ("w", "o"):
+        gw.complete_json(role=role, system="s", user="u", schema=Out, stage_run_id=RUN)
+    assert seen == [("writer", 180.0), ("main", 60.0)]
+
+
+def test_build_gateway_routes_writer_to_writer_endpoint() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        database_url="postgresql://u:p@h/db",  # type: ignore[arg-type]
+        llm_provider="fake",
+        llm_writer_base_url="https://nv.test/v1",
+        llm_writer_api_key="k",  # type: ignore[arg-type]
+    )
+    gw = build_gateway(settings, Recorder(), budget())  # type: ignore[arg-type]
+    assert set(gw._role_providers) == {"article_writer"}

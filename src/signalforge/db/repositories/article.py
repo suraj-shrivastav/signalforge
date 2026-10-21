@@ -1,11 +1,11 @@
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from signalforge.core.artifacts.article import ArticleDraft
+from signalforge.core.artifacts.article import ArticleDraft, DraftStatus
 from signalforge.core.artifacts.research import ResearchStatus
 from signalforge.db.models.article import ArticleDraftRow
 from signalforge.db.models.cards import TopicCardRow
@@ -18,9 +18,12 @@ class ArticleDraftRepository:
         self._session = session
 
     def list_researched_undrafted(
-        self, limit: int
+        self, limit: int, *, retry_failed: bool = False
     ) -> list[tuple[TopicCardRow, Signal, ResearchPackageRow]]:
         """Cards with a 'researched' package and no article_drafts row.
+
+        With ``retry_failed``, a 'failed' row does not count as drafted, and ``insert``
+        replaces it. Other statuses are never reselected.
 
         Keyed on the package status, not the latest editor decision: research only ran
         because the card was accepted, and a finished package is what drafting needs.
@@ -28,6 +31,8 @@ class ArticleDraftRepository:
         Ordered oldest card first, id as a deterministic tie-break.
         """
         drafted = select(ArticleDraftRow.card_id)
+        if retry_failed:
+            drafted = drafted.where(ArticleDraftRow.status != DraftStatus.FAILED.value)
         query = (
             select(TopicCardRow, Signal, ResearchPackageRow)
             .join(Signal, Signal.id == TopicCardRow.signal_id)
@@ -41,27 +46,40 @@ class ArticleDraftRepository:
         )
         return [(card, signal, pkg) for card, signal, pkg in self._session.execute(query).all()]
 
-    def insert(self, draft: ArticleDraft, *, cost_usd: Decimal, calls: int, tokens: int) -> bool:
+    def insert(
+        self,
+        draft: ArticleDraft,
+        *,
+        cost_usd: Decimal,
+        calls: int,
+        tokens: int,
+        failure_reason: str | None = None,
+    ) -> bool:
         """Insert an article_drafts row derived from ``draft``.
 
-        ON CONFLICT (card_id) DO NOTHING. A missing body is stored as ``{}``.
+        ON CONFLICT (card_id) a 'failed' row is replaced by the retry; any other row is
+        left alone. A missing body is stored as ``{}``.
         """
         dumped = draft.model_dump(mode="json")
+        values = {
+            "schema_version": draft.schema_version,
+            "status": draft.status.value,
+            "template": draft.template.value,
+            "draft": dumped["draft"] or {},
+            "review_summary": draft.review_summary,
+            "failure_reason": failure_reason,
+            "cost_usd": cost_usd,
+            "calls": calls,
+            "tokens": tokens,
+        }
         statement = (
             insert(ArticleDraftRow)
-            .values(
-                id=draft.id,
-                schema_version=draft.schema_version,
-                card_id=draft.card_id,
-                status=draft.status.value,
-                template=draft.template.value,
-                draft=dumped["draft"] or {},
-                review_summary=draft.review_summary,
-                cost_usd=cost_usd,
-                calls=calls,
-                tokens=tokens,
+            .values(id=draft.id, card_id=draft.card_id, **values)
+            .on_conflict_do_update(
+                index_elements=["card_id"],
+                set_={**values, "updated_at": func.now()},
+                where=ArticleDraftRow.status == DraftStatus.FAILED.value,
             )
-            .on_conflict_do_nothing(index_elements=["card_id"])
             .returning(ArticleDraftRow.id)
         )
         return self._session.execute(statement).first() is not None

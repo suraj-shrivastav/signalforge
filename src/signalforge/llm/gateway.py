@@ -1,25 +1,33 @@
 """The one door to an LLM. Stages ask for a role and a schema; nothing else."""
 
 import logging
+import time
 import uuid
 from decimal import Decimal
 
+import httpx
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from signalforge.core.budget import Budget
 from signalforge.core.config import Settings
-from signalforge.core.errors import ArtifactValidationError, ConfigurationError
+from signalforge.core.errors import ArtifactValidationError, ConfigurationError, SignalForgeError
 from signalforge.core.logging import log_llm_call
 from signalforge.core.retry import call_with_retry
 from signalforge.db.models import LLMCall
-from signalforge.llm.providers import EmbeddingReply, LLMProvider, ProviderReply
+from signalforge.llm.providers import (
+    EmbeddingReply,
+    LLMProvider,
+    OpenAICompatibleProvider,
+    ProviderReply,
+)
 from signalforge.llm.registry import get_provider
 from signalforge.llm.roles import ModelSpec, RoleMap, build_roles
 
 log = logging.getLogger(__name__)
 
 TIMEOUT_S = 60.0
+_MAX_ERROR_CHARS = 500
 _MILLION = Decimal(1_000_000)
 
 
@@ -45,9 +53,16 @@ def _embed_cost(spec: ModelSpec, reply: EmbeddingReply) -> Decimal:
 
 class LLMGateway:
     def __init__(
-        self, provider: LLMProvider, roles: RoleMap, budget: Budget, session: Session
+        self,
+        provider: LLMProvider,
+        roles: RoleMap,
+        budget: Budget,
+        session: Session,
+        *,
+        role_providers: dict[str, LLMProvider] | None = None,
     ) -> None:
         self._provider = provider
+        self._role_providers = role_providers or {}
         self._roles = roles
         self._budget = budget
         self._session = session
@@ -83,7 +98,14 @@ class LLMGateway:
         error = ""
         for attempt in (1, 2):
             self._budget.check()
-            reply = self._chat(spec, messages)
+            reply = self._chat(role, spec, messages, stage_run_id)
+            if reply.finish_reason == "length":
+                # A repair retry at the same cap would be cut off again, so fail now.
+                self._record(role, spec, reply, stage_run_id, "output truncated at token cap")
+                raise ArtifactValidationError(
+                    "LLM output truncated at the output token cap",
+                    context={"role": role, "output_tokens": reply.output_tokens},
+                )
             try:
                 result = schema.model_validate_json(reply.text)
             except ValidationError as exc:
@@ -137,11 +159,52 @@ class LLMGateway:
         )
         return reply.vectors
 
-    def _chat(self, spec: ModelSpec, messages: list[dict[str, str]]) -> ProviderReply:
-        return call_with_retry(
-            lambda: self._provider.chat(
-                spec.model_id, messages, json_mode=True, timeout_s=TIMEOUT_S
+    def _chat(
+        self, role: str, spec: ModelSpec, messages: list[dict[str, str]], stage_run_id: uuid.UUID
+    ) -> ProviderReply:
+        # Only sent when the role has its own cap, so other providers keep the old call shape.
+        extra = {} if spec.max_output_tokens is None else {"max_tokens": spec.max_output_tokens}
+        provider = self._role_providers.get(role, self._provider)
+        timeout_s = spec.timeout_s or TIMEOUT_S
+
+        def attempt() -> ProviderReply:
+            started = time.monotonic()
+            try:
+                return provider.chat(
+                    spec.model_id, messages, json_mode=True, timeout_s=timeout_s, **extra
+                )
+            except SignalForgeError as exc:
+                self._record_failure(role, spec, stage_run_id, exc, started)
+                raise
+
+        return call_with_retry(attempt)
+
+    def _record_failure(
+        self,
+        role: str,
+        spec: ModelSpec,
+        stage_run_id: uuid.UUID,
+        exc: SignalForgeError,
+        started: float,
+    ) -> None:
+        """One failed-attempt row. Error text is the typed error, which never holds secrets."""
+        latency_ms = int((time.monotonic() - started) * 1000)
+        error = f"{type(exc).__name__}: {exc}"[:_MAX_ERROR_CHARS]
+        self._session.add(
+            LLMCall(
+                stage_run_id=stage_run_id,
+                role=role,
+                provider=self._provider.name,
+                model=spec.model_id,
+                model_family=spec.family,
+                latency_ms=latency_ms,
+                succeeded=False,
+                error=error,
             )
+        )
+        log.warning(
+            "llm attempt failed",
+            extra={"role": role, "model": spec.model_id, "latency_ms": latency_ms, "error": error},
         )
 
     def _record(
@@ -185,4 +248,18 @@ class LLMGateway:
 
 
 def build_gateway(settings: Settings, session: Session, budget: Budget) -> LLMGateway:
-    return LLMGateway(get_provider(settings), build_roles(settings), budget, session)
+    role_providers: dict[str, LLMProvider] = {}
+    if settings.llm_writer_base_url:
+        role_providers["article_writer"] = OpenAICompatibleProvider(
+            settings.llm_writer_base_url,
+            settings.llm_writer_api_key,
+            httpx.Client(),
+            max_output_tokens=settings.llm_max_output_tokens_article_writer,
+        )
+    return LLMGateway(
+        get_provider(settings),
+        build_roles(settings),
+        budget,
+        session,
+        role_providers=role_providers,
+    )

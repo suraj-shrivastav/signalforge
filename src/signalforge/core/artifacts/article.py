@@ -35,6 +35,15 @@ class ArticleSection(BaseModel):
 
     heading: str = Field(min_length=1)
     paragraphs: tuple[Annotated[str, Field(min_length=1)], ...] = Field(min_length=1)
+    # Per paragraph, indices into ``ArticleBody.claims`` that its sentences rest on.
+    # Empty on drafts written before sentence-level grounding (schema v1).
+    citations: tuple[tuple[Annotated[int, Field(ge=0)], ...], ...] = ()
+
+    @model_validator(mode="after")
+    def _citations_align(self) -> Self:
+        if self.citations and len(self.citations) != len(self.paragraphs):
+            raise ValueError("citations must have one entry per paragraph")
+        return self
 
 
 class ArticleClaim(BaseModel):
@@ -81,7 +90,7 @@ class ArticleBody(BaseModel):
 
 
 class ArticleDraft(Artifact):
-    SCHEMA_VERSION: ClassVar[int] = 1
+    SCHEMA_VERSION: ClassVar[int] = 2
 
     card_id: UUID
     status: DraftStatus = DraftStatus.DRAFTING

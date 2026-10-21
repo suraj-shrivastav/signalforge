@@ -30,6 +30,8 @@ class ProviderReply:
     latency_ms: int
     # Set only when the provider reports what the call cost.
     cost_usd: Decimal | None = None
+    # Why generation stopped ('stop', 'length', ...); 'length' means the reply was cut off.
+    finish_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class LLMProvider(Protocol):
         *,
         json_mode: bool,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ProviderReply: ...
 
     def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply: ...
@@ -73,6 +76,7 @@ class FakeProvider:
         *,
         json_mode: bool,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ProviderReply:
         if not self._replies:
             raise ProviderRejectedError("FakeProvider has no queued replies")
@@ -126,6 +130,7 @@ class OpenAICompatibleProvider:
         *,
         json_mode: bool,
         timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ProviderReply:
         headers = dict(self._extra_headers)
         if self._api_key is not None:
@@ -133,8 +138,9 @@ class OpenAICompatibleProvider:
         body: dict[str, Any] = {"model": model, "messages": messages}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        if self._max_output_tokens is not None:
-            body["max_tokens"] = self._max_output_tokens
+        cap = max_tokens if max_tokens is not None else self._max_output_tokens
+        if cap is not None:
+            body["max_tokens"] = cap
         body.update(self._extra_body)
 
         started = time.monotonic()
@@ -216,12 +222,14 @@ class OpenAICompatibleProvider:
             text = data["choices"][0]["message"]["content"]
             usage = data.get("usage") or {}
             cost = usage.get("cost")
+            finish = data["choices"][0].get("finish_reason")
             return ProviderReply(
                 text=str(text),
                 input_tokens=int(usage.get("prompt_tokens", 0)),
                 output_tokens=int(usage.get("completion_tokens", 0)),
                 latency_ms=latency_ms,
                 cost_usd=Decimal(str(cost)) if cost is not None else None,
+                finish_reason=str(finish) if finish is not None else None,
             )
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderUnavailableError("LLM provider returned a malformed reply") from exc

@@ -127,6 +127,7 @@ class ArticleDraftOut(BaseModel):
     template: Literal["news_brief", "explainer", "paper_breakdown", "comparison"]
     draft: ArticleBody | None
     review_summary: str
+    failure_reason: str | None = None
     cost_usd: Decimal
     calls: int
     tokens: int
