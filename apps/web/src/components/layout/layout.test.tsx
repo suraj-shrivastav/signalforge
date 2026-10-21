@@ -62,7 +62,7 @@ describe("public layout", () => {
 
 describe("feed.xml", () => {
   it("returns an Atom feed", async () => {
-    const res = GET();
+    const res = await GET();
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("application/atom+xml");
     const doc = new DOMParser().parseFromString(
