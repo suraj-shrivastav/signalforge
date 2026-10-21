@@ -1,15 +1,14 @@
-export const dynamic = "force-static";
+import { fetchPublicArticlesSafe } from "@/lib/public";
+import { atomFeed } from "@/lib/seo";
+import { siteUrl } from "@/lib/site";
 
-const FEED = `<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>SignalForge</title>
-  <id>urn:signalforge:feed</id>
-  <updated>1970-01-01T00:00:00Z</updated>
-</feed>
-`;
+// Read at request time: SITE_URL and the article list are not known at build. The fetch
+// data cache (5 minutes) keeps API load low.
+export const dynamic = "force-dynamic";
 
-export function GET(): Response {
-  return new Response(FEED, {
+export async function GET(): Promise<Response> {
+  const items = await fetchPublicArticlesSafe(50);
+  return new Response(atomFeed(items, siteUrl()), {
     headers: { "Content-Type": "application/atom+xml; charset=utf-8" },
   });
 }

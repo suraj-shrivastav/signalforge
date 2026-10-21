@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
+import { siteUrl } from "@/lib/site";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 const inter = Inter({
@@ -16,8 +17,11 @@ const sourceSerif = Source_Serif_4({
 });
 
 export const metadata: Metadata = {
-  title: "SignalForge",
-  description: "Latest signals",
+  metadataBase: new URL(siteUrl()),
+  title: { default: "SignalForge", template: "%s | SignalForge" },
+  description:
+    "Short, sourced write-ups on new AI releases, research and tools.",
+  alternates: { types: { "application/atom+xml": "/feed.xml" } },
 };
 
 export default function RootLayout({
