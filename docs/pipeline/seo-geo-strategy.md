@@ -219,4 +219,5 @@ Secondary, vendor material (used only for the landscape and flagged above): the 
 - **Set `SITE_URL`** in production. It drives canonical URLs, sitemaps and the feed (default `http://localhost:3000`).
 - Found while testing against real article data: pages that read `SITE_URL` or the article list must be dynamic, not prerendered at build, or the sitemap and feed ship empty with localhost URLs. The fetch cache (5 minutes) keeps API load low.
 - **Built (draft-v4):** the writer states the finding with its key number in the dek, opens paragraphs with the main point and uses question headings where they fit. Golden set, two runs: dek carries a number in 4 of 4 drafts; question headings appear in 2 of 4 (the others keep plain headings by design). Grounding rates stayed in the same range (0.74 to 1.0, judge is noisy).
-- **Not built yet:** IndexNow ping, cover image pipeline (until covers exist, pages omit `image`), citation probes and bot-visit logging, `llms.txt`.
+- **Built:** IndexNow ping on publish (`signalforge/indexnow.py`, key served at `/indexnow-key.txt`). Set `SITE_URL` and `INDEXNOW_KEY` on the API and `INDEXNOW_KEY` on the web app. Best effort, background.
+- **Not built yet:** cover image pipeline (until covers exist, pages omit `image`), citation probes and bot-visit logging, `llms.txt`.

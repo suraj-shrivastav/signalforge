@@ -95,6 +95,12 @@ class Settings(BaseSettings):
         "An editor reviewed and approved this article before it was published."
     )
 
+    # IndexNow: tells Bing and other participating engines about new or changed URLs.
+    # Both must be set (SITE_URL matches the web app's, INDEXNOW_KEY is also served by the web
+    # app at /indexnow-key.txt). Leave either empty to turn the ping off.
+    site_url: str = ""
+    indexnow_key: str = ""
+
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.
     budget_per_topic_usd: Decimal = Decimal("0.50")
