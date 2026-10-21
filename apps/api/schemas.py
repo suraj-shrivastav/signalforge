@@ -143,6 +143,7 @@ class ArticleDraftSummaryOut(BaseModel):
     title: str
     signal_title: str
     claim_counts: dict[str, int]
+    flag_count: int = 0
     created_at: datetime
 
 

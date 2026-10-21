@@ -28,6 +28,27 @@ class ArticleTemplate(StrEnum):
     COMPARISON = "comparison"
 
 
+class FlagKind(StrEnum):
+    """Why a sentence needs the editor's attention."""
+
+    UNCITED = "uncited"
+    NUMBER = "number"
+    UNSUPPORTED = "unsupported"
+
+
+class ArticleFlag(BaseModel):
+    """One sentence the checks could not ground. ``section`` and ``paragraph`` locate it;
+    -1 for both means the dek."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    section: int = Field(ge=-1)
+    paragraph: int = Field(ge=-1)
+    text: str = Field(min_length=1)
+    kind: FlagKind
+    detail: str = ""
+
+
 class ArticleSection(BaseModel):
     """One titled section; same shape the web draft preview renders."""
 
@@ -87,6 +108,8 @@ class ArticleBody(BaseModel):
     claims: tuple[ArticleClaim, ...] = ()
     sources: tuple[ArticleSource, ...] = ()
     cover: ArticleCover
+    # Sentences the checks could not ground. Empty on drafts written before flagging.
+    flags: tuple[ArticleFlag, ...] = ()
 
 
 class ArticleDraft(Artifact):

@@ -1,7 +1,7 @@
 import { Prose } from "@/components/layout/Prose";
 import { Tag } from "@/components/ui/Tag";
 import { CoverImage } from "@/components/ui/CoverImage";
-import type { ArticleTemplate, EditorDraft } from "@/lib/api";
+import type { ArticleTemplate, DraftFlag, EditorDraft } from "@/lib/api";
 import { safeHref } from "@/lib/format";
 
 const TEMPLATE_NAMES: Record<ArticleTemplate, string> = {
@@ -10,6 +10,39 @@ const TEMPLATE_NAMES: Record<ArticleTemplate, string> = {
   paper_breakdown: "Paper breakdown",
   comparison: "Comparison",
 };
+
+const FLAG_LABELS: Record<DraftFlag["kind"], string> = {
+  uncited: "No claim cited",
+  number: "Number not in the cited claims",
+  unsupported: "The judge does not confirm this",
+};
+
+// Marks each flagged sentence inside its paragraph so the editor sees what to check.
+function FlaggedText({ text, flags }: { text: string; flags: DraftFlag[] }) {
+  const hits = flags
+    .map((flag) => ({ flag, at: text.indexOf(flag.text) }))
+    .filter((hit) => hit.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const { flag, at } of hits) {
+    if (at < cursor) continue;
+    if (at > cursor) parts.push(text.slice(cursor, at));
+    parts.push(
+      <mark
+        key={at}
+        data-flag={flag.kind}
+        title={`${FLAG_LABELS[flag.kind]}. ${flag.detail}`}
+        className="bg-sunken underline decoration-wavy decoration-accent"
+      >
+        {flag.text}
+      </mark>,
+    );
+    cursor = at + flag.text.length;
+  }
+  parts.push(text.slice(cursor));
+  return <>{parts}</>;
+}
 
 type Props = {
   draft: EditorDraft;
@@ -36,7 +69,19 @@ export function ArticlePreview({ draft }: Props) {
       </p>
       <Tag>{TEMPLATE_NAMES[draft.template]}</Tag>
       <h1>{article.title}</h1>
-      <p>{article.dek}</p>
+      {article.flags.length > 0 && (
+        <p role="status" className="text-small">
+          {article.flags.length} flagged{" "}
+          {article.flags.length === 1 ? "sentence needs" : "sentences need"}{" "}
+          your check (highlighted).
+        </p>
+      )}
+      <p>
+        <FlaggedText
+          text={article.dek}
+          flags={article.flags.filter((f) => f.section === -1)}
+        />
+      </p>
       <CoverImage
         slug={draft.card_id}
         alt={article.cover.alt}
@@ -46,7 +91,14 @@ export function ArticlePreview({ draft }: Props) {
         <Prose key={index}>
           <h2>{section.heading}</h2>
           {section.paragraphs.map((paragraph, p) => (
-            <p key={p}>{paragraph}</p>
+            <p key={p}>
+              <FlaggedText
+                text={paragraph}
+                flags={article.flags.filter(
+                  (f) => f.section === index && f.paragraph === p,
+                )}
+              />
+            </p>
           ))}
         </Prose>
       ))}

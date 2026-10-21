@@ -322,6 +322,14 @@ export type DraftCover = {
   alt: string;
   credit: string | null;
 };
+export type FlagKind = "uncited" | "number" | "unsupported";
+export type DraftFlag = {
+  section: number; // -1 for the dek
+  paragraph: number;
+  text: string;
+  kind: FlagKind;
+  detail: string;
+};
 export type ArticleBody = {
   title: string;
   dek: string;
@@ -329,6 +337,7 @@ export type ArticleBody = {
   claims: DraftClaim[];
   sources: DraftSource[];
   cover: DraftCover;
+  flags: DraftFlag[];
 };
 export type EditorDraft = {
   card_id: string;
@@ -358,9 +367,33 @@ function isOneOf<T extends string>(options: readonly T[], v: unknown): v is T {
   return isString(v) && (options as readonly string[]).includes(v);
 }
 
+const FLAG_KINDS: readonly string[] = ["uncited", "number", "unsupported"];
+
+// Older drafts have no flags; anything malformed is dropped rather than failing the page.
+function parseFlags(value: unknown): DraftFlag[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((f: unknown) =>
+    isRecord(f) &&
+    isNumber(f.section) &&
+    isNumber(f.paragraph) &&
+    isString(f.text) &&
+    isOneOf(FLAG_KINDS, f.kind)
+      ? [
+          {
+            section: f.section,
+            paragraph: f.paragraph,
+            text: f.text,
+            kind: f.kind as FlagKind,
+            detail: isString(f.detail) ? f.detail : "",
+          },
+        ]
+      : [],
+  );
+}
+
 function parseBody(value: unknown): ArticleBody {
   if (!isRecord(value)) throw badDraft();
-  const { title, dek, sections, claims, sources, cover } = value;
+  const { title, dek, sections, claims, sources, cover, flags } = value;
   if (
     !isString(title) ||
     !isString(dek) ||
@@ -407,6 +440,7 @@ function parseBody(value: unknown): ArticleBody {
       alt: cover.alt,
       credit: isString(cover.credit) ? cover.credit : null,
     },
+    flags: parseFlags(flags),
   };
 }
 

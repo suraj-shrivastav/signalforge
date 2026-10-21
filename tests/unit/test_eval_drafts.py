@@ -10,9 +10,11 @@ from signalforge.core.artifacts.article import (
     ArticleBody,
     ArticleCover,
     ArticleDraft,
+    ArticleFlag,
     ArticleSection,
     ArticleTemplate,
     DraftStatus,
+    FlagKind,
 )
 from signalforge.core.artifacts.research import (
     ResearchClaim,
@@ -65,23 +67,23 @@ def test_trim_keeps_quotes_and_drops_distant_text() -> None:
     assert span_documents(cited, trimmed.documents) == frozenset({0})
 
 
-def test_score_counts_problems_from_the_review_summary() -> None:
+def test_score_counts_flags_by_kind() -> None:
+    flags = tuple(
+        ArticleFlag(section=0, paragraph=0, text=f"s{i}", kind=kind)
+        for i, kind in enumerate([FlagKind.UNCITED, FlagKind.NUMBER, FlagKind.UNSUPPORTED])
+    )
     body = ArticleBody(
         title="T",
         dek="One two three.",
         sections=(ArticleSection(heading="H", paragraphs=("Alpha beta. Gamma delta.",)),),
         cover=ArticleCover(alt="a"),
+        flags=flags,
     )
     result = ArticleDraft(
         card_id=uuid.uuid4(),
-        status=DraftStatus.NEEDS_MORE_INFO,
+        status=DraftStatus.DRAFTED,
         template=ArticleTemplate.NEWS_BRIEF,
         draft=body,
-        review_summary=(
-            "Publish gate: uncited sentence: 'x'.\n"
-            "Publish gate: number(s) 9 not in the cited claims: 'y'.\n"
-            "Publish gate: judge does not confirm sentence: 'z'."
-        ),
     )
     metrics = score(result)
     assert (metrics["uncited"], metrics["number_mismatch"], metrics["judge_rejected"]) == (1, 1, 1)

@@ -250,3 +250,22 @@ describe("fetchEditorDraft", () => {
     expect(await fetchEditorDraft(ID, "k")).toBeNull();
   });
 });
+
+describe("parseEditorDraft flags", () => {
+  it("keeps valid flags and tolerates old drafts without any", () => {
+    const withFlags = parseEditorDraft({
+      ...DRAFT,
+      draft: {
+        ...DRAFT.draft,
+        flags: [
+          { section: 0, paragraph: 0, text: "x", kind: "number", detail: "d" },
+          { section: "bad", text: 1 },
+        ],
+      },
+    });
+    expect(withFlags.draft?.flags).toEqual([
+      { section: 0, paragraph: 0, text: "x", kind: "number", detail: "d" },
+    ]);
+    expect(parseEditorDraft(DRAFT).draft?.flags).toEqual([]);
+  });
+});

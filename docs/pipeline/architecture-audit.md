@@ -238,3 +238,23 @@ What the baseline says:
 2. **Number mismatches persist (3 to 4 per card).** The writer states numbers that are not in its cited claims' windows. Worth a prompt example and a post-write auto-repair.
 3. **The judge needs strengthening** before it is trusted to publish: add an explicit "does the sentence assert anything the evidence does not" instruction and re-measure the 33 percent false accept rate on this probe.
 4. One run per card is noisy (Kumo had 3 judge rejections in the live run and 17 here). Use repeated runs before concluding a prompt change helped.
+
+## 13. Contract change: flag, do not block (2026-10-21)
+
+Decision: a sentence the checks cannot ground is kept and flagged for the editor instead of failing the whole draft.
+
+- `ArticleBody.flags` lists each flagged sentence with its section and paragraph (`-1` is the dek), a kind (`uncited`, `number`, `unsupported`) and a detail. `ArticleDraft` schema stays v2, the field defaults to empty so older drafts load.
+- Status: `drafted` means the draft has a body, at least one verified or supported claim, and at most half of its sentences flagged. `needs_more_info` means no usable claim or more than half flagged (`MAX_FLAGGED_SHARE`).
+- Em dashes and spaced en dashes are fixed in code (replaced with commas) instead of failing the gate. The length band, banned phrases and title numbers are notes in the review summary, not blocks.
+- API: `flag_count` on the drafts list. Editor preview marks flagged sentences inline with the reason on hover.
+
+Golden set after the change (same writer and judge, one run per card, `eval-flagged-2026-10-21.json`):
+
+| Card | Status | Words | Flagged (number / judge) | Grounded rate |
+| --- | --- | --- | --- | --- |
+| 4a2a1491 Granite | drafted | 679 (in band) | 3 / 2 | 0.80 |
+| 6b8541d2 Kumo | drafted | 642 | 0 / 2 | 0.94 |
+| b84beb7f EmbeddingGemma | drafted | 568 | 0 / 3 | 0.89 |
+| f5b9e7e5 Nemotron IMO/IOI | drafted | 502 | 2 / 1 | 0.88 |
+
+Before, all four were `needs_more_info`. Caveat: the judge is noisy (Kumo had 17 judge rejections in the earlier run and 2 here), so these counts are not stable across runs. The next step is the review screen: edit a flagged sentence, resolve or delete it, then approve.

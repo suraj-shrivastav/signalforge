@@ -32,6 +32,7 @@ LENGTH_BANDS: dict[ArticleTemplate, tuple[int, int]] = {
 }
 
 _EM_DASH = "\u2014"
+_EM_DASH_RUN = re.compile(r"\s*\u2014\s*")
 # An en dash between spaces is a dash; inside "2020\u20132024" it is a range and allowed.
 _EN_DASH_AS_DASH = re.compile(r"\s\u2013\s")
 # First-person/experiential and AI-authorship phrasing (2026-09-27 style rules).
@@ -233,3 +234,8 @@ def evidence_window(
         if at >= 0:
             return text[max(0, at - radius) : at + len(span) + radius]
     return span
+
+
+def fix_dashes(text: str) -> str:
+    """Replace em dashes, and en dashes used as dashes, with commas (house style)."""
+    return _EN_DASH_AS_DASH.sub(", ", _EM_DASH_RUN.sub(", ", text))

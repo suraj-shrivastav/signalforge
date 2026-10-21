@@ -21,10 +21,12 @@ from signalforge.core.artifacts.article import (
     ArticleClaim,
     ArticleCover,
     ArticleDraft,
+    ArticleFlag,
     ArticleSection,
     ArticleSource,
     ArticleTemplate,
     DraftStatus,
+    FlagKind,
 )
 from signalforge.core.artifacts.research import ClaimStatus, ResearchPackage
 from signalforge.core.budget import Budget, BudgetLimits, BudgetScope
@@ -47,6 +49,7 @@ from signalforge.stages.draft_extraction import (
     build_review_summary,
     claim_support,
     evidence_window,
+    fix_dashes,
     independent_sources,
     publish_gate,
     select_template,
@@ -188,7 +191,7 @@ def _sources(package: ResearchPackage) -> tuple[ArticleSource, ...]:
 
 def _clean(sentence: _WriterSentence, claim_count: int) -> _Sentence:
     ids = tuple(sorted({i for i in sentence.claim_ids if i < claim_count}))
-    return _Sentence(unescape(sentence.text).strip(), ids)
+    return _Sentence(fix_dashes(unescape(sentence.text)).strip(), ids)
 
 
 def _judge(
@@ -220,6 +223,10 @@ def _judge(
     return {verdict.index: verdict.supported for verdict in reply.sentences}
 
 
+# A draft with more than this share of flagged sentences is too ungrounded to review.
+MAX_FLAGGED_SHARE = 0.5
+
+
 def _process_card(
     gateway: LLMGateway,
     package: ResearchPackage,
@@ -227,6 +234,12 @@ def _process_card(
     run_id: uuid.UUID,
     brief: str = "",
 ) -> ArticleDraft:
+    """Write, ground-check and judge one article.
+
+    Sentences that fail a check are kept and flagged for the editor rather than blocking
+    the draft. Only a draft with no usable claim, or mostly flagged sentences, is
+    ``needs_more_info``.
+    """
     reply = gateway.complete_json(
         role=WRITER_ROLE,
         system=_WRITER_SYSTEM,
@@ -236,27 +249,44 @@ def _process_card(
     )
     count = len(package.claims)
     dek = _clean(reply.dek, count)
-    paragraphs = [
-        [_clean(sent, count) for sent in para.sentences if sent.text.strip()]
+    # Body in reading order as (heading, [paragraph sentences]); empty paragraphs dropped
+    # so section and paragraph indices match the stored body.
+    structure = [
+        (
+            unescape(section.heading).strip(),
+            [
+                sents
+                for para in section.paragraphs
+                if (sents := [_clean(x, count) for x in para.sentences if x.text.strip()])
+            ],
+        )
         for section in reply.sections
-        for para in section.paragraphs
     ]
     # Sentence order shared with the judge: dek first, then body in reading order.
-    flat = [dek, *(sent for para in paragraphs for sent in para)]
-    problems: list[str] = []
+    flat = [dek]
+    where = [(-1, -1)]
+    for s_index, (_, paragraphs) in enumerate(structure):
+        for p_index, para in enumerate(paragraphs):
+            flat.extend(para)
+            where.extend([(s_index, p_index)] * len(para))
+
+    problems: dict[int, tuple[FlagKind, str]] = {}
     notes: list[str] = []
-    for sent in flat:
+    for index, sent in enumerate(flat):
         support = claim_support(package.claims, sent.ids, package.documents)
-        problems.extend(sentence_problems(sent.text, sent.ids, support))
+        found = sentence_problems(sent.text, sent.ids, support)
+        if found:
+            kind = FlagKind.UNCITED if not sent.ids else FlagKind.NUMBER
+            problems[index] = (kind, found[0])
         names = unfamiliar_names(sent.text, support) if sent.ids else []
         if names:
             notes.append(f"names not in the cited claims ({', '.join(names)}): '{sent.text[:80]}'")
-    title = unescape(reply.title).strip()
+    title = fix_dashes(unescape(reply.title)).strip()
     everything = range(count)
-    for problem in sentence_problems(
-        title, everything, claim_support(package.claims, everything, package.documents)
-    ):
-        problems.append(f"title: {problem}")
+    title_support = claim_support(package.claims, everything, package.documents)
+    notes.extend(
+        f"title: {problem}" for problem in sentence_problems(title, everything, title_support)
+    )
 
     # Article claims are the research claims the sentences cite, copied verbatim (the
     # writer never supplies a quote), so every claim already passed the research span check.
@@ -270,33 +300,41 @@ def _process_card(
         )
         for i in used
     )
+    verdicts = _judge(gateway, run_id, package, flat)
+    for index, sent in enumerate(flat):
+        if sent.ids and not verdicts.get(index, False) and index not in problems:
+            problems[index] = (FlagKind.UNSUPPORTED, "the judge does not confirm it")
+
+    flags = tuple(
+        ArticleFlag(
+            section=where[index][0],
+            paragraph=where[index][1],
+            text=flat[index].text,
+            kind=kind,
+            detail=detail,
+        )
+        for index, (kind, detail) in sorted(problems.items())
+        if flat[index].text
+    )
     try:
-        cursor = 1
-        sections: list[ArticleSection] = []
-        for section in reply.sections:
-            texts: list[str] = []
-            cited: list[tuple[int, ...]] = []
-            for _ in section.paragraphs:
-                para = paragraphs[cursor - 1]
-                cursor += 1
-                if not para:
-                    continue
-                texts.append(" ".join(sent.text for sent in para))
-                cited.append(tuple(sorted({position[i] for sent in para for i in sent.ids})))
-            sections.append(
-                ArticleSection(
-                    heading=unescape(section.heading).strip(),
-                    paragraphs=tuple(texts),
-                    citations=tuple(cited),
-                )
-            )
         body = ArticleBody(
             title=title,
             dek=dek.text,
-            sections=tuple(sections),
+            sections=tuple(
+                ArticleSection(
+                    heading=heading,
+                    paragraphs=tuple(" ".join(sent.text for sent in para) for para in paragraphs),
+                    citations=tuple(
+                        tuple(sorted({position[i] for sent in para for i in sent.ids}))
+                        for para in paragraphs
+                    ),
+                )
+                for heading, paragraphs in structure
+            ),
             claims=claims,
             sources=_sources(package),
-            cover=ArticleCover(alt=unescape(reply.cover_alt).strip()),
+            cover=ArticleCover(alt=fix_dashes(unescape(reply.cover_alt)).strip()),
+            flags=flags,
         )
     except ValidationError as exc:
         # Blank-after-unescape fields pass the reply schema but not the artifact.
@@ -304,10 +342,6 @@ def _process_card(
             "writer output is not a valid article body", context={"errors": exc.error_count()}
         ) from exc
 
-    verdicts = _judge(gateway, run_id, package, flat)
-    for index, sent in enumerate(flat):
-        if sent.ids and not verdicts.get(index, False):
-            problems.append(f"judge does not confirm sentence: '{sent.text[:80]}'")
     checks: list[ClaimCheck] = []
     for research_index, claim in zip(used, body.claims, strict=True):
         span_docs = span_documents(claim, package.documents)
@@ -330,18 +364,27 @@ def _process_card(
             )
         )
     body = body.model_copy(update={"claims": tuple(check.claim for check in checks)})
-    failures = [*publish_gate(body, template), *problems]
+
+    failures = publish_gate(body, template)
+    blocked: list[str] = []
     if not any(check.claim.status in _GOOD for check in checks):
-        failures.append("no claim reached verified or supported")
-    status = DraftStatus.NEEDS_MORE_INFO if failures else DraftStatus.DRAFTED
+        blocked.append("no claim reached verified or supported")
+    if len(problems) / len(flat) > MAX_FLAGGED_SHARE:
+        blocked.append(f"{len(problems)} of {len(flat)} sentences are flagged")
+    flag_lines = [
+        f"Flagged ({flag.kind.value}): '{flag.text[:80]}'. {flag.detail}" for flag in flags
+    ]
+    summary = build_review_summary(checks, [*failures, *blocked], [*flag_lines, *notes])
+    if flags:
+        summary = f"{len(flags)} of {len(flat)} sentences flagged for the editor.\n{summary}"
     return ArticleDraft(
         card_id=package.card_id,
         produced_by=run_id,
         parent_ids=(package.card_id, package.id),
-        status=status,
+        status=DraftStatus.NEEDS_MORE_INFO if blocked else DraftStatus.DRAFTED,
         template=template,
         draft=body,
-        review_summary=build_review_summary(checks, failures, notes),
+        review_summary=summary,
     )
 
 

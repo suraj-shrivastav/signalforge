@@ -37,6 +37,7 @@ const draft: EditorDraft = {
       { label: "unsafe", url: "javascript:alert(1)" },
     ],
     cover: { src: null, alt: "Chart", credit: null },
+    flags: [],
   },
 };
 
@@ -76,6 +77,32 @@ describe("ArticlePreview", () => {
       <ArticlePreview draft={{ ...draft, status: "failed", draft: null }} />,
     );
     expect(screen.getByText("Drafting failed.")).toBeInTheDocument();
+  });
+
+  it("marks flagged sentences inline", () => {
+    render(
+      <ArticlePreview
+        draft={{
+          ...draft,
+          draft: {
+            ...draft.draft!,
+            flags: [
+              {
+                section: 0,
+                paragraph: 0,
+                text: "First paragraph.",
+                kind: "uncited",
+                detail: "uncited sentence",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+    const mark = screen.getByText("First paragraph.");
+    expect(mark.tagName).toBe("MARK");
+    expect(mark).toHaveAttribute("data-flag", "uncited");
+    expect(screen.getByRole("status")).toHaveTextContent("1 flagged sentence");
   });
 
   it("shows why a draft failed", () => {
