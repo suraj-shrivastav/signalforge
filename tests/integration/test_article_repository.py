@@ -181,3 +181,23 @@ def test_failed_draft_is_replaced_only_on_retry(db_session: Session) -> None:
     row = db_session.query(ArticleDraftRow).filter_by(card_id=card_id).one()
     assert (row.status, row.failure_reason, row.calls) == ("drafted", None, 2)
     assert not repo.insert(failed, cost_usd=Decimal("0"), calls=0, tokens=0)
+
+
+def test_review_decision_and_edit_log_persist(db_session: Session) -> None:
+    card_id = seed_researched(db_session, "https://example.com/a-review", ResearchStatus.RESEARCHED)
+    repo = ArticleDraftRepository(db_session)
+    assert repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=0, tokens=0)
+    row = repo.get(card_id)
+    assert row is not None
+    assert (row.review_status, row.review_note, row.review_log) == ("pending", "", [])
+    edited = ArticleBody.model_validate(row.draft).model_copy(update={"dek": "New dek"})
+    repo.save_edit(row, edited, {"type": "edit", "before": "Dek", "after": "New dek"})
+    repo.save_review(row, "approved", "ok", {"type": "review", "decision": "approved"})
+    db_session.expire_all()
+    stored = repo.get(card_id)
+    assert stored is not None
+    assert stored.draft["dek"] == "New dek"
+    assert (stored.review_status, stored.review_note) == ("approved", "ok")
+    assert stored.reviewed_at is not None
+    assert [e["type"] for e in stored.review_log] == ["edit", "review"]
+    assert all("at" in e for e in stored.review_log)

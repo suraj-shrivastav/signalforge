@@ -258,3 +258,14 @@ Golden set after the change (same writer and judge, one run per card, `eval-flag
 | f5b9e7e5 Nemotron IMO/IOI | drafted | 502 | 2 / 1 | 0.88 |
 
 Before, all four were `needs_more_info`. Caveat: the judge is noisy (Kumo had 17 judge rejections in the earlier run and 2 here), so these counts are not stable across runs. The next step is the review screen: edit a flagged sentence, resolve or delete it, then approve.
+
+## 14. Editor review (2026-10-21)
+
+Minimal review flow, deliberately plain (UI refinement is a later phase):
+
+- `article_drafts` gains `review_status` (`pending`, `approved`, `revise`, `rejected`), `review_note`, `reviewed_at` and `review_log` (migration 0010). Every edit and decision is appended to the log with a timestamp.
+- `POST /editor/drafts/{id}/sentence` replaces or deletes one flagged sentence and clears its flag. The editor owns the new text and it is not re-checked for grounding. Em dashes are fixed. The dek can be replaced, not deleted.
+- `POST /editor/drafts/{id}/review` records `approved`, `revise` or `rejected` with a note. Approval needs status `drafted` and no remaining flags. `approved` and `rejected` are final: no further edits or decisions through the API.
+- Console: a plain panel under the preview lists each flagged sentence with a text box, Save and Delete, plus a note box and the three decision buttons. Approve stays disabled while flags remain.
+- Verified against the real schema in a rolled-back transaction: edit persists and logs, decision rules hold, the live row was unchanged afterwards.
+- Not built: acting on `revise` (re-draft with the note), publishing, and what `approved` triggers next.

@@ -128,10 +128,31 @@ class ArticleDraftOut(BaseModel):
     draft: ArticleBody | None
     review_summary: str
     failure_reason: str | None = None
+    review_status: Literal["pending", "approved", "revise", "rejected"] = "pending"
+    review_note: str = ""
+    reviewed_at: datetime | None = None
     cost_usd: Decimal
     calls: int
     tokens: int
     created_at: datetime
+
+
+class SentenceEditIn(BaseModel):
+    """Replace (or delete, when ``replacement`` is null) one sentence of a draft."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    section: int = Field(ge=-1)  # -1 is the dek
+    paragraph: int = Field(ge=-1)
+    text: str = Field(min_length=1, max_length=2000)
+    replacement: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approved", "revise", "rejected"]
+    note: str = Field(default="", max_length=2000)
 
 
 class ArticleDraftSummaryOut(BaseModel):
@@ -144,6 +165,7 @@ class ArticleDraftSummaryOut(BaseModel):
     signal_title: str
     claim_counts: dict[str, int]
     flag_count: int = 0
+    review_status: Literal["pending", "approved", "revise", "rejected"] = "pending"
     created_at: datetime
 
 

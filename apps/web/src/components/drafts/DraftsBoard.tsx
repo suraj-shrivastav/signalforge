@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { ArticlePreview } from "@/components/triage/ArticlePreview";
+import { ReviewPanel } from "@/components/drafts/ReviewPanel";
 
 type ListState =
   | { kind: "idle" }
@@ -121,6 +122,11 @@ export function DraftsBoard() {
             {open ? (
               <Card className="p-6">
                 <ArticlePreview draft={open} />
+                <ReviewPanel
+                  draft={open}
+                  editorKey={editorKey}
+                  onUpdated={setOpen}
+                />
               </Card>
             ) : (
               <p className="text-small text-muted">Pick a draft to read it.</p>

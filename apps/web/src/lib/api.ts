@@ -339,6 +339,14 @@ export type ArticleBody = {
   cover: DraftCover;
   flags: DraftFlag[];
 };
+export type ReviewStatus = "pending" | "approved" | "revise" | "rejected";
+const REVIEW_STATUSES: readonly string[] = [
+  "pending",
+  "approved",
+  "revise",
+  "rejected",
+];
+
 export type EditorDraft = {
   card_id: string;
   status: DraftStatus;
@@ -346,6 +354,8 @@ export type EditorDraft = {
   draft: ArticleBody | null;
   review_summary: string;
   failure_reason: string | null;
+  review_status: ReviewStatus;
+  review_note: string;
 };
 
 const DRAFT_STATUSES: readonly string[] = [
@@ -446,8 +456,16 @@ function parseBody(value: unknown): ArticleBody {
 
 export function parseEditorDraft(json: unknown): EditorDraft {
   if (!isRecord(json)) throw badDraft();
-  const { card_id, status, template, draft, review_summary, failure_reason } =
-    json;
+  const {
+    card_id,
+    status,
+    template,
+    draft,
+    review_summary,
+    failure_reason,
+    review_status,
+    review_note,
+  } = json;
   if (
     !isString(card_id) ||
     !isOneOf(DRAFT_STATUSES, status) ||
@@ -464,6 +482,10 @@ export function parseEditorDraft(json: unknown): EditorDraft {
     review_summary,
     // Older API responses omit it; anything but a string is treated as absent.
     failure_reason: isString(failure_reason) ? failure_reason : null,
+    review_status: isOneOf(REVIEW_STATUSES, review_status)
+      ? (review_status as ReviewStatus)
+      : "pending",
+    review_note: isString(review_note) ? review_note : "",
   };
 }
 
@@ -542,4 +564,28 @@ export async function fetchDraftList(
   });
   if (!response.ok) throw await errorFromResponse(response);
   return parseDraftList(await response.json());
+}
+
+// Edit one sentence or record a review decision. Returns the updated draft.
+export async function postDraftAction(
+  cardId: string,
+  action: "sentence" | "review",
+  payload: Record<string, unknown>,
+  editorKey: string,
+): Promise<EditorDraft> {
+  const response = await fetch(
+    `/api/editor/drafts/${encodeURIComponent(cardId)}/${action}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Editor-Key": editorKey,
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+  return parseEditorDraft(await response.json());
 }

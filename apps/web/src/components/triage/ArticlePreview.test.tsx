@@ -11,6 +11,8 @@ const draft: EditorDraft = {
   template: "paper_breakdown",
   review_summary: "Single source. Claim 1 (supported): Second claim",
   failure_reason: null,
+  review_status: "pending",
+  review_note: "",
   draft: {
     title: "A smaller model matches a larger one",
     dek: "What the paper reports.",
