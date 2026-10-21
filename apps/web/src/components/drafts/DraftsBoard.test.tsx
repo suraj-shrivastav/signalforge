@@ -28,6 +28,7 @@ const DRAFT = {
     claims: [],
     sources: [],
     cover: { src: null, alt: "Alt", credit: null },
+    flags: [],
   },
 };
 

@@ -138,15 +138,17 @@ def test_clean_draft_is_drafted_with_verified_claim(db_session: Session) -> None
     assert draft.calls == 2
 
 
-def test_uncited_sentence_needs_more_info(db_session: Session) -> None:
+def test_uncited_sentence_is_flagged_and_stored(db_session: Session) -> None:
     card = seed(db_session)
     extra = [{"text": "It is free for everyone.", "claim_ids": []}]
     replies = [writer(extra), judge(True, True)]
     result = run_draft(db_session, factory(replies), budget_limits=LIMITS)
-    assert result.needs_more_info == 1
+    assert result.drafted == 1
     draft = row(db_session, card)
-    assert draft.status == "needs_more_info"
-    assert "uncited sentence: 'It is free for everyone.'" in draft.review_summary
+    assert draft.status == "drafted"
+    (flag,) = draft.draft["flags"]
+    assert (flag["kind"], flag["text"]) == ("uncited", "It is free for everyone.")
+    assert "1 of 3 sentences flagged" in draft.review_summary
 
 
 def test_judge_disagreement_marks_claim_uncertain(db_session: Session) -> None:
@@ -155,18 +157,16 @@ def test_judge_disagreement_marks_claim_uncertain(db_session: Session) -> None:
     draft = row(db_session, card)
     assert draft.status == "needs_more_info"
     assert [c["status"] for c in draft.draft["claims"]] == ["uncertain"]
-    assert "judge does not confirm sentence" in draft.review_summary
+    assert [f["kind"] for f in draft.draft["flags"]] == ["unsupported"]
 
 
-def test_publish_gate_failure_needs_more_info(db_session: Session) -> None:
+def test_em_dash_is_fixed_not_blocking(db_session: Session) -> None:
     card = seed(db_session)
     replies = [writer(paragraph=FILLER + " \u2014 aside"), judge(True, True)]
     result = run_draft(db_session, factory(replies), budget_limits=LIMITS)
-    assert result.needs_more_info == 1
+    assert result.drafted == 1
     draft = row(db_session, card)
-    assert draft.status == "needs_more_info"
-    assert draft.draft["title"]
-    assert "Publish gate: contains an em dash" in draft.review_summary
+    assert "\u2014" not in json.dumps(draft.draft, ensure_ascii=False)
 
 
 def test_budget_exhausted_mid_card_fails_with_empty_draft(db_session: Session) -> None:

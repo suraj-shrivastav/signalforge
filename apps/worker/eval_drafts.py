@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from signalforge.core.artifacts.article import ArticleDraft, ArticleTemplate
+from signalforge.core.artifacts.article import ArticleDraft, ArticleTemplate, FlagKind
 from signalforge.core.artifacts.research import ResearchPackage
 from signalforge.core.budget import Budget, BudgetScope
 from signalforge.core.config import get_settings
@@ -81,8 +81,6 @@ def load_fixtures(directory: Path = GOLDEN_DIR) -> list[dict[str, Any]]:
 
 def score(result: ArticleDraft) -> dict[str, Any]:
     """Deterministic metrics for one draft, read from the draft and its review summary."""
-    summary = result.review_summary
-    lines = summary.splitlines()
     body = result.draft
     low, high = LENGTH_BANDS[result.template]
     words = word_count(body) if body else 0
@@ -91,9 +89,10 @@ def score(result: ArticleDraft) -> dict[str, Any]:
         if body
         else 0
     )
-    uncited = sum("uncited sentence" in line for line in lines)
-    numbers = sum("not in the cited claims" in line for line in lines)
-    rejected = sum("judge does not confirm" in line for line in lines)
+    flags = body.flags if body else ()
+    uncited = sum(f.kind is FlagKind.UNCITED for f in flags)
+    numbers = sum(f.kind is FlagKind.NUMBER for f in flags)
+    rejected = sum(f.kind is FlagKind.UNSUPPORTED for f in flags)
     return {
         "status": result.status.value,
         "template": result.template.value,

@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from signalforge.core.artifacts.article import ArticleTemplate, DraftStatus
+from signalforge.core.artifacts.article import ArticleTemplate, DraftStatus, FlagKind
 from signalforge.core.artifacts.research import (
     ClaimStatus,
     ResearchClaim,
@@ -108,41 +108,67 @@ def test_grounded_article_is_drafted_with_cited_claim_copied_from_research() -> 
     assert draft.draft.sections[0].citations == ((0,),)
 
 
-def test_uncited_sentence_blocks_the_draft() -> None:
+def test_uncited_sentence_is_flagged_but_the_draft_still_reaches_the_editor() -> None:
     body = [*BODY, sentence("It is open source and free for everyone.", [])]
     draft = run([writer(body), all_true()])
-    assert draft.status is DraftStatus.NEEDS_MORE_INFO
-    assert "uncited sentence: 'It is open source" in draft.review_summary
+    assert draft.status is DraftStatus.DRAFTED
+    assert draft.draft is not None
+    (flag,) = draft.draft.flags
+    assert (flag.kind, flag.section, flag.paragraph) == (FlagKind.UNCITED, 0, 0)
+    assert flag.text == "It is open source and free for everyone."
+    assert "1 of 30 sentences flagged" in draft.review_summary
+    assert "Flagged (uncited)" in draft.review_summary
 
 
 def test_unknown_claim_id_counts_as_uncited() -> None:
     body = [*BODY, sentence("Nemotron scored 535.4 out of 600.", [7])]
     draft = run([writer(body), all_true()])
-    assert draft.status is DraftStatus.NEEDS_MORE_INFO
-    assert "uncited sentence" in draft.review_summary
+    assert draft.draft is not None
+    assert [f.kind for f in draft.draft.flags] == [FlagKind.UNCITED]
 
 
-def test_invented_number_blocks_the_draft() -> None:
+def test_invented_number_is_flagged() -> None:
     body = [*BODY, sentence("Nemotron scored 612 out of 600 at the contest.", [0])]
     draft = run([writer(body), all_true()])
-    assert draft.status is DraftStatus.NEEDS_MORE_INFO
-    assert "number(s) 612 not in the cited claims" in draft.review_summary
+    assert draft.draft is not None
+    (flag,) = draft.draft.flags
+    assert flag.kind is FlagKind.NUMBER
+    assert "612" in flag.detail
 
 
-def test_invented_number_in_title_blocks_the_draft() -> None:
+def test_invented_number_in_title_is_noted_for_the_editor() -> None:
     draft = run([writer(title="Nemotron beats 99 rivals"), all_true()])
-    assert draft.status is DraftStatus.NEEDS_MORE_INFO
+    assert draft.status is DraftStatus.DRAFTED
     assert "title: number(s) 99" in draft.review_summary
 
 
-def test_judge_rejection_blocks_the_draft_and_marks_the_claim_uncertain() -> None:
+def test_judge_rejection_flags_the_sentence_and_marks_the_claim_uncertain() -> None:
     verdicts = [True] * 29
     verdicts[3] = False
     draft = run([writer(), judge(*verdicts)])
-    assert draft.status is DraftStatus.NEEDS_MORE_INFO
-    assert "judge does not confirm sentence" in draft.review_summary
     assert draft.draft is not None
+    assert [f.kind for f in draft.draft.flags] == [FlagKind.UNSUPPORTED]
     assert draft.draft.claims[0].status is ClaimStatus.UNCERTAIN
+    # The only claim is uncertain, so nothing in the draft is usable.
+    assert draft.status is DraftStatus.NEEDS_MORE_INFO
+    assert "no claim reached verified or supported" in draft.review_summary
+
+
+def test_mostly_flagged_draft_is_blocked() -> None:
+    body = [sentence(f"Invented fact number {i} about nothing.", []) for i in range(30)]
+    draft = run([writer(body), all_true()])
+    assert draft.status is DraftStatus.NEEDS_MORE_INFO
+    assert "sentences are flagged" in draft.review_summary
+
+
+def test_dashes_are_fixed_instead_of_failing_the_gate() -> None:
+    body = [*BODY, sentence("Nemotron scored 535.4 \u2014 above the threshold.", [0])]
+    draft = run([writer(body), all_true(30)])
+    assert draft.status is DraftStatus.DRAFTED
+    assert draft.draft is not None
+    text = " ".join(p for sec in draft.draft.sections for p in sec.paragraphs)
+    assert "\u2014" not in text
+    assert "535.4, above the threshold." in text
 
 
 def test_missing_judge_verdict_fails_closed() -> None:

@@ -36,6 +36,7 @@ def editor_drafts(
                 title=row.draft.get("title", "") if row.draft else "",
                 signal_title=signal_title,
                 claim_counts=dict(Counter(str(c.get("status", "unverified")) for c in claims)),
+                flag_count=len(row.draft.get("flags", [])) if row.draft else 0,
                 created_at=row.created_at,
             )
         )

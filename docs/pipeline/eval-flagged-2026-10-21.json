@@ -1,0 +1,64 @@
+{
+ "date": "2026-10-21",
+ "contract": "flag, do not block",
+ "writer": "nvidia/nemotron-3-ultra-550b-a55b",
+ "judge": "nvidia/nemotron-3.5-lightning-30b-a3b",
+ "drafts": [
+  {
+   "fixture": "4a2a1491",
+   "status": "drafted",
+   "template": "comparison",
+   "words": 679,
+   "in_band": true,
+   "sentences": 25,
+   "uncited": 0,
+   "number_mismatch": 3,
+   "judge_rejected": 2,
+   "cited_claims": 41,
+   "grounded_rate": 0.8,
+   "seconds": 32.8
+  },
+  {
+   "fixture": "6b8541d2",
+   "status": "drafted",
+   "template": "explainer",
+   "words": 642,
+   "in_band": false,
+   "sentences": 33,
+   "uncited": 0,
+   "number_mismatch": 0,
+   "judge_rejected": 2,
+   "cited_claims": 29,
+   "grounded_rate": 0.939,
+   "seconds": 54.7
+  },
+  {
+   "fixture": "b84beb7f",
+   "status": "drafted",
+   "template": "explainer",
+   "words": 568,
+   "in_band": false,
+   "sentences": 28,
+   "uncited": 0,
+   "number_mismatch": 0,
+   "judge_rejected": 3,
+   "cited_claims": 12,
+   "grounded_rate": 0.893,
+   "seconds": 34.0
+  },
+  {
+   "fixture": "f5b9e7e5",
+   "status": "drafted",
+   "template": "explainer",
+   "words": 502,
+   "in_band": false,
+   "sentences": 25,
+   "uncited": 0,
+   "number_mismatch": 2,
+   "judge_rejected": 1,
+   "cited_claims": 13,
+   "grounded_rate": 0.88,
+   "seconds": 58.5
+  }
+ ]
+}
