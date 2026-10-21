@@ -274,7 +274,13 @@ class _PricedProvider:
     name = "priced-fake"
 
     def chat(
-        self, model: str, messages: list[dict[str, str]], *, json_mode: bool, timeout_s: float
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        json_mode: bool,
+        timeout_s: float,
+        max_tokens: int | None = None,
     ) -> ProviderReply:
         return ProviderReply(
             claims_reply("beats the prior best"), input_tokens=100, output_tokens=50, latency_ms=1

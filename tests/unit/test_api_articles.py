@@ -28,6 +28,7 @@ H = {"X-Editor-Key": KEY}
 # Editor-only per the 2026-09-27 spec, plus internal spend and pipeline state.
 EDITOR_ONLY = (
     "review_summary",
+    "failure_reason",
     "prompt_version",
     "model",
     "template",
@@ -60,7 +61,8 @@ class StubRepo:
         self.rows[card_id] = SimpleNamespace(
             card_id=card_id, status="drafted", template="explainer", draft=draft,
             review_summary="Single source. Claim 0", cost_usd=Decimal("0.12"), calls=2,
-            tokens=900, created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            tokens=900, failure_reason=None if draft else "ProviderRejectedError: status=402",
+            created_at=datetime(2026, 10, 1, tzinfo=UTC),
         )  # fmt: skip
         return card_id
 
@@ -106,7 +108,9 @@ def test_editor_draft_returns_every_field(ctx: tuple[TestClient, StubRepo]) -> N
 def test_failed_draft_has_null_body(ctx: tuple[TestClient, StubRepo]) -> None:
     client, repo = ctx
     card_id = repo.add({})
-    assert client.get(f"/editor/drafts/{card_id}", headers=H).json()["draft"] is None
+    body = client.get(f"/editor/drafts/{card_id}", headers=H).json()
+    assert body["draft"] is None
+    assert body["failure_reason"] == "ProviderRejectedError: status=402"
 
 
 def test_missing_draft_is_404(ctx: tuple[TestClient, StubRepo]) -> None:

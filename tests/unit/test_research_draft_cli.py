@@ -35,3 +35,8 @@ def test_missing_tavily_key_falls_back_to_primary_only(key: str | None) -> None:
 def test_tavily_key_uses_tavily() -> None:
     with httpx.Client() as client:
         assert isinstance(research.build_search(_settings("k"), client), TavilyClient)
+
+
+def test_draft_retry_failed_flag_defaults_off() -> None:
+    assert draft.parse_args([]).retry_failed is False
+    assert draft.parse_args(["--retry-failed"]).retry_failed is True

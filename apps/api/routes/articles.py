@@ -60,6 +60,7 @@ def editor_draft(
         # A failed card stores {} rather than a body.
         draft=ArticleBody.model_validate(row.draft) if row.draft else None,
         review_summary=row.review_summary,
+        failure_reason=row.failure_reason,
         cost_usd=row.cost_usd,
         calls=row.calls,
         tokens=row.tokens,

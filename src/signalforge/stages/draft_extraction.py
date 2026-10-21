@@ -8,7 +8,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from signalforge.core.artifacts.article import ArticleBody, ArticleClaim, ArticleTemplate
-from signalforge.core.artifacts.research import ClaimStatus, ResearchDocument, ResearchPackage
+from signalforge.core.artifacts.research import (
+    ClaimStatus,
+    ResearchClaim,
+    ResearchDocument,
+    ResearchPackage,
+)
 from signalforge.stages.research_extraction import span_exists
 
 PAPER_SOURCE_TYPE = "paper"
@@ -142,7 +147,9 @@ class ClaimCheck:
     single_source: bool
 
 
-def build_review_summary(checks: Sequence[ClaimCheck], gate_failures: Sequence[str]) -> str:
+def build_review_summary(
+    checks: Sequence[ClaimCheck], gate_failures: Sequence[str], notes: Sequence[str] = ()
+) -> str:
     """Plain-text risk summary, assembled mechanically for the editor."""
     lines: list[str] = []
     for index, check in enumerate(checks):
@@ -160,4 +167,68 @@ def build_review_summary(checks: Sequence[ClaimCheck], gate_failures: Sequence[s
         if check.span_ok and not check.judge_supported:
             lines.append(f"Quote for claim {index} found, but the judge does not confirm it.")
     lines.extend(f"Publish gate: {failure}." for failure in gate_failures)
+    lines.extend(f"Check: {note}" for note in notes)
     return "\n".join(lines)
+
+
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# Capitalised or all-caps words and hyphenated product names, e.g. "Nemotron", "IMO", "GPT-4o".
+_NAME = re.compile(r"[A-Z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*")
+_SNIPPET_CHARS = 80
+
+
+def _numbers(text: str) -> set[str]:
+    return {m.group(0).replace(",", "").rstrip(".") for m in _NUMBER.finditer(text)}
+
+
+def claim_support(
+    claims: Sequence[ResearchClaim], ids: Sequence[int], documents: Sequence[ResearchDocument]
+) -> str:
+    """Text a sentence citing ``ids`` may draw numbers and names from.
+
+    The claim, its quote and the document context around the quote: the same excerpt the
+    writer was shown and the judge will see, so the three checks agree on what is evidence.
+    """
+    return " ".join(f"{claims[i].text} {evidence_window(claims[i], documents)}" for i in ids)
+
+
+def sentence_problems(text: str, ids: Sequence[int], support: str) -> list[str]:
+    """Deterministic grounding failures for one sentence. Empty means it passes.
+
+    A sentence must cite at least one claim, and every number in it must appear in the
+    cited claims or their quotes. A model can still misstate a fact without a number, which
+    is what the judge and ``unfamiliar_names`` are for.
+    """
+    snippet = text if len(text) <= _SNIPPET_CHARS else text[:_SNIPPET_CHARS] + "..."
+    if not ids:
+        return [f"uncited sentence: '{snippet}'"]
+    missing = sorted(_numbers(text) - _numbers(support))
+    if missing:
+        return [f"number(s) {', '.join(missing)} not in the cited claims: '{snippet}'"]
+    return []
+
+
+def unfamiliar_names(text: str, support: str) -> list[str]:
+    """Names in ``text`` (not at sentence start) that the cited claims never mention."""
+    lowered = support.lower()
+    words = _NAME.findall(text)
+    first = text.split(maxsplit=1)[0].strip("\"'(") if text.split() else ""
+    return sorted({w for w in words if len(w) >= 3 and w != first and w.lower() not in lowered})
+
+
+def evidence_window(
+    claim: ResearchClaim, documents: Sequence[ResearchDocument], radius: int = 300
+) -> str:
+    """The claim's quote with ``radius`` chars of its document around it, for context.
+
+    Falls back to the bare quote when no cited document holds it verbatim.
+    """
+    span = claim.evidence_span.strip()
+    for index in claim.document_indices:
+        if index >= len(documents):
+            continue
+        text = documents[index].text
+        at = text.find(span) if span else -1
+        if at >= 0:
+            return text[max(0, at - radius) : at + len(span) + radius]
+    return span
