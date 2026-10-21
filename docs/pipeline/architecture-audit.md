@@ -216,3 +216,25 @@ OpenRouter credit ran out, so every role was moved to NVIDIA's OpenAI-compatible
 - **A-10 research retry:** `research_packages.failure_reason` (migration 0009) and `research --retry-failed`, which replaces a `failed` or `needs_more_info` package. Every research failure path now records a reason.
 - **A-13:** the editor preview shows `failure_reason` under "Drafting failed."
 - Still open: golden set (A-05), cost estimates and prices (A-06), plan-then-write split (A-02, A-03), trigger on accept (A-12).
+
+## 12. Golden set and baseline (2026-10-21)
+
+`tests/golden/*.json` holds the four stored research packages, trimmed to the evidence windows the writer and judge actually see. `uv run python -m apps.worker.eval_drafts run` drafts each one and scores it, and `... judge` probes the judge with labelled items. Neither writes to the database. `export` rebuilds the fixtures from the database. Baseline report: `docs/pipeline/eval-baseline-2026-10-21.json`.
+
+Baseline (writer `nemotron-3-ultra-550b`, judge `nemotron-3.5-lightning-30b`, prompts `draft-v3`, one run per card):
+
+| Card | Template | Words | Number mismatches | Judge rejected | Grounded rate | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4a2a1491 Granite | comparison | 547 | 3 | 0 of 27 | 0.89 | needs_more_info (below 600 band) |
+| 6b8541d2 Kumo | explainer | 770 | 0 | 17 of 31 | 0.45 | needs_more_info |
+| b84beb7f EmbeddingGemma | explainer | 608 | 4 | 12 of 26 | 0.39 | needs_more_info |
+| f5b9e7e5 Nemotron IMO/IOI | explainer | 503 | 4 | 7 of 23 | 0.52 | needs_more_info |
+
+Judge probe (24 true claims, 40 corrupted ones): false reject 8.3 percent, false accept 20.0 percent. Changing a number was always caught (0 of 16 accepted). Appending an invented clause was accepted 8 of 24 times (33 percent). That is the judge's real weak spot: it checks numbers, not added assertions.
+
+What the baseline says:
+
+1. **No card drafts cleanly at the explainer length.** Three of four cards fall short of 700 words or lose sentences to the judge. Padding toward the band is where the unsupported sentences come from. Either the band for explainers is too high for the evidence these packages hold, or the writer needs a plan step that sizes the article to the claims (A-02). Do not lower the band before checking this on more cards.
+2. **Number mismatches persist (3 to 4 per card).** The writer states numbers that are not in its cited claims' windows. Worth a prompt example and a post-write auto-repair.
+3. **The judge needs strengthening** before it is trusted to publish: add an explicit "does the sentence assert anything the evidence does not" instruction and re-measure the 33 percent false accept rate on this probe.
+4. One run per card is noisy (Kumo had 3 judge rejections in the live run and 17 here). Use repeated runs before concluding a prompt change helped.

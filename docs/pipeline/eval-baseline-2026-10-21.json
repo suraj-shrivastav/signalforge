@@ -1,0 +1,75 @@
+{
+ "date": "2026-10-21",
+ "writer": "nvidia/nemotron-3-ultra-550b-a55b",
+ "judge": "nvidia/nemotron-3.5-lightning-30b-a3b",
+ "prompts": "draft-v3 / research-v2",
+ "drafts": [
+  {
+   "fixture": "4a2a1491",
+   "status": "needs_more_info",
+   "template": "comparison",
+   "words": 547,
+   "in_band": false,
+   "sentences": 27,
+   "uncited": 0,
+   "number_mismatch": 3,
+   "judge_rejected": 0,
+   "cited_claims": 28,
+   "grounded_rate": 0.889,
+   "seconds": 39.3
+  },
+  {
+   "fixture": "6b8541d2",
+   "status": "needs_more_info",
+   "template": "explainer",
+   "words": 770,
+   "in_band": true,
+   "sentences": 31,
+   "uncited": 0,
+   "number_mismatch": 0,
+   "judge_rejected": 17,
+   "cited_claims": 37,
+   "grounded_rate": 0.452,
+   "seconds": 39.6
+  },
+  {
+   "fixture": "b84beb7f",
+   "status": "needs_more_info",
+   "template": "explainer",
+   "words": 608,
+   "in_band": false,
+   "sentences": 26,
+   "uncited": 0,
+   "number_mismatch": 4,
+   "judge_rejected": 12,
+   "cited_claims": 11,
+   "grounded_rate": 0.385,
+   "seconds": 27.2
+  },
+  {
+   "fixture": "f5b9e7e5",
+   "status": "needs_more_info",
+   "template": "explainer",
+   "words": 503,
+   "in_band": false,
+   "sentences": 23,
+   "uncited": 0,
+   "number_mismatch": 4,
+   "judge_rejected": 7,
+   "cited_claims": 10,
+   "grounded_rate": 0.522,
+   "seconds": 19.9
+  }
+ ],
+ "judge_probe": {
+  "pos": 24,
+  "pos_rejected": 2,
+  "neg": 40,
+  "neg_accepted": 8,
+  "neg_number": 16,
+  "neg_number_accepted": 0,
+  "false_reject_rate": 0.083,
+  "false_accept_rate": 0.2,
+  "false_accept_rate_changed_number": 0.0
+ }
+}
