@@ -389,3 +389,23 @@ def test_unpublished_article_can_be_republished_at_the_same_slug(
     again = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
     assert (again.status_code, again.json()["slug"]) == (200, "title")
     assert client.get("/articles/title").status_code == 200
+
+
+def test_publish_pings_indexnow_only_when_configured(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api.routes import articles
+
+    pings: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(articles, "ping_indexnow", lambda *a: pings.append(a))
+    client, repo = ctx
+    client.post(f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={})
+    assert pings == []
+
+    app = client.app
+    app.state.settings = app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"site_url": "https://example.com", "indexnow_key": "k"}
+    )
+    client.post(f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={})
+    assert len(pings) == 1
+    assert pings[0][:2] == ("https://example.com", "k")

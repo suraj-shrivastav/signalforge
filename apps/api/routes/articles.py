@@ -4,7 +4,7 @@ from collections import Counter
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
 from apps.api.deps import get_article_repository, get_published_repository
 from apps.api.routes.cards import require_editor_key
@@ -20,6 +20,7 @@ from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
+from signalforge.indexnow import ping_indexnow
 from signalforge.publishing import meta_description, slugify, unique_slug
 from signalforge.stages.draft_review import apply_sentence_edit
 
@@ -172,6 +173,7 @@ def publish_draft(
     card_id: UUID,
     payload: PublishIn,
     request: Request,
+    background: BackgroundTasks,
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> PublishedOut:
@@ -208,6 +210,8 @@ def publish_draft(
             "body": body.model_dump(mode="json"),
         },
     )
+    if settings.site_url and settings.indexnow_key:
+        background.add_task(ping_indexnow, settings.site_url, settings.indexnow_key, saved.slug)
     return PublishedOut(
         slug=saved.slug,
         status=cast(Any, saved.status),
