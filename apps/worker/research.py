@@ -36,6 +36,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--limit", type=bounded_limit(MAX_LIMIT), default=10, help="max cards to research"
     )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="re-research cards whose package failed or needed more info; the row is replaced",
+    )
     return parser.parse_args(argv)
 
 
@@ -46,7 +51,7 @@ def build_search(settings: Settings, client: httpx.Client) -> SearchProvider:
     return TavilyClient(client, api_key=settings.tavily_api_key.get_secret_value())
 
 
-def run(engine: Engine, limit: int) -> ResearchResult:
+def run(engine: Engine, limit: int, *, retry_failed: bool = False) -> ResearchResult:
     """Run one research pass on ``engine`` (caller owns the engine)."""
     settings = get_settings()
 
@@ -61,6 +66,7 @@ def run(engine: Engine, limit: int) -> ResearchResult:
             build_search(settings, client),
             budget_limits=settings.budget_limits(BudgetScope.TOPIC),
             limit=limit,
+            retry_failed=retry_failed,
         )
 
 
@@ -70,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
     engine = create_db_engine(settings, ConnectionMode.SESSION)
     try:
-        result = run(engine, args.limit)
+        result = run(engine, args.limit, retry_failed=args.retry_failed)
     finally:
         engine.dispose()
     print(

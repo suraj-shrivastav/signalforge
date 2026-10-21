@@ -54,6 +54,7 @@ PROMPT_VERSION = "research-v2"
 MAX_DOCUMENT_CHARS = 30_000
 SECONDARY_RESULT_CAP = 3
 REFERENCE_LINK_CAP = 3
+_MAX_REASON_CHARS = 500
 
 _SYSTEM = """You extract factual claims from one document for a research package.
 
@@ -157,6 +158,12 @@ def _extract_document_claims(
     return survivors
 
 
+def _failed_package(card: TopicCardRow, run_id: uuid.UUID) -> ResearchPackage:
+    return ResearchPackage(
+        card_id=card.id, produced_by=run_id, parent_ids=(card.id,), status=ResearchStatus.FAILED
+    )
+
+
 def _process_card(
     gateway: LLMGateway,
     fetcher: PageFetcher,
@@ -164,7 +171,8 @@ def _process_card(
     card: TopicCardRow,
     signal: Signal,
     run_id: uuid.UUID,
-) -> ResearchPackage:
+) -> tuple[ResearchPackage, str | None]:
+    """The package, plus why it is not 'researched' (None when it is)."""
     # Step 3: primary fetch.
     try:
         html = fetcher.fetch_html(signal.canonical_url)
@@ -172,11 +180,14 @@ def _process_card(
     except SignalForgeError:
         primary_text = None
     if primary_text is None:
-        return ResearchPackage(
-            card_id=card.id,
-            produced_by=run_id,
-            parent_ids=(card.id,),
-            status=ResearchStatus.NEEDS_MORE_INFO,
+        return (
+            ResearchPackage(
+                card_id=card.id,
+                produced_by=run_id,
+                parent_ids=(card.id,),
+                status=ResearchStatus.NEEDS_MORE_INFO,
+            ),
+            "primary source could not be fetched or had no extractable text",
         )
 
     documents: list[ResearchDocument] = []
@@ -245,13 +256,8 @@ def _process_card(
             candidates.extend(
                 _extract_document_claims(gateway, run_id, card, doc_index, clean_text)
             )
-        except BudgetExceededError:
-            return ResearchPackage(
-                card_id=card.id,
-                produced_by=run_id,
-                parent_ids=(card.id,),
-                status=ResearchStatus.FAILED,
-            )
+        except BudgetExceededError as exc:
+            return _failed_package(card, run_id), f"BudgetExceededError during extraction: {exc}"
         except ArtifactValidationError:
             log.warning(
                 "research extraction invalid, document skipped", extra={"card_id": str(card.id)}
@@ -265,18 +271,18 @@ def _process_card(
                 texts=[claim.text for _, claim in candidates],
                 stage_run_id=run_id,
             )
-        except BudgetExceededError:
-            return ResearchPackage(
-                card_id=card.id,
-                produced_by=run_id,
-                parent_ids=(card.id,),
-                status=ResearchStatus.FAILED,
-            )
+        except BudgetExceededError as exc:
+            return _failed_package(card, run_id), f"BudgetExceededError during embedding: {exc}"
         merged_claims, gaps_and_disagreements = merge_claims(candidates, embeddings)
     else:
         merged_claims, gaps_and_disagreements = (), ""
     status = ResearchStatus.RESEARCHED if merged_claims else ResearchStatus.NEEDS_MORE_INFO
-    return ResearchPackage(
+    reason = (
+        None
+        if merged_claims
+        else f"no claim survived extraction and the span check across {len(documents)} documents"
+    )
+    package = ResearchPackage(
         card_id=card.id,
         produced_by=run_id,
         parent_ids=(card.id,),
@@ -285,6 +291,7 @@ def _process_card(
         claims=merged_claims,
         gaps_and_disagreements=gaps_and_disagreements,
     )
+    return package, reason
 
 
 def run_research(
@@ -295,6 +302,7 @@ def run_research(
     *,
     budget_limits: BudgetLimits,
     limit: int = 10,
+    retry_failed: bool = False,
 ) -> ResearchResult:
     started_at = datetime.now(UTC)
     run = StageRun(
@@ -318,23 +326,20 @@ def run_research(
             fail_fast_gateway.model_for(ROLE)
             fail_fast_gateway.model_for(EMBEDDING_ROLE)
             repo = ResearchRepository(session)
-            cards = repo.list_accepted_unresearched(limit)
+            cards = repo.list_accepted_unresearched(limit, retry_failed=retry_failed)
             for card, signal in cards:
                 considered += 1
                 budget = Budget(BudgetScope.TOPIC, budget_limits)
                 gateway = gateway_factory(session, budget)
                 try:
-                    package = _process_card(gateway, fetcher, search, card, signal, run_id)
+                    package, reason = _process_card(gateway, fetcher, search, card, signal, run_id)
                 except SignalForgeError as exc:
+                    # Typed error text, same as the failed llm_calls row; no secrets in it.
+                    reason = f"{type(exc).__name__}: {exc}"[:_MAX_REASON_CHARS]
                     log.warning(
-                        "research card failed", extra={"card_id": str(card.id), "error": str(exc)}
+                        "research card failed", extra={"card_id": str(card.id), "error": reason}
                     )
-                    package = ResearchPackage(
-                        card_id=card.id,
-                        produced_by=run_id,
-                        parent_ids=(card.id,),
-                        status=ResearchStatus.FAILED,
-                    )
+                    package = _failed_package(card, run_id)
                 if package.status == ResearchStatus.RESEARCHED:
                     researched += 1
                 elif package.status == ResearchStatus.NEEDS_MORE_INFO:
@@ -342,7 +347,11 @@ def run_research(
                 else:
                     failed += 1
                 repo.insert(
-                    package, cost_usd=budget.spent_usd, calls=budget.calls, tokens=budget.tokens
+                    package,
+                    cost_usd=budget.spent_usd,
+                    calls=budget.calls,
+                    tokens=budget.tokens,
+                    failure_reason=reason,
                 )
                 session.commit()
             run.status = StageRunStatus.SUCCEEDED

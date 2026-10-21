@@ -17,6 +17,7 @@ from signalforge.core.artifacts.signal import RawSignal
 from signalforge.core.budget import Budget, BudgetLimits
 from signalforge.core.errors import ConfigurationError
 from signalforge.db.models import ArticleDraftRow, StageRun, StageRunStatus, TopicCardRow
+from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.db.repositories.signals import SignalRepository
 from signalforge.llm.gateway import LLMGateway
@@ -117,6 +118,7 @@ def seed(session: Session) -> TopicCardRow:
         ),
         claims=(ResearchClaim(text="beats", evidence_span=SPAN, document_indices=(0,)),),
     )
+    CardRepository(session).add_decision(card.id, "accepted", [], "", None)
     ResearchRepository(session).insert(package, cost_usd=Decimal("0"), calls=0, tokens=0)
     return card
 

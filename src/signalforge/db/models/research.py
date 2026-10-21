@@ -32,6 +32,8 @@ class ResearchPackageRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersi
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
     gaps_and_disagreements: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Why the card did not reach 'researched' (typed text, no secrets); NULL otherwise.
+    failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal("0"), server_default=text("0")
     )

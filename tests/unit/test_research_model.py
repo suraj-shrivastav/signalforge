@@ -44,4 +44,4 @@ def test_column_types() -> None:
     assert (cols.cost_usd.type.precision, cols.cost_usd.type.scale) == (12, 6)
     assert isinstance(cols.calls.type, Integer)
     assert isinstance(cols.tokens.type, Integer)
-    assert not any(c.nullable for c in cols)
+    assert {c.name for c in cols if c.nullable} == {"failure_reason"}
