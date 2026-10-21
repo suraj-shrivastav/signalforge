@@ -1,10 +1,20 @@
 """Article drafts: a templated draft with per-claim status for a researched topic card."""
 
 import uuid
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +33,10 @@ class ArticleDraftRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersionM
             "template IN ('news_brief', 'explainer', 'paper_breakdown', 'comparison')",
             name="template_allowed",
         ),
+        CheckConstraint(
+            "review_status IN ('pending', 'approved', 'revise', 'rejected')",
+            name="review_status_allowed",
+        ),
     )
 
     card_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("topic_cards.id", ondelete="CASCADE"))
@@ -32,6 +46,15 @@ class ArticleDraftRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersionM
         JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     review_summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Editor review: the editor's decision on the draft, and an audit trail of edits.
+    review_status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending"
+    )
+    review_note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    review_log: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     # Why the card failed (typed error text, no secrets); NULL unless status is 'failed'.
     failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
     cost_usd: Mapped[Decimal] = mapped_column(

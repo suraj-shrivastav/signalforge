@@ -1,11 +1,13 @@
+from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from signalforge.core.artifacts.article import ArticleDraft, DraftStatus
+from signalforge.core.artifacts.article import ArticleBody, ArticleDraft, DraftStatus
 from signalforge.core.artifacts.research import ResearchStatus
 from signalforge.db.models.article import ArticleDraftRow
 from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
@@ -111,3 +113,20 @@ class ArticleDraftRepository:
         return self._session.scalars(
             select(ArticleDraftRow).where(ArticleDraftRow.card_id == card_id)
         ).one_or_none()
+
+    def save_edit(self, row: ArticleDraftRow, body: ArticleBody, event: dict[str, Any]) -> None:
+        """Store an edited body and append the edit to the review log."""
+        row.draft = body.model_dump(mode="json")
+        row.review_log = [*row.review_log, {**event, "at": datetime.now(UTC).isoformat()}]
+        self._session.flush()
+
+    def save_review(
+        self, row: ArticleDraftRow, decision: str, note: str, event: dict[str, Any]
+    ) -> None:
+        """Record the editor's decision on the draft and log it."""
+        now = datetime.now(UTC)
+        row.review_status = decision
+        row.review_note = note
+        row.reviewed_at = now
+        row.review_log = [*row.review_log, {**event, "at": now.isoformat()}]
+        self._session.flush()

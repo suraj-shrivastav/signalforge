@@ -16,8 +16,10 @@ from signalforge.core.artifacts.article import (
     ArticleBody,
     ArticleClaim,
     ArticleCover,
+    ArticleFlag,
     ArticleSection,
     ArticleSource,
+    FlagKind,
 )
 from signalforge.core.artifacts.research import ClaimStatus
 from signalforge.core.config import Settings
@@ -29,6 +31,9 @@ H = {"X-Editor-Key": KEY}
 EDITOR_ONLY = (
     "review_summary",
     "failure_reason",
+    "review_status",
+    "review_note",
+    "reviewed_at",
     "prompt_version",
     "model",
     "template",
@@ -61,13 +66,22 @@ class StubRepo:
         self.rows[card_id] = SimpleNamespace(
             card_id=card_id, status="drafted", template="explainer", draft=draft,
             review_summary="Single source. Claim 0", cost_usd=Decimal("0.12"), calls=2,
-            tokens=900, failure_reason=None if draft else "ProviderRejectedError: status=402",
+            tokens=900, review_status="pending", review_note="", reviewed_at=None,
+            failure_reason=None if draft else "ProviderRejectedError: status=402",
             created_at=datetime(2026, 10, 1, tzinfo=UTC),
         )  # fmt: skip
         return card_id
 
     def get(self, card_id: UUID) -> Any:
         return self.rows.get(card_id)
+
+    def save_edit(self, row: Any, body: ArticleBody, event: dict[str, Any]) -> None:
+        row.draft = body.model_dump(mode="json")
+        row.log = [*getattr(row, "log", []), event]
+
+    def save_review(self, row: Any, decision: str, note: str, event: dict[str, Any]) -> None:
+        row.review_status, row.review_note = decision, note
+        row.log = [*getattr(row, "log", []), event]
 
     def list_recent(self, limit: int) -> list[tuple[Any, str]]:
         self.limit = limit
@@ -158,3 +172,93 @@ def test_public_shape_omits_editor_only_fields() -> None:
     schema = json.dumps(PublicArticleOut.model_json_schema())
     assert not [name for name in EDITOR_ONLY if f'"{name}"' in schema]
     assert dumped["claims"] == [{"text": "c", "status": "verified", "source_indices": [0]}]
+
+
+FLAGGED = BODY.model_copy(
+    update={
+        "sections": (ArticleSection(heading="H", paragraphs=("Good one. Bad one.",)),),
+        "flags": (ArticleFlag(section=0, paragraph=0, text="Bad one.", kind=FlagKind.UNCITED),),
+    }
+)
+
+
+def test_editing_a_flagged_sentence_clears_its_flag_and_logs_it(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = repo.add(FLAGGED.model_dump(mode="json"))
+    r = client.post(
+        f"/editor/drafts/{card_id}/sentence",
+        headers=H,
+        json={"section": 0, "paragraph": 0, "text": "Bad one.", "replacement": "Fixed one."},
+    )
+    assert r.status_code == 200
+    body = r.json()["draft"]
+    assert body["sections"][0]["paragraphs"] == ["Good one. Fixed one."]
+    assert body["flags"] == []
+    assert repo.rows[card_id].log[0]["before"] == "Bad one."
+
+
+def test_edit_of_a_missing_sentence_is_422(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    card_id = repo.add(FLAGGED.model_dump(mode="json"))
+    r = client.post(
+        f"/editor/drafts/{card_id}/sentence",
+        headers=H,
+        json={"section": 0, "paragraph": 0, "text": "Not there.", "replacement": "x"},
+    )
+    assert r.status_code == 422
+
+
+def test_approval_needs_every_flag_resolved(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    card_id = repo.add(FLAGGED.model_dump(mode="json"))
+    url = f"/editor/drafts/{card_id}/review"
+    blocked = client.post(url, headers=H, json={"decision": "approved", "note": ""})
+    assert blocked.status_code == 409
+    client.post(
+        f"/editor/drafts/{card_id}/sentence",
+        headers=H,
+        json={"section": 0, "paragraph": 0, "text": "Bad one.", "replacement": None},
+    )
+    ok = client.post(url, headers=H, json={"decision": "approved", "note": "good"})
+    assert ok.status_code == 200
+    assert (ok.json()["review_status"], ok.json()["review_note"]) == ("approved", "good")
+
+
+def test_decided_draft_cannot_be_edited_or_decided_again(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    url = f"/editor/drafts/{card_id}/review"
+    assert (
+        client.post(url, headers=H, json={"decision": "rejected", "note": "off topic"}).status_code
+        == 200
+    )
+    assert client.post(url, headers=H, json={"decision": "approved"}).status_code == 409
+    edit = {"section": 0, "paragraph": 0, "text": "P", "replacement": "Q"}
+    assert (
+        client.post(f"/editor/drafts/{card_id}/sentence", headers=H, json=edit).status_code == 409
+    )
+
+
+def test_failed_draft_cannot_be_approved_and_revise_is_allowed(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = repo.add({})
+    url = f"/editor/drafts/{card_id}/review"
+    assert client.post(url, headers=H, json={"decision": "approved"}).status_code == 409
+    assert (
+        client.post(url, headers=H, json={"decision": "revise", "note": "redo"}).status_code == 200
+    )
+
+
+def test_review_routes_require_the_key(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    assert (
+        client.post(f"/editor/drafts/{card_id}/review", json={"decision": "revise"}).status_code
+        == 401
+    )
