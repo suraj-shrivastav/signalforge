@@ -54,7 +54,8 @@ def body(paragraph: str, title: str = "Title") -> ArticleBody:
         ("blog", "explainer", ["Comparison"], "", ArticleTemplate.COMPARISON),
         ("community", "explainer", ["launch"], "", ArticleTemplate.NEWS_BRIEF),
         ("community", "explainer", [], "Acme launches v2", ArticleTemplate.NEWS_BRIEF),
-        ("blog", "deep_dive", [], "EmbeddingGemma 2: an open model", ArticleTemplate.NEWS_BRIEF),
+        ("blog", "deep_dive", [], "EmbeddingGemma 2: an open model", ArticleTemplate.EXPLAINER),
+        ("blog", "deep_dive", [], "Acme launches v2", ArticleTemplate.NEWS_BRIEF),
         ("community", "deep_dive", ["agents"], "How agents plan", ArticleTemplate.EXPLAINER),
     ],
 )

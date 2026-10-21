@@ -336,6 +336,7 @@ export type EditorDraft = {
   template: ArticleTemplate;
   draft: ArticleBody | null;
   review_summary: string;
+  failure_reason: string | null;
 };
 
 const DRAFT_STATUSES: readonly string[] = [
@@ -411,7 +412,8 @@ function parseBody(value: unknown): ArticleBody {
 
 export function parseEditorDraft(json: unknown): EditorDraft {
   if (!isRecord(json)) throw badDraft();
-  const { card_id, status, template, draft, review_summary } = json;
+  const { card_id, status, template, draft, review_summary, failure_reason } =
+    json;
   if (
     !isString(card_id) ||
     !isOneOf(DRAFT_STATUSES, status) ||
@@ -426,6 +428,8 @@ export function parseEditorDraft(json: unknown): EditorDraft {
     template,
     draft: draft == null ? null : parseBody(draft),
     review_summary,
+    // Older API responses omit it; anything but a string is treated as absent.
+    failure_reason: isString(failure_reason) ? failure_reason : null,
   };
 }
 

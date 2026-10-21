@@ -208,3 +208,11 @@ OpenRouter credit ran out, so every role was moved to NVIDIA's OpenAI-compatible
 - Result on two fresh cards: Granite Speech 5.0 `drafted` (577 words, 40 cited claims), Kumo Forecast `needs_more_info` (judge rejected 3 claims).
 - Consequence for A-05 and section 3.4: the judge is now a small model from the writer's family. Its pass is weaker evidence than a cross-vendor pass (it accepted "seven languages" next to a list of six). The golden set should measure judge false accepts and false rejects before the judge is trusted for publishing.
 - Still open: research `--retry-failed` (A-10) and a retry path for research `needs_more_info`.
+
+## 11. Decisions taken and shipped (2026-10-21)
+
+- **F15 template vs card format:** the card format now wins. `deep_dive` and `explainer` cards become explainers (700 to 1000 words). Only an explicit release tag or title makes a news brief. The "blog source means news brief" rule is removed. A thin source now ends in `needs_more_info` with the length reason rather than being shortened silently.
+- **F13 later rejection:** drafting requires the latest editor decision to still be `accepted`. A card rejected or snoozed after research is skipped.
+- **A-10 research retry:** `research_packages.failure_reason` (migration 0009) and `research --retry-failed`, which replaces a `failed` or `needs_more_info` package. Every research failure path now records a reason.
+- **A-13:** the editor preview shows `failure_reason` under "Drafting failed."
+- Still open: golden set (A-05), cost estimates and prices (A-06), plan-then-write split (A-02, A-03), trigger on accept (A-12).

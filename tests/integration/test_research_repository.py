@@ -141,3 +141,20 @@ def test_insert_duplicate_card_id_returns_false(db_session: Session) -> None:
     assert second is False
     count = db_session.query(ResearchPackageRow).filter_by(card_id=card.id).count()
     assert count == 1
+
+
+def test_failed_package_is_retried_only_on_request_and_replaced(db_session: Session) -> None:
+    card = seed_card(db_session)
+    CardRepository(db_session).add_decision(card.id, "accepted", [], "", None)
+    repo = ResearchRepository(db_session)
+    failed = package(card.id).model_copy(update={"status": ResearchStatus.FAILED})
+    assert repo.insert(
+        failed, cost_usd=Decimal("0"), calls=0, tokens=0, failure_reason="BudgetExceededError"
+    )
+    assert repo.list_accepted_unresearched(10) == []
+    assert [c.id for c, _ in repo.list_accepted_unresearched(10, retry_failed=True)] == [card.id]
+    assert repo.insert(package(card.id), cost_usd=Decimal("0"), calls=4, tokens=9)
+    db_session.expire_all()
+    row = db_session.query(ResearchPackageRow).filter_by(card_id=card.id).one()
+    assert (row.status, row.failure_reason, row.calls) == ("researched", None, 4)
+    assert not repo.insert(failed, cost_usd=Decimal("0"), calls=0, tokens=0)

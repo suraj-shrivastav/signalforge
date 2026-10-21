@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from signalforge.core.artifacts.article import ArticleDraft, DraftStatus
 from signalforge.core.artifacts.research import ResearchStatus
 from signalforge.db.models.article import ArticleDraftRow
-from signalforge.db.models.cards import TopicCardRow
+from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
 
@@ -25,19 +25,31 @@ class ArticleDraftRepository:
         With ``retry_failed``, a 'failed' row does not count as drafted, and ``insert``
         replaces it. Other statuses are never reselected.
 
-        Keyed on the package status, not the latest editor decision: research only ran
-        because the card was accepted, and a finished package is what drafting needs.
+        The card's latest editor decision must still be 'accepted': a card rejected or
+        snoozed after research is not drafted.
         The signal is returned for template selection only; the writer never sees it.
         Ordered oldest card first, id as a deterministic tie-break.
         """
         drafted = select(ArticleDraftRow.card_id)
         if retry_failed:
             drafted = drafted.where(ArticleDraftRow.status != DraftStatus.FAILED.value)
+        latest = (
+            select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
+            .distinct(EditorDecisionRow.topic_card_id)
+            .order_by(
+                EditorDecisionRow.topic_card_id,
+                EditorDecisionRow.decided_at.desc(),
+                EditorDecisionRow.created_at.desc(),
+            )
+            .subquery()
+        )
         query = (
             select(TopicCardRow, Signal, ResearchPackageRow)
             .join(Signal, Signal.id == TopicCardRow.signal_id)
+            .join(latest, latest.c.topic_card_id == TopicCardRow.id)
             .join(ResearchPackageRow, ResearchPackageRow.card_id == TopicCardRow.id)
             .where(
+                latest.c.decision == "accepted",
                 ResearchPackageRow.status == ResearchStatus.RESEARCHED.value,
                 TopicCardRow.id.not_in(drafted),
             )

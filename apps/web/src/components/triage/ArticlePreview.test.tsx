@@ -10,6 +10,7 @@ const draft: EditorDraft = {
   status: "drafted",
   template: "paper_breakdown",
   review_summary: "Single source. Claim 1 (supported): Second claim",
+  failure_reason: null,
   draft: {
     title: "A smaller model matches a larger one",
     dek: "What the paper reports.",
@@ -75,6 +76,22 @@ describe("ArticlePreview", () => {
       <ArticlePreview draft={{ ...draft, status: "failed", draft: null }} />,
     );
     expect(screen.getByText("Drafting failed.")).toBeInTheDocument();
+  });
+
+  it("shows why a draft failed", () => {
+    render(
+      <ArticlePreview
+        draft={{
+          ...draft,
+          status: "failed",
+          draft: null,
+          failure_reason: "ProviderRejectedError: status=402",
+        }}
+      />,
+    );
+    expect(screen.getByLabelText("Failure reason")).toHaveTextContent(
+      "status=402",
+    );
   });
 });
 

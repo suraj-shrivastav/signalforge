@@ -37,6 +37,8 @@ def test_tavily_key_uses_tavily() -> None:
         assert isinstance(research.build_search(_settings("k"), client), TavilyClient)
 
 
-def test_draft_retry_failed_flag_defaults_off() -> None:
-    assert draft.parse_args([]).retry_failed is False
-    assert draft.parse_args(["--retry-failed"]).retry_failed is True
+@pytest.mark.parametrize("module", [research, draft])
+def test_retry_failed_flag_defaults_off(module: object) -> None:
+    parse = module.parse_args  # type: ignore[attr-defined]
+    assert parse([]).retry_failed is False
+    assert parse(["--retry-failed"]).retry_failed is True

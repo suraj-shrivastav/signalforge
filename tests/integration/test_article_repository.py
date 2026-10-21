@@ -17,6 +17,7 @@ from signalforge.core.artifacts.research import ResearchPackage, ResearchStatus
 from signalforge.core.artifacts.signal import RawSignal
 from signalforge.db.models import ArticleDraftRow, StageRun, StageRunStatus, TopicCardRow
 from signalforge.db.repositories.article import ArticleDraftRepository
+from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.db.repositories.signals import SignalRepository
 
@@ -59,6 +60,7 @@ def seed_researched(session: Session, url: str, status: ResearchStatus) -> UUID:
     )
     session.add(card)
     session.flush()
+    CardRepository(session).add_decision(card.id, "accepted", [], "", None)
     pkg = ResearchPackage(card_id=card.id, status=status)
     assert ResearchRepository(session).insert(pkg, cost_usd=Decimal("0"), calls=0, tokens=0)
     return card.id
@@ -157,3 +159,25 @@ def test_insert_duplicate_card_id_returns_false(db_session: Session) -> None:
     assert repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=0, tokens=0) is True
     assert repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=0, tokens=0) is False
     assert db_session.query(ArticleDraftRow).filter_by(card_id=card_id).count() == 1
+
+
+def test_card_rejected_after_research_is_not_returned(db_session: Session) -> None:
+    card_id = seed_researched(db_session, "https://example.com/a-rej", ResearchStatus.RESEARCHED)
+    CardRepository(db_session).add_decision(card_id, "rejected", [], "", None)
+    assert ArticleDraftRepository(db_session).list_researched_undrafted(10) == []
+
+
+def test_failed_draft_is_replaced_only_on_retry(db_session: Session) -> None:
+    card_id = seed_researched(db_session, "https://example.com/a-retry", ResearchStatus.RESEARCHED)
+    repo = ArticleDraftRepository(db_session)
+    failed = ArticleDraft(
+        card_id=card_id, status=DraftStatus.FAILED, template=ArticleTemplate.EXPLAINER
+    )
+    assert repo.insert(failed, cost_usd=Decimal("0"), calls=0, tokens=0, failure_reason="boom")
+    assert repo.list_researched_undrafted(10) == []
+    assert [c.id for c, _, _ in repo.list_researched_undrafted(10, retry_failed=True)] == [card_id]
+    assert repo.insert(drafted(card_id), cost_usd=Decimal("0"), calls=2, tokens=5)
+    db_session.expire_all()
+    row = db_session.query(ArticleDraftRow).filter_by(card_id=card_id).one()
+    assert (row.status, row.failure_reason, row.calls) == ("drafted", None, 2)
+    assert not repo.insert(failed, cost_usd=Decimal("0"), calls=0, tokens=0)

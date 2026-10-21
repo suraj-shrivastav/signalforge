@@ -19,9 +19,14 @@ export function ArticlePreview({ draft }: Props) {
   const article = draft.draft;
   if (!article) {
     return (
-      <p className="text-small text-muted">
-        Drafting {draft.status === "failed" ? "failed" : "has no body yet"}.
-      </p>
+      <div className="text-small text-muted">
+        <p>
+          Drafting {draft.status === "failed" ? "failed" : "has no body yet"}.
+        </p>
+        {draft.failure_reason && (
+          <p aria-label="Failure reason">{draft.failure_reason}</p>
+        )}
+      </div>
     );
   }
   return (
