@@ -6,11 +6,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
+from apps.api.auto_pipeline import run_after_accept
 from apps.api.deps import get_card_repository
 from apps.api.schemas import CardOut, DecisionIn, DecisionOut, QueueSignalOut
 from signalforge.core.errors import EditorKeyNotConfiguredError
@@ -117,6 +118,8 @@ def card_queue(
 def add_decision(
     card_id: UUID,
     body: Annotated[DecisionIn, Depends(decision_body)],
+    request: Request,
+    background: BackgroundTasks,
     # scope="function": commit runs before the response is sent, so a failed commit is a 500.
     repo: Annotated[CardRepository, Depends(get_card_repository, scope="function")],
 ) -> DecisionOut:
@@ -128,6 +131,9 @@ def add_decision(
         )
     except IntegrityError as exc:  # card deleted between exists() and insert
         raise HTTPException(status_code=404, detail="Card not found") from exc
+    settings = request.app.state.settings
+    if body.decision == "accepted" and settings.auto_pipeline_on_accept:
+        background.add_task(run_after_accept, settings)
     return DecisionOut(
         id=row.id,
         card_id=row.topic_card_id,

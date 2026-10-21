@@ -335,3 +335,23 @@ def test_all_nine_distinct_tags_ok(ctx: tuple[TestClient, StubRepo]) -> None:
     body = {**BODY, "reason_tags": list(REASON_TAGS)}
     assert len(REASON_TAGS) == 9
     assert client.post(url(repo), json=body, headers=H).status_code == 201
+
+
+def test_accept_starts_the_pipeline_only_when_enabled(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api.routes import cards
+
+    runs: list[object] = []
+    monkeypatch.setattr(cards, "run_after_accept", runs.append)
+    client, repo = ctx
+    assert client.post(url(repo), json=BODY, headers=H).status_code == 201
+    assert runs == []
+
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"auto_pipeline_on_accept": True}
+    )
+    client.post(url(repo), json={**BODY, "decision": "rejected"}, headers=H)
+    assert runs == []
+    client.post(url(repo), json=BODY, headers=H)
+    assert len(runs) == 1
