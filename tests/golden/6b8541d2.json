@@ -1,0 +1,508 @@
+{
+ "card": "6b8541d2",
+ "title": "NVIDIA Kumo Forecast Combines Pretrained Time-Series Representations with Historical Pattern Retrieval and Interpretability",
+ "template": "explainer",
+ "brief": "Exploring how Kumo Forecast's approach to interpretability could influence the future of AI in predictive analytics.",
+ "package": {
+  "id": "a5d79a7a-a926-454e-9f48-244be951de7c",
+  "schema_version": 2,
+  "created_at": "2026-10-21T16:45:30.827472Z",
+  "produced_by": null,
+  "parent_ids": [],
+  "card_id": "6b8541d2-1792-4520-8cd6-0163fe3c92f3",
+  "status": "researched",
+  "documents": [
+   {
+    "url": "https://huggingface.co/blog/nvidia/kumo-forecast",
+    "title": "NVIDIA Kumo Forecast Combines Pretrained Time-Series Representations with Historical Pattern Retrieval and Interpretability",
+    "source_label": "rss",
+    "is_primary": true,
+    "raw_text_ref": "sha256:790b5b5857b6358a3c60d9bcc97ee8aa0b9fe152806f39d79967d403fc077244",
+    "text": "NVIDIA Kumo Forecast Combines Pretrained Time-Series Representations with Historical Pattern Retrieval and Interpretability\nNVIDIA Kumo Forecast (formerly known as NV-Tesseract Forecasting) is a multi-variate time-series forecasting model that combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR), a context-enhanced forecasting mode that blends direct model predictions with patterns retrieved from historical data. This includes interpretability of the results. Built on the MOMENT-1-large backbone, Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head.\nThe library provides a DataFrame-first API, configurable forecast horizons, optional historical context for retrieval, and an interpretability framework that produces horizon-specific explanations without modifying the underlying forecaster.\nKumo-Forecast is available under Apache 2.0 license.\nModel code: NVIDIA/Kumo-TS\nModel weights: nvidia/Kumo-Forecast\nA forecasting system can draw on two different sources of information: representations learned during pretraining and historical observations available for the current application. Kumo-Forecast brings these together through a pretrained forecasting model and an optional retrieval pathway over historical context.\nIn its direct forecasting path, Kumo-Forecast uses a MOMENT-based Transformer and a trained forecasting head to predict future values. In Domain Aware Representation and Retrieval (DARR) mode, it also retrieves related patterns from historical data using a nearest-neighbor approach and combines that information with the direct forecast.\nThis creates a distinction between the model’s input window and its retrieval context. The input window supplies recent observations for the forecast; a separate historical DataFrame can supply additional context for pattern retrieval. Developers can adjust how strongly the final prediction relies on each pathway through the library’s configuration options.\nFurther information on DARR mode can be found in this published paper, Memory-Augmented Forecasting: Scalability and Generalization Across Temporal Domains\nKumo-Forecast combines four main components: a pretrained temporal encoder, a trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework.\nPretrained Temporal Representations: The model uses the MOMENT-1-large Transformer encoder as its backbone. The architecture keeps encoder and embedder weights frozen while training the forecasting head, separating the pretrained representation model from the task-specific prediction layer.\nDirect Forecasting: The forecasting head maps the model’s representations to future values for the requested horizon. For horizons beyond the model’s native capability, there is support for autoregressive extension. This distinguishes a directly generated forecast from a longer forecast that extends predictions recursively.\nDomain-Aware Representation and Retrieval: DARR augments direct forecasting with k-nearest-neighbor retrieval from historical context data. This process combines direct forecasts with historical-pattern retrieval, while the SDK accepts the historical context through a separate context_df argument.\nInterpretability: Kumo-Forecasting also includes a model-agnostic interpretability framework. When enabled, it produces an explanation bundle containing lag and feature attributions per forecast horizon, semantic-flow diagnostics, trajectory-stability diagnostics, and optional embedding Integrated Gradients.These outputs accompany the forecast rather than requiring a different forecasting architecture.\nFurther details on interpretability can be found in this paper, NVExplain: Explaining Time Series Forecasting with Latent Trajectory Analysis and Structure-Preserving Surrogates\nData must be numeric, temporal data. Supported input sequence lengths include 256, 512, 1024, and 2048 observations. Inputs consist of a timestamp column and one or more numeric value columns, represented as a pandas DataFrame or a CSV/JSON input. When leveraging DARR mode, the dimensions of the context must be similar to the context of the input.\nThe Factory Operations (FOX) Blueprint includes Early Access to the Predictive Maintenance module which leverages Kumo Anomaly and Kumo Forecast. It analyzes real-time data to predict future anomalies.\nPlease click on the image below to access the session from GTC San Jose 2026\nFor an application-specific evaluation, compare the direct and retrieval-enhanced configurations on the same held-out forecasting windows. Validate forecast quality across the intended horizons and operating conditions, co",
+    "fetched_at": "2026-10-21T16:30:31.889976Z"
+   },
+   {
+    "url": "https://arxiv.org/abs/2608.25080",
+    "title": "NVExplain: Explaining Time Series Forecasting with Latent Trajectory Analysis and Structure-Preserving Surrogates",
+    "source_label": "arxiv.org",
+    "is_primary": false,
+    "raw_text_ref": "sha256:717c8f650ed13c2a537b62c73e69032588e38a123177172b5fbb4d839f1b9f2b",
+    "text": " influence. To improve explainability, we further generate structure-preserving perturbations and fit sparse local surrogate models, producing human-readable and temporally coherent explanations. We evaluate the method using faithfulness and stability diagnostics across multiple benchmark datasets. Results show that the semantic-flow variant achieves competitive or superior faithfulness compared to standard post-hoc baselines, while being substantially more computationally efficient. Stability analysis further demonstrates that the explanations are robust and identifies regimes where interpretation should be applied with caution.\n1 Introduction\nTime series forecasting underpins high-stakes decisions in energy, finance, transportation, and industrial monitoring. While modern deep learning and foundation-model forecasters achieve strong performance [1, 2], their internal reasoning remains opaque, limiting trust and reliable d\n...\n two variants: Ours (flow), using semantic-flow attribution directly, and Ours (full), incorporating surrogate-based explanations.\nTable 1 reports faithfulness pass rate (FPR). The semantic-flow variant matches the best result on ETTh1 () and outperforms all baselines on Exchange () and Weather (). On ILI, Integrated Gradients scores highest (), while semantic flow remains competitive () at far lower cost—indicating that latent-state transitions identify causally relevant lags more effectively than input-space attribution.\n| Method | ETTh1 | Exchange | ILI | Weather | \n|---|---|---|---|---|\n| Random | 13.9 | 17.3 | 17.0 | 7.4 | \n| Attention | 21.8 | 13.3 | 15.6 | 54.2 | \n| IntGrad | 83.8 | 83.8 | 76.1 | 48.5 | \n| TimeSHAP | 99.1 | 67.6 | 44.4 | 64.8 | \n| Ours (flow) | 99.1 | 88.9 | 67.1 | 96.3 | \n| Ours (full) | 96.8 | 59.9 | 50.6 | 72.1 | \nTable 2 shows semantic flow yields the largest forecast degradation (AOPC) and strongest separation from control perturbations on ETTh1, Exchange, and Weather, indicating the identified lags carry substantial predictive signal, while also running signif\n...\n (full) | 0.120 | 0.081 | 21.932 | \n| Weather | Random | 0.026 | 0.000 | 0.000 | \n|  | Attention | 0.092 | -0.005 | 0.098 | \n|  | IntGrad | 0.067 | 0.048 | 258.804 | \n|  | TimeSHAP | 0.071 | 0.060 | 132.732 | \n|  | Ours (flow) | 0.160 | 0.145 | 15.133 | \n|  | Ours (full) | 0.101 | 0.075 | 71.099 | \nOurs (full) remains strong on ETTh1 but degrades on Exchange, ILI, and Weather, suggesting surrogate models introduce approximation error under highly nonlinear temporal dynamics.\nTable 3 reports latent-representation stability. Exchange, ILI, and Weather show low embedding sensitivity (below ), indicating stable trajectories suited to semantic flow analysis. ETTh1 is an outlier with much higher sensitivity, yet still achieves the highest faithfulness, suggesting strong temporal dependence can persist even under unstable latent dynamics.\nBeyond faithfulness, attribution maps offer a practical readability signal: fragmented maps scatter importance across unrelated lags, while smoother horizon-wise patterns are easier to interpret, as illustrated by the noisy TimeSHAP map versus the concentrated, smoothly decaying semantic-flow structure on Weather. We treat this as a qualitative diagnostic rather than a substitute for a formal human-subject study, left to future work.\n| Dataset | Mean | P95 | \n|---|---|---|\n| Weather | 0.0084 | 0.0101 | \n| ILI | 0.0100 | 0.0128 | \n| Exchange | 0.0187 | 0.0237 | \n| ETTh1 | 0.3683 | 0.4841 | \nTable 4 reports trajectory stability: Weather shows the smoothest latent evolution, while ETTh1 shows the highest volatility, indicating smoother dynamics yield more reliable semantic flow estimates.\n| Dataset | Zero-Crossing | Direction Flip | Jitter | \n|---|---|---|---|\n| ETTh1 | 0.2477 | 0.6352 | 0.8182 | \n| Exchange | 0.0956 | 0.6590 | 0.5056 | \n| ILI | 0.1091 | 0.5541 | 0.4600 | \n| Weather | 0.0701 | 0.6080 | 0.3533 | \nTogether, these results justify the method’s explainability: faithfulne\n...\ndard post-hoc baselines, and includes stability diagnostics to assess explanation reliability. The results also clarify a key limitation of the surrogate stage: in highly nonlinear temporal regimes, sparse local surrogates may sacrifice fidelity even when semantic-flow attribution remains faithful. Therefore, we recommend using the full surrogate explanation when local linearity diagnostics are acceptable, and relying on the semantic-flow attribution matrix together with stability diagnostics when the surrogate fit is unreliable. While the latent-flow component assumes access to an embedding or stable representation interface, the structure-preserving surrogate stage can still support prediction-query-based local explanation. Future work will extend the approach to multivariate forecasting, combine lag-level attribution wit",
+    "fetched_at": "2026-10-21T16:30:33.575669Z"
+   },
+   {
+    "url": "https://huggingface.co/inference/models",
+    "title": "Hugging Face Inference Providers · Supported Models",
+    "source_label": "huggingface.co",
+    "is_primary": false,
+    "raw_text_ref": "sha256:be4cdf81a87256140aea8cca825ac59688ef9651a9cc4d3eed0fadef45100af7",
+    "text": "| deepseek-ai/DeepSeek-V4.1-Flash-1017 DeepSeek-V4.1-Flash-1017 |  | $0.30 | $1.20 | 1,048,576 | 1.13 | 97 | Yes | No | \n| deepseek-ai/DeepSeek-V4.1-Flash-1017 DeepSeek-V4.1-Flash-1017 |  | - | - | - | - | - | - | - | \n| meta-models/Muse-Spark-Open-816B-A42B Muse-Spark-Open-816B-A42B |  | $1.25 | $4",
+    "fetched_at": "2026-10-21T16:30:34.717174Z"
+   },
+   {
+    "url": "https://huggingface.co/nvidia/Kumo-Forecast",
+    "title": "nvidia/Kumo-Forecast · Hugging Face",
+    "source_label": "huggingface.co",
+    "is_primary": false,
+    "raw_text_ref": "sha256:834f23b15ccd3104c53c2985455aacb45e9dd18b42482e3e8d7b6e1b5067698b",
+    "text": "NVIDIA Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval) which is a context-enhanced forecasting mode that combines direct model predictions with pattern retrieval from historical data. The model leverages MOMENT encoders with a trainable forecasting head for accurate long-horizon time series predictions.\nGOVERNING TERMS: Use of this model is governed by the  Apache-2.0 License \nGlobal \nCompanies, organizations, research hubs looking to do long/short-horizon forecasting on temporal data. \nHuggingFace 04/07/2026 via https://huggingface.co/nvidia/Kumo-Forecast\nMemory-Augmented Forecasting: Scalability and Generalization Across Temporal Domains \nBeyond MAE: Measuring Forecast Reliability with Temporal Dependence-Aware Error (TDE) \nMOMENT: A Family of Open Time-series Foundation Models \nTimeRAF: Retrieval-Augmented Foundation model for Zero-shot Time Series Forecasting \nArchitecture Type: MOMENT-based Transformer with trainable forecasting head \nNetwork Architecture: Transformer Encoder (MOMENT-1-large backbone) \nNumber of model parameters: ~340 million (base encoder) + trainable forecasting head \nThe Kumo-Forecast is a Transformer-based model for time series forecasting. It uses MOMENT encoders with frozen encoder and embedder weights, while training only the forecasting head. The model supports DARR (Domain-Aware Representation and Retrieval) mode, which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data. \nInput Type(s): Tabular numeric \nInput Format(s): Tabular Pandas DataFrame or CSV/JSON \nInput Parameters: 2D \nOther Properties Related to Input: Pre-Processing Needed \nForecasting: Contains timestamp column and one or more numeric value columns. Supported sequence lengths: 256, 512, 1024, 2048.\nOutput Type(s): Tabular numeric \nOutput Format: Tabular Pandas DataFrame \nOutput Parameters: 2D \nOther Properties Related to Output: Post-Processing Needed \nForecasting: Contains timestamp and predicted value columns for the specified forecast horizon. Supports autoregressive extension for horizons beyond the model's native capability.\nOur AI models are designed and/or optimized to run on NVIDIA GPU-accelerated systems. By leveraging NVIDIA's hardware (e.g. GPU cores) and software frameworks (e.g., CUDA libraries), the model achieves faster training and inference times compared to CPU-only solutions. \nRuntime Engine(s): \nPyTorch \nSupported Hardware Microarchitecture Compatibility: \nNVIDIA Ampere \nNVIDIA Hopper \n[Preferred/Supported] Operating System(s): \nLinux\nThe integration of foundation and fine-tuned models into AI systems requires additional testing using use-case-specific data to ensure s\n...\n, iterative testing and validation at both unit and system levels are essential to mitigate risks, meet technical and functional requirements, and ensure compliance with safety and ethical standards before deployment.\nKumo-Forecast\n80/20 split per dataset. \nData Modality: Other: Numeric time series\nTraining Data Size: 3 million data points\nData Collection Method by dataset\n[Hybrid: Synthetic, Sensors, Human]\nLabeling Method by dataset\n[Hybrid: Synthetic, Sensors, Human]\nProperties: A diverse collection of 30 primary time series datasets used for global forecasting model evaluation. Includes missing value variations.\nData Collection M",
+    "fetched_at": "2026-10-21T16:30:35.203569Z"
+   },
+   {
+    "url": "https://docs.nvidia.com/sdgm/about-nvidia-kumo/overview",
+    "title": "Overview | NVIDIA Kumo",
+    "source_label": "docs.nvidia.com",
+    "is_primary": false,
+    "raw_text_ref": "sha256:af6e9f9af4c07f69fd669b241666e15871f74e7a8670e5919e1aadbfd76bf8b8",
+    "text": "ore running, install the client and prepare a compatible NIM endpoint and the AdventureWorks data files.\n- Model: Kumo Relational\n- Setup: Connect Kumo Relational Client to NIM\n- Example: Open the AdventureWorks notebook and follow “Recommend products.”\n📈 Forecast future readings from a time series\nPredict future values from a history of timestamped measurements. The Kumo Forecast example reads an ETTh sample CSV and predicts the next 100 values of its LULL signal. Install the Forecast environment and provide the CSV files expected by the script, or update the paths and columns for your own data. Context-enhanced forecasting requires a separate history CSV. Kumo Forecast is intended for research and development only.\n- Model: Kumo Forecast\n- Library: Kumo-TS Forecast setup and guide\n- Example: Open the forecasting code\n🔎 Spot unusual sensor readings\nFind readings that depart from the usual patterns across a set of sensors. The Kumo Anomaly example generates synthetic sensor data with spikes, dips, shifts, and n",
+    "fetched_at": "2026-10-21T16:30:38.728943Z"
+   },
+   {
+    "url": "https://github.com/NVIDIA/Kumo-TS/blob/main/README.md",
+    "title": "Kumo-TS/README.md at main · NVIDIA/Kumo-TS · GitHub",
+    "source_label": "github.com",
+    "is_primary": false,
+    "raw_text_ref": "sha256:3527d5fd455223124c6106ca30ecfb472a67f5604f9a2adbff4d60038ad13826",
+    "text": "Kumo-TS is an open-source time series analysis library covering forecasting and anomaly detection. The forecasting module builds on a pretrained transformer backbone; anomaly detection uses diffusion-based models powered by NVIDIA's proprietary algorithms.\n- Kumo-Forecast: DataFrame-first API for multivariate time series forecasting with DARR (context-enhanced) mode, built on a vendored backbone.\n- Kumo-Anomaly: Diffusion-based multivariate anomaly detection using novel proprietary algorithms.\nClone the repo and install the desired package. Each package has its own environment and lockfile:\ngit clone https://github.com/NVIDIA/Kumo-TS.git\ncd Kumo-TS/Kumo-Forecast\nuv sync --frozen --python 3.12   # or: pip install -e .git clone https://github.com/NVIDIA/Kumo-TS.git\ncd Kumo-TS/Kumo-Anomaly\nuv sync --frozen --python 3.12   # or: pip install -e .\nRun each example from its package directory using uv run python, or activate that package’s .venv. Install the packages in separate environments because both expose a top-level sdk module.\nfrom sdk.forecasting import ForecastingConfig, perform_forecasting\nimport pandas as pd\nimport numpy as np\ndf = pd.DataFrame({\n    \"timestamp\": pd.date_range(\"2023-01-01\", periods=600, freq=\"h\"),\n    \"target\": np.sin(np.linspace(0, 4 * np.pi, 600)),\n    \"feature_a\": np.random.randn(600),\n})\nconfig = ForecastingConfig(\n    seq_len=512,\n    forecast_horizon=72,\n)\nfor\n...\nnfig.yaml\",\n)darr_config = ForecastingConfig(\n    seq_len=512,\n    forecast_horizon=72,\n    alpha=0.2,   # 20% direct, 80% kNN\n    k=64,\n    temperature=0.05,\n)\ndarr_result = perform_forecasting(\n    df=df,\n    config=darr_config,\n    context_df=historical_df,  # Historical data for kNN retrieval\n)\nForecasting includes a model-agnostic interpretability framework that explains why a forecast looks the way it does — without modifying the underlying model. Pass interpretability=True to write an explanation bundle alongside the forecast: lag and feature attributions per horizon, semantic-flow diagnostics, trajectory stability, and optional embedding Integrated Gradients (JSON, CSVs, and PDF report):\ninterp_config = ForecastingConfig(\n    seq_len=512,\n    forecast_horizon=72,\n    interpretability=True,\n    interpretability_output=None,  # \"json\", \"pdf\", or None for both\n    interpretability_out_dir=\"interpretability_output\",\n)\nresults = perform_forecasting(df=df, config=interp_config)\n# Bundle written under interpretability_output/run_<UTC-timestamp>/\nSee Kumo-Forecast/README.md for the full interpretability reference and artifact catalogue.\nfrom sdk.anomaly_analysis import perform_anomaly_analysis_with_diffusion\nimport pandas as pd\ndf = pd.read_csv(\"your_timeseries_data.csv\")\nresults = perform_anomaly_analysis_with_diffusion(\n    df=df,\n    threshold_strategy=\"scs\",  # or \"macs\"\n    nsample=15,\n)\n# Returns original columns + Anomaly (int64: 0 = normal, 1 = anomaly) + MAE (float)\n- Python 3.12+ for the installation commands above (Kumo-Forecast declares Python 3.10+; Kumo-Anomaly requires Python 3.12+)\n- PyTorch 2.7+\n- pandas, numpy\n- Pretrained model weights (auto-downloaded from Kumo-Forecast or Kumo-Anomaly on Hugging Face)\n- GPU recommended (CUDA or Apple MPS); falls back to CPU automatically\nExact runtime requirements are declared in each package’s pyproject.toml; uv.lock records resolved versions for reproducible installation. See third-party dependencies for the dependency inventory.\n- See Kumo-Forecast/README.md for full API reference and examples\n- Run Kumo-Forecast/sdk/quick_example.py for an end-to-end example\n- Fine-tune on your own CSV with Kumo-Forecast/examples/finetune_example.py\n- See Kumo-Anomaly/README.md for detailed usage and configuration\n- Run Kumo-Anomaly/examples/quick_example.py for an end-to-end example with synthetic or custom datasets\n- Fine-tune on normal windows from your own CSV with Kumo-Anomaly/examples/finetune_example.py\n| Module | Status | Description | \n|---|---|---|\n| Kumo-Forecast/ | ✅ Available | Time series forecasting with DARR (context-enhanced) mode | \n| Kumo-Anomaly/ | ✅ Available | Diffusion-based multivariate anomaly detection with adaptive thresholding | \nKumo-TS/\n├── .github/\n│   └── workflows/\n│     ",
+    "fetched_at": "2026-10-21T16:30:39.741942Z"
+   }
+  ],
+  "claims": [
+   {
+    "text": "Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)",
+    "evidence_span": "NVIDIA Kumo Forecast (formerly known as NV-Tesseract Forecasting) is a multi-variate time-series forecasting model that combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR), a context-enhanced forecasting mode that blends direct model predictions with patterns retrieved from historical data.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head",
+    "evidence_span": "Built on the MOMENT-1-large backbone, Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head.",
+    "document_indices": [
+     0,
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The interpretability framework produces horizon-specific explanations without modifying the underlying forecaster",
+    "evidence_span": "The library provides a DataFrame-first API, configurable forecast horizons, optional historical context for retrieval, and an interpretability framework that produces horizon-specific explanations without modifying the underlying forecaster.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast is available under Apache 2.0 license",
+    "evidence_span": "Kumo-Forecast is available under Apache 2.0 license.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Model code is hosted at NVIDIA/Kumo-TS",
+    "evidence_span": "Model code: NVIDIA/Kumo-TS",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Model weights are hosted at nvidia/Kumo-Forecast",
+    "evidence_span": "Model weights: nvidia/Kumo-Forecast",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval",
+    "evidence_span": "In its direct forecasting path, Kumo-Forecast uses a MOMENT-based Transformer and a trained forecasting head to predict future values. In Domain Aware Representation and Retrieval (DARR) mode, it also retrieves related patterns from historical data using a nearest-neighbor approach and combines that information with the direct forecast.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The input window supplies recent observations for the forecast; a separate historical DataFrame can supply additional context for pattern retrieval",
+    "evidence_span": "This creates a distinction between the model’s input window and its retrieval context. The input window supplies recent observations for the forecast; a separate historical DataFrame can supply additional context for pattern retrieval.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast includes four main components: pretrained temporal encoder, trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework",
+    "evidence_span": "Kumo-Forecast combines four main components: a pretrained temporal encoder, a trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The pretrained temporal encoder uses the MOMENT-1-large Transformer encoder as its backbone with frozen encoder and embedder weights",
+    "evidence_span": "Pretrained Temporal Representations: The model uses the MOMENT-1-large Transformer encoder as its backbone. The architecture keeps encoder and embedder weights frozen while training the forecasting head, separating the pretrained representation model from the task-specific prediction layer.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The forecasting head maps representations to future values for the requested horizon and supports autoregressive extension beyond the model's native capability",
+    "evidence_span": "Direct Forecasting: The forecasting head maps the model’s representations to future values for the requested horizon. For horizons beyond the model’s native capability, there is support for autoregressive extension. This distinguishes a directly generated forecast from a longer forecast that extends predictions recursively.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "DARR mode retrieves k-nearest-neighbor patterns from historical context data and combines them with direct forecasts",
+    "evidence_span": "Domain-Aware Representation and Retrieval: DARR augments direct forecasting with k-nearest-neighbor retrieval from historical context data. This process combines direct forecasts with historical-pattern retrieval, while the SDK accepts the historical context through a separate context_df argument.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The interpretability framework is model-agnostic and produces explanation bundles with lag and feature attributions per forecast horizon",
+    "evidence_span": "Interpretability: Kumo-Forecasting also includes a model-agnostic interpretability framework. When enabled, it produces an explanation bundle containing lag and feature attributions per forecast horizon, semantic-flow diagnostics, trajectory-stability diagnostics, and optional embedding Integrated Gradients.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Further details on interpretability are in the paper NVExplain: Explaining Time Series Forecasting with Latent Trajectory Analysis and Structure-Preserving Surrogates",
+    "evidence_span": "Further details on interpretability can be found in this paper, NVExplain: Explaining Time Series Forecasting with Latent Trajectory Analysis and Structure-Preserving Surrogates",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Supported input sequence lengths are 256, 512, 1024, and 2048 observations",
+    "evidence_span": "Data must be numeric, temporal data. Supported input sequence lengths include 256, 512, 1024, and 2048 observations.",
+    "document_indices": [
+     0,
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The Factory Operations (FOX) Blueprint includes Early Access to the Predictive Maintenance module leveraging Kumo Anomaly and Kumo Forecast",
+    "evidence_span": "The Factory Operations (FOX) Blueprint includes Early Access to the Predictive Maintenance module which leverages Kumo Anomaly and Kumo Forecast. It analyzes real-time data to predict future anomalies.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The semantic-flow variant matches the best result on ETTh1 and outperforms all baselines on Exchange and Weather.",
+    "evidence_span": "| Ours (flow) | 99.1 | 88.9 | 67.1 | 96.3 |",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "On ILI, Integrated Gradients scores highest while semantic flow remains competitive at far lower cost.",
+    "evidence_span": "On ILI, Integrated Gradients scores highest (), while semantic flow remains competitive () at far lower cost—indicating that latent-state transitions identify causally relevant lags more effectively than input-space attribution.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The semantic-flow variant achieves competitive or superior faithfulness compared to standard post-hoc baselines.",
+    "evidence_span": "Results show that the semantic-flow variant achieves competitive or superior faithfulness compared to standard post-hoc baselines, while being substantially more computationally efficient.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Stability analysis demonstrates that explanations are robust and identifies regimes where interpretation should be applied with caution.",
+    "evidence_span": "Stability analysis further demonstrates that the explanations are robust and identifies regimes where interpretation should be applied with caution.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "ETTh1 shows higher embedding sensitivity compared to other datasets, making it an outlier in stability diagnostics.",
+    "evidence_span": "ETTh1 is an outlier with much higher sensitivity, yet still achieves the highest faithfulness, suggesting strong temporal dependence can persist even under unstable latent dynamics.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Exchange, ILI, and Weather show low embedding sensitivity below 0.02, indicating stable trajectories suited to semantic flow analysis.",
+    "evidence_span": "Exchange, ILI, and Weather show low embedding sensitivity (below ), indicating stable trajectories suited to semantic flow analysis.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Weather shows the smoothest latent evolution while ETTh1 shows the highest volatility.",
+    "evidence_span": "Table 4 reports trajectory stability: Weather shows the smoothest latent evolution, while ETTh1 shows the highest volatility, indicating smoother dynamics yield more reliable semantic flow estimates.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Sparse local surrogates may sacrifice fidelity in highly nonlinear temporal regimes.",
+    "evidence_span": "Ours (full) remains strong on ETTh1 but degrades on Exchange, ILI, and Weather, suggesting surrogate models introduce approximation error under highly nonlinear temporal dynamics.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The method recommends relying on the semantic-flow attribution matrix together with stability diagnostics when the surrogate fit is unreliable.",
+    "evidence_span": "Therefore, we recommend using the full surrogate explanation when local linearity diagnostics are acceptable, and relying on the semantic-flow attribution matrix together with stability diagnostics when the surrogate fit is unreliable.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval)",
+    "evidence_span": "Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval) which is a context-enhanced forecasting mode that combines direct model predictions with pattern retrieval from historical data.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The model leverages MOMENT encoders with a trainable forecasting head for accurate long-horizon time series predictions",
+    "evidence_span": "The model leverages MOMENT encoders with a trainable forecasting head for accurate long-horizon time series predictions.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The model uses MOMENT encoders with frozen encoder and embedder weights, while training only the forecasting head",
+    "evidence_span": "The Kumo-Forecast is a Transformer-based model for time series forecasting. It uses MOMENT encoders with frozen encoder and embedder weights, while training only the forecasting head.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast supports DARR (Domain-Aware Representation and Retrieval) mode which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data",
+    "evidence_span": "The model supports DARR (Domain-Aware Representation and Retrieval) mode, which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Forecast output contains timestamp and predicted value columns for the specified forecast horizon",
+    "evidence_span": "Forecasting: Contains timestamp and predicted value columns for the specified forecast horizon.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The model supports autoregressive extension for horizons beyond the model's native capability",
+    "evidence_span": "Supports autoregressive extension for horizons beyond the model's native capability.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The model is designed to run on NVIDIA GPU-accelerated systems and leverages GPU cores and CUDA libraries",
+    "evidence_span": "Our AI models are designed and/or optimized to run on NVIDIA GPU-accelerated systems. By leveraging NVIDIA's hardware (e.g. GPU cores) and software frameworks (e.g., CUDA libraries), the model achieves faster training and inference times compared to CPU-only solutions.",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast was released on HuggingFace on 04/07/2026 via https://huggingface.co/nvidia/Kumo-Forecast",
+    "evidence_span": "HuggingFace 04/07/2026 via https://huggingface.co/nvidia/Kumo-Forecast",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Training data size is 3 million data points",
+    "evidence_span": "Training Data Size: 3 million data points",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast is intended for research and development only.",
+    "evidence_span": "Kumo Forecast is intended for research and development only.",
+    "document_indices": [
+     4
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo Forecast predicts future values from a history of timestamped measurements.",
+    "evidence_span": "Predict future values from a history of timestamped measurements.",
+    "document_indices": [
+     4
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The Kumo Forecast example reads an ETTh sample CSV and predicts the next 100 values of its LULL signal.",
+    "evidence_span": "The Kumo Forecast example reads an ETTh sample CSV and predicts the next 100 values of its LULL signal.",
+    "document_indices": [
+     4
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Context-enhanced forecasting requires a separate history CSV.",
+    "evidence_span": "Context-enhanced forecasting requires a separate history CSV.",
+    "document_indices": [
+     4
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast provides a DataFrame-first API for multivariate time series forecasting with DARR (context-enhanced) mode, built on a vendored transformer backbone.",
+    "evidence_span": "Kumo-Forecast: DataFrame-first API for multivariate time series forecasting with DARR (context-enhanced) mode, built on a vendored backbone.",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast includes a model-agnostic interpretability framework that explains forecast predictions without modifying the underlying model, producing lag and feature attributions per horizon, semantic-flow diagnostics, and trajectory stability metrics.",
+    "evidence_span": "Forecasting includes a model-agnostic interpretability framework that explains why a forecast looks the way it does — without modifying the underlying model. Pass interpretability=True to write an explanation bundle alongside the forecast: lag and feature attributions per horizon, semantic-flow diagnostics, trajectory stability, and optional embedding Integrated Gradients (JSON, CSVs, and PDF report):",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Passing interpretability=True with interpretability_output set to \"json\", \"pdf\", or None enables writing an explanation bundle containing embedding Integrated Gradients, feature attributions, and trajectory stability metrics.",
+    "evidence_span": "interp_config = ForecastingConfig(\n    seq_len=512,\n    forecast_horizon=72,\n    interpretability=True,\n    interpretability_output=None,  # \"json\", \"pdf\", or None for both\n    interpretability_out_dir=\"interpretability_output\",\n)",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly offers diffusion-based multivariate anomaly detection using proprietary algorithms, with adaptive thresholding via SCS or MACS strategies.",
+    "evidence_span": "Kumo-Anomaly: Diffusion-based multivariate anomaly detection using novel proprietary algorithms.",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly anomaly detection returns original columns plus an Anomaly column (int64: 0 = normal, 1 = anomaly) and MAE (float) per result.",
+    "evidence_span": "Returns original columns + Anomaly (int64: 0 = normal, 1 = anomaly) + MAE (float)",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly requires Python 3.12+ and PyTorch 2.7+ for installation.",
+    "evidence_span": "Python 3.12+ for the installation commands above (Kumo-Forecast declares Python 3.10+; Kumo-Anomaly requires Python 3.12+)",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast declares Python 3.10+ as the minimum version requirement.",
+    "evidence_span": "Python 3.10+; Kumo-Anomaly requires Python 3.12+",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast uses a vendored transformer backbone for its forecasting module, while Kumo-Anomaly uses diffusion-based models powered by NVIDIA's proprietary algorithms.",
+    "evidence_span": "The forecasting module builds on a pretrained transformer backbone; anomaly detection uses diffusion-based models powered by NVIDIA's proprietary algorithms.",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast and Kumo-Anomaly packages must be installed in separate environments because both expose a top-level sdk module.",
+    "evidence_span": "Install the packages in separate environments because both expose a top-level sdk module.",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast SDK provides the perform_forecasting function that accepts a ForecastingConfig object with parameters such as seq_len, forecast_horizon, alpha, k, and temperature for DARR mode.",
+    "evidence_span": "from sdk.forecasting import ForecastingConfig, perform_forecasting",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast quick example script located at Kumo-Forecast/sdk/quick_example.py provides an end-to-end usage example for the forecasting module.",
+    "evidence_span": "Run Kumo-Forecast/sdk/quick_example.py for an end-to-end example",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly quick example script located at Kumo-Anomaly/examples/quick_example.py provides an end-to-end example with synthetic or custom datasets.",
+    "evidence_span": "Run Kumo-Anomaly/examples/quick_example.py for an end-to-end example with synthetic or custom datasets",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast finetune_example.py script located at Kumo-Forecast/examples/finetune_example.py enables fine-tuning on custom CSV data.",
+    "evidence_span": "Fine-tune on your own CSV with Kumo-Forecast/examples/finetune_example.py",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly finetune_example.py script located at Kumo-Anomaly/examples/finetune_example.py enables fine-tuning on normal windows from custom CSV data.",
+    "evidence_span": "Fine-tune on normal windows from your own CSV with Kumo-Anomaly/examples/finetune_example.py",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Forecast README.md contains the full API reference and examples for the forecasting module.",
+    "evidence_span": "See Kumo-Forecast/README.md for full API reference and examples",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Kumo-Anomaly README.md contains detailed usage and configuration documentation for the anomaly detection module.",
+    "evidence_span": "See Kumo-Anomaly/README.md for detailed usage and configuration",
+    "document_indices": [
+     5
+    ],
+    "status": "unverified"
+   }
+  ],
+  "gaps_and_disagreements": "Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast combines a pretrained Transformer backbone with Domain-Aware Representation and Retrieval (DARR)'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast uses an approximately 340-million-parameter base encoder plus a trainable forecasting head'. Document 0 and Document 5 report conflicting claims near: 'The interpretability framework produces horizon-specific explanations without modifying the underlying forecaster'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast is available under Apache 2.0 license'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast is available under Apache 2.0 license'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast is available under Apache 2.0 license'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast is available under Apache 2.0 license'. Document 0 and Document 3 report conflicting claims near: 'Model code is hosted at NVIDIA/Kumo-TS'. Document 0 and Document 3 report conflicting claims near: 'Model code is hosted at NVIDIA/Kumo-TS'. Document 0 and Document 3 report conflicting claims near: 'Model weights are hosted at nvidia/Kumo-Forecast'. Document 0 and Document 3 report conflicting claims near: 'Model weights are hosted at nvidia/Kumo-Forecast'. Document 0 and Document 3 report conflicting claims near: 'Model weights are hosted at nvidia/Kumo-Forecast'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 4 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast has two forecasting paths: direct forecasting and DARR mode with retrieval'. Document 0 and Document 4 report conflicting claims near: 'The input window supplies recent observations for the forecast; a separate historical DataFrame can supply additional context for pattern retrieval'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast includes four main components: pretrained temporal encoder, trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast includes four main components: pretrained temporal encoder, trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework'. Document 0 and Document 3 report conflicting claims near: 'Kumo Forecast includes four main components: pretrained temporal encoder, trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework'. Document 0 and Document 5 report conflicting claims near: 'Kumo Forecast includes four main components: pretrained temporal encoder, trainable forecasting head, historical-pattern retrieval mechanism and an interpretability framework'. Document 0 and Document 3 report conflicting claims near: 'The pretrained temporal encoder uses the MOMENT-1-large Transformer encoder as its backbone with frozen encoder and embedder weights'. Document 0 and Document 3 report conflicting claims near: 'The forecasting head maps representations to future values for the requested horizon and supports autoregressive extension beyond the model's native capability'. Document 0 and Document 3 report conflicting claims near: 'The forecasting head maps representations to future values for the requested horizon and supports autoregressive extension beyond the model's native capability'. Document 0 and Document 3 report conflicting claims near: 'The forecasting head maps representations to future values for the requested horizon and supports autoregressive extension beyond the model's native capability'. Document 0 and Document 3 report conflicting claims near: 'DARR mode retrieves k-nearest-neighbor patterns from historical context data and combines them with direct forecasts'. Document 0 and Document 3 report conflicting claims near: 'DARR mode retrieves k-nearest-neighbor patterns from historical context data and combines them with direct forecasts'. Document 0 and Document 5 report conflicting claims near: 'The interpretability framework is model-agnostic and produces explanation bundles with lag and feature attributions per forecast horizon'. Document 3 and Document 4 report conflicting claims near: 'Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval)'. Document 3 and Document 4 report conflicting claims near: 'Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval)'. Document 3 and Document 5 report conflicting claims near: 'Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval)'. Document 3 and Document 5 report conflicting claims near: 'Kumo-Forecast provides forecasting functionality via NVIDIA's novel DARR (Domain-Aware Representation and Retrieval)'. Document 3 and Document 4 report conflicting claims near: 'Kumo-Forecast supports DARR (Domain-Aware Representation and Retrieval) mode which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data'. Document 3 and Document 5 report conflicting claims near: 'Kumo-Forecast supports DARR (Domain-Aware Representation and Retrieval) mode which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data'. Document 3 and Document 5 report conflicting claims near: 'Kumo-Forecast supports DARR (Domain-Aware Representation and Retrieval) mode which enhances predictions by combining direct forecasts with kNN-based pattern retrieval from historical context data'. Document 3 and Document 4 report conflicting claims near: 'Forecast output contains timestamp and predicted value columns for the specified forecast horizon'. Document 3 and Document 4 report conflicting claims near: 'Kumo-Forecast was released on HuggingFace on 04/07/2026 via https://huggingface.co/nvidia/Kumo-Forecast'. Document 4 and Document 5 report conflicting claims near: 'The Kumo Forecast example reads an ETTh sample CSV and predicts the next 100 values of its LULL signal.'. Document 4 and Document 5 report conflicting claims near: 'The Kumo Forecast example reads an ETTh sample CSV and predicts the next 100 values of its LULL signal.'."
+ }
+}

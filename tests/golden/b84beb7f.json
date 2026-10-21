@@ -1,0 +1,165 @@
+{
+ "card": "b84beb7f",
+ "title": "EmbeddingGemma 2: an open, lightweight multimodal embedding model",
+ "template": "explainer",
+ "brief": "Focus on the implications of open-source multimodal models in AI development and accessibility.",
+ "package": {
+  "id": "5373b071-8d8f-45ba-9f44-edc6ebd1a4b1",
+  "schema_version": 2,
+  "created_at": "2026-10-21T16:45:30.822170Z",
+  "produced_by": null,
+  "parent_ids": [],
+  "card_id": "b84beb7f-531f-465b-a073-8fd112e93c8b",
+  "status": "researched",
+  "documents": [
+   {
+    "url": "https://deepmind.google/blog/embeddinggemma-2-an-open-lightweight-multimodal-embedding-model",
+    "title": "EmbeddingGemma 2: an open, lightweight multimodal embedding model",
+    "source_label": "rss",
+    "is_primary": true,
+    "raw_text_ref": "sha256:5efc71f97fdb1c6c51a007384e27b9d4d4d0abb5683bffffa0c4ff833f72f50f",
+    "text": "rganize, search, and connect information directly on consumer hardware. The developer community’s response blew past our expectations. With more than 20 million downloads, builders have used it to power smarter on-device search tools and privacy-first retrieval augmented generation (RAG) pipelines.\nToday, we’re launching EmbeddingGemma 2, expanding beyond text to unify code, images, video, and audio in a shared embedding space. Built on the Gemma 4 architecture and released under a commercially permissive Apache 2.0 license, EmbeddingGemma 2 has 740 million parameters, making it optimal for on-device inference. It can help find a specific video clip from a voice memo, or search through hours of audio recordings based on a\n...\ning, semantic code search, and coding agent retrieval. Across image, video, documents, and audio, it sets a new standard in quality-per-parameter for sub-1B models and even outperforms some specialist models more than twice its size.\nEnabling semantic search, routing, and retrieval, fully on-device\nEmbeddingGemma 2 brings robust capabilities directly to edge hardware. Generating embeddings locally helps ensure data privacy, reduces pipeline latency, and empowers developers to build cross-modal search and retrieval that works entirely offline.\nWhen paired with generative models such as Gemma 4, EmbeddingGemma 2 enables on-device RAG pipelines that understand complex multimodal data. Because EmbeddingGemma 2 is built on Gemma 4 and shares its text tokenizer and audio encoder, developers can run both models together in a unified pipeline w",
+    "fetched_at": "2026-10-07T17:11:22.603806Z"
+   },
+   {
+    "url": "https://ai.google.dev/gemma/docs/embeddinggemma/model_card_2",
+    "title": "EmbeddingGemma 2 model card | Google AI for Developers",
+    "source_label": "ai.google.dev",
+    "is_primary": false,
+    "raw_text_ref": "sha256:e1647bf30db1811e0dfc5ec48b6e0a1027d991ec9ff183f82712f7af89ae19c6",
+    "text": "g |\n    Documentation |\n    \n    License: Apache 2.0 | Authors: Google DeepMind\nEmbeddingGemma 2 is an open multimodal embedding model built by Google DeepMind which maps text (incl. code), images, video, and audio inputs—and combinations thereof—into a single, unified 768-dimensional vector space. The model has 740M total parameters, combining a 270M parameter text model with modular vision (170M) and audio (300M) encoders.\nDesigned to run on consumer hardware such as mobile devices and laptops, EmbeddingGemma 2 delivers low-latency semantic representations for on-device applications, like search, retrieval-augmented generation (RAG), classification, and clustering.\nEmbeddingGemma 2 builds upon the architectural and capability advancements of Gemma 4, offering several core features:\n- Native multimodality: Native multimodality: Unifies 4 modalities (text, images, video, and audio) in a single shared 768-dimensional embedding space.\n- Multilinguality and code: EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.\n- Flexible footprint: Combines a 270M parameter text backbone (130M transformer + 140M embedder) with selectively loadable vision (170M) and audio (300M) encoders, allowing developers to load only the modalities required for their use case.\n- Matryoshka Representation Learning (MRL): Native support\n...\nlities | config_kwargs | Effective Size | \n|---|---|---|\n| Text only | {\"vision_config\": None, \"audio_config\": None} | 270M | \n| Text and image | {\"audio_config\": None} | 440M | \n| Text and audio | {\"vision_config\": None} | 570M | \n| Full multimodal | {} | 740M | \n3. Matryoshka Dimension Truncation\nEmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions. The supported dimensions are 768, 512, 256, and 128. Shorter vectors reduce storage and speed up similarity search at some cost to quality.\nAt runtime, please adhere to the following guidelines:\n- Re-normalize after truncating: slicing a unit-length vector does not preserve unit length. The shorten\n...\nrmers, you can set this via model_kwargs, and determine it programmatically via is_bf16_supported:\ndtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32\nmodel = SentenceTransformer(\"google/embeddinggemma-2\", model_kwargs={\"torch_dtype\": dtype})\n5. Multimodal Input\nInterleaving\nA single input may mix text with images, video, and audio, using a single shared 8,192-token context.\nThe position of each media item within the sequence is marked in the text using placeholder tokens from the model's vocabulary:\n- <|image|> marks the position of image input\n- <|video|> marks the position of video input\n- <|audio|> marks the position of audio input\nFor example, a product listing in\n...\nations are used.\nDevelopers and deployers are responsible for evaluating and implementing application-level safeguards, like retrieval filtering and fairness testing, appropriate to their specific production use case.\nDeployments must adhere to the Gemma Prohibited Use Policy.\nUsage and Limitations\nEmbeddingGemma 2 has certain limitations that users should be aware of.\nIntended Usage\nEmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.\nThe following list of potential uses is not comprehensive. The purpose of this list is to provide contextual information about the possible use-cases that the model creators considered as part of model training and development.\n- Retrieval: Embeddings for semantic search across text, code, images, ",
+    "fetched_at": "2026-10-07T17:11:24.129519Z"
+   },
+   {
+    "url": "https://huggingface.co/google/embeddinggemma-2",
+    "title": "google/embeddinggemma-2 · Hugging Face",
+    "source_label": "huggingface.co",
+    "is_primary": false,
+    "raw_text_ref": "sha256:74a677c4c4ae85dfcd0913e7b716042e7cf33a1616388b16c7cd6b14c2198029",
+    "text": "model built by Google DeepMind which maps text (incl. code), images, video, and audio inputs—and combinations thereof—into a single, unified 768-dimensional vector space. The model has 740M total parameters, combining a 270M parameter text model with modular vision (170M) and audio (300M) encoders.\nDesigned to run on consumer hardware such as mobile devices and laptops, EmbeddingGemma 2 delivers low-latency semantic representations for on-device applications, like search, retrieval-augmented generation (RAG), classification, and clustering.\nEmbeddingGemma 2 builds upon the architectural and capability advancements of Gemma 4, offering several core features:\n- Native multimodality: Native multimodality: Unifies 4 modalities (text, images, video, and audio) in a single shared 768-dimensional embedding space.\n- Multilinguality and code: EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.\n- Flexible footprint: Combines a 270M parameter text backbone (130M transformer + 140M embedder) with selectively loadable vision (170M) and audio (300M) encoders, allowing developers to load only the modalities required for their use case.\n- Matryoshka Representation Learning (MRL): Native support\n...\n| Activation | Gated FFN with GELU | \n|  | Pooling | Mean Pooling | \n|  | Projection Layer | 512→768 | \n| Input/Output | Supported Modalities | Text, Images, Video, Audio | \n|  | Context Window | 8,192 tokens | \n|  | Native Output Dimension | 768 | \n|  | MRL Truncation Dimensions | 128, 256, 512 | \nEmbeddingGemma 2 was evaluated across text, code, vision, visual document, video, and audio embedding benchmarks. All results reported below use the full-precision checkpoint.\n| Modality | Benchmark | Metric | EmbeddingGemma 2 | EmbeddingGemma 1 | \n|---|---|---|---|---|\n| Text | Massive Text Embedding Benchmark (MTEB, multilingual, v2) | Mean(Task), Multiple | 61.36 | 61.15 | \n|  | Massive Text Embedding Bench\n...\n| \n| Image | 280 tokens per image (default) | ~29 images | \n| Video | 140 tokens per frame (default) | ~58 frames | \n| Audio | 25 tokens per second | ~327 seconds | \nNote max input for images and video can be as high as ~114 images or frames when using a lower vision token budget (described below).\nThe maximums above assume a single modality with no accompanying text. Interleaved inputs draw from the same budget, so mixing modalities reduces the amount of each that fits. Note also max input for images and video can be as high as ~114 images or frames when using a lower vision token budget (described below).\nModel users can forgo the default sequence length for input images / video frames to represent images with “soft token” amounts ranging from 70 to 1120. Increas\n...\nonsible for evaluating and implementing application-level safeguards, like retrieval filtering and fairness testing, appropriate to their specific production use case.\nDeployments must adhere to the Gemma Prohibited Use Policy.\nEmbeddingGemma 2 has certain limitations that users should be aware of.\nEmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.\nThe following list of potential uses is not comprehensive. The purpose of this list is to provide contextual information about the possible use-cases that the model creators considered as part of model training and development.\n- Retrieval: Embeddings for semantic search across text, code, images, \n...\n- Bias and Fairness  \n  - Models trained on large-scale, real-world text and image data can reflect socio-cultural biases embedded in the training material.\n  - Training data used for EmbeddingGemma 2 underwent safety filtering to mitigate the risk of these biases.\n- Misinformation and Misuse  \n  - Embedding representations can be misused to retrieve, classify, or otherwise organize embedded content in false, misleading or harmful ways.\n  - Guidelines are provided for responsible use with the model, see the Responsible Generative AI Toolkit.\n- Transparency and Accountability\n  - This model card summarizes details on the model's architecture, capabilities, limitations, and evaluation processes.\n  - A responsibly developed open mode",
+    "fetched_at": "2026-10-07T17:11:24.764111Z"
+   },
+   {
+    "url": "https://github.com/Blaizzy/mlx-vlm",
+    "title": "GitHub - Blaizzy/mlx-vlm: MLX-VLM is a package for inference and fine-tuning of Vision Language Models (VLMs) on your Mac using MLX. · GitHub",
+    "source_label": "github.com",
+    "is_primary": false,
+    "raw_text_ref": "sha256:13c16ba83ce65bdfebedd8cfa1c9c9bfcd1c411528d08d8209bb1743c25b5f01",
+    "text": "max-tokens 100 --temperature 0.0 --image http://images.cocodataset.org/val2017/000000039769.jpg\n# Audio understanding\nmlx_vlm.generate --model mlx-community/gemma-3n-E2B-it-4bit --max-tokens 100 --prompt \"Describe what you hear\" --audio /path/to/audio.wav\n# Multi-modal understanding (Image + Audio)\nmlx_vlm.generate --model mlx-community/gemma-3n-E2B-it-4bit --max-tokens 100 --prompt \"Describe what you see and hear\" --image /path/to/image.jpg --audio /path/to/audio.wav\n# Speech generation\nmlx_vlm.generate --model openbmb/MiniCPM-o-4_5 --output-modality audio --prompt \"Say hello.\" --ref-audio /path/to/voice.wav --output speech.wav --max-tokens 256\nFor thinking models (e.g., Qwen3.5), you can limit the number of tokens spent in the thinking block:\nmlx_vlm.generate ",
+    "fetched_at": "2026-10-07T17:11:25.791534Z"
+   }
+  ],
+  "claims": [
+   {
+    "text": "EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.",
+    "evidence_span": "Today, we’re launching EmbeddingGemma 2, expanding beyond text to unify code, images, video, and audio in a shared embedding space.",
+    "document_indices": [
+     0,
+     1,
+     2,
+     3
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "This advancement is significant as it enables more efficient and effective analysis of complex datasets involving multiple modalities.",
+    "evidence_span": "EmbeddingGemma 2 brings robust capabilities directly to edge hardware. Generating embeddings locally helps ensure data privacy, reduces pipeline latency, and empowers developers to build cross-modal search and retrieval that works entirely offline.",
+    "document_indices": [
+     0
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The model has 740M total parameters, combining a 270M parameter text model with modular vision (170M) and audio (300M) encoders.",
+    "evidence_span": "The model has 740M total parameters, combining a 270M parameter text model with modular vision (170M) and audio (300M) encoders.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.",
+    "evidence_span": "EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.",
+    "document_indices": [
+     1,
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions.",
+    "evidence_span": "EmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.",
+    "evidence_span": "EmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.",
+    "document_indices": [
+     1,
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 has certain limitations that users should be aware of.",
+    "evidence_span": "EmbeddingGemma 2 has certain limitations that users should be aware of.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "A single input may mix text with images, video, and audio, using a single shared 8,192-token context.",
+    "evidence_span": "A single input may mix text with images, video, and audio, using a single shared 8,192-token context.",
+    "document_indices": [
+     1
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Designed to run on consumer hardware such as mobile devices and laptops, EmbeddingGemma 2 delivers low-latency semantic representations for on-device applications, like search, retrieval-augmented generation (RAG), classification, and clustering.",
+    "evidence_span": "Designed to run on consumer hardware such as mobile devices and laptops, EmbeddingGemma 2 delivers low-latency semantic representations for on-device applications, like search, retrieval-augmented generation (RAG), classification, and clustering.",
+    "document_indices": [
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 was evaluated across text, code, vision, visual document, video, and audio embedding benchmarks.",
+    "evidence_span": "EmbeddingGemma 2 was evaluated across text, code, vision, visual document, video, and audio embedding benchmarks.",
+    "document_indices": [
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "The maximums above assume a single modality with no accompanying text. Interleaved inputs draw from the same budget, so mixing modalities reduces the amount of each that fits.",
+    "evidence_span": "The maximums above assume a single modality with no accompanying text. Interleaved inputs draw from the same budget, so mixing modalities reduces the amount of each that fits.",
+    "document_indices": [
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "Embedding representations can be misused to retrieve, classify, or otherwise organize embedded content in false, misleading or harmful ways.",
+    "evidence_span": "Embedding representations can be misused to retrieve, classify, or otherwise organize embedded content in false, misleading or harmful ways.",
+    "document_indices": [
+     2
+    ],
+    "status": "unverified"
+   },
+   {
+    "text": "EmbeddingGemma 2 supports multi-modal understanding (Image + Audio)",
+    "evidence_span": "mlx_vlm.generate --model mlx-community/gemma-3n-E2B-it-4bit --max-tokens 100 --prompt \"Describe what you see and hear\" --image /path/to/image.jpg --audio /path/to/audio.wav",
+    "document_indices": [
+     3
+    ],
+    "status": "unverified"
+   }
+  ],
+  "gaps_and_disagreements": "Document 0 and Document 1 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 1 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 1 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 1 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 0 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 has been released as an open and lightweight multimodal embedding model designed to enhance multimodal processing capabilities.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.'. Document 1 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 understands 100+ languages, and achieves a ~14% improvement on code tasks relative to its predecessor.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions.'. Document 1 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 is trained with Matryoshka Representation Learning, so the 768-dimensional output vector can be shortened by keeping only its leading dimensions.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.'. Document 1 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 generates embeddings from input content, which can be used for a number of downstream applications.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has certain limitations that users should be aware of.'. Document 1 and Document 2 report conflicting claims near: 'EmbeddingGemma 2 has certain limitations that users should be aware of.'. Document 1 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 has certain limitations that users should be aware of.'. Document 2 and Document 3 report conflicting claims near: 'Designed to run on consumer hardware such as mobile devices and laptops, EmbeddingGemma 2 delivers low-latency semantic representations for on-device applications, like search, retrieval-augmented generation (RAG), classification, and clustering.'. Document 2 and Document 3 report conflicting claims near: 'EmbeddingGemma 2 was evaluated across text, code, vision, visual document, video, and audio embedding benchmarks.'."
+ }
+}
