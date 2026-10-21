@@ -13,6 +13,7 @@ const draft: EditorDraft = {
   failure_reason: null,
   review_status: "pending",
   review_note: "",
+  published_slug: null,
   draft: {
     title: "A smaller model matches a larger one",
     dek: "What the paper reports.",

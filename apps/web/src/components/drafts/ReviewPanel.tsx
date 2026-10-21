@@ -1,6 +1,12 @@
 "use client";
 import { useState } from "react";
-import { postDraftAction, type DraftFlag, type EditorDraft } from "@/lib/api";
+import {
+  fetchEditorDraft,
+  postDraftAction,
+  publishDraft,
+  type DraftFlag,
+  type EditorDraft,
+} from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 
 type Props = {
@@ -12,6 +18,7 @@ type Props = {
 // Deliberately plain: edit or delete each flagged sentence, then decide.
 export function ReviewPanel({ draft, editorKey, onUpdated }: Props) {
   const [note, setNote] = useState("");
+  const [analysis, setAnalysis] = useState("");
   const [error, setError] = useState("");
   const [edits, setEdits] = useState<Record<string, string>>({});
   const flags = draft.draft?.flags ?? [];
@@ -27,6 +34,17 @@ export function ReviewPanel({ draft, editorKey, onUpdated }: Props) {
       onUpdated(
         await postDraftAction(draft.card_id, action, payload, editorKey),
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed.");
+    }
+  }
+
+  async function publish() {
+    setError("");
+    try {
+      await publishDraft(draft.card_id, analysis, editorKey);
+      const fresh = await fetchEditorDraft(draft.card_id, editorKey);
+      if (fresh) onUpdated(fresh);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed.");
     }
@@ -101,6 +119,26 @@ export function ReviewPanel({ draft, editorKey, onUpdated }: Props) {
             Reject
           </Button>
         </div>
+      )}
+      {draft.review_status === "approved" && !draft.published_slug && (
+        <div className="mt-4 space-y-2">
+          <textarea
+            aria-label="Editor analysis"
+            placeholder="Editor's analysis shown with the article (optional)"
+            className="w-full border border-line bg-surface p-2 text-small text-ink"
+            value={analysis}
+            onChange={(e) => setAnalysis(e.target.value)}
+          />
+          <Button onClick={publish}>Publish</Button>
+        </div>
+      )}
+      {draft.published_slug && (
+        <p className="mt-4 text-small">
+          Published:{" "}
+          <a href={`/articles/${draft.published_slug}`} className="underline">
+            /articles/{draft.published_slug}
+          </a>
+        </p>
       )}
       {error && (
         <p role="alert" className="mt-2 text-small text-ink">

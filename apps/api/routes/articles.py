@@ -4,14 +4,23 @@ from collections import Counter
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from apps.api.deps import get_article_repository
+from apps.api.deps import get_article_repository, get_published_repository
 from apps.api.routes.cards import require_editor_key
-from apps.api.schemas import ArticleDraftOut, ArticleDraftSummaryOut, ReviewIn, SentenceEditIn
+from apps.api.schemas import (
+    ArticleDraftOut,
+    ArticleDraftSummaryOut,
+    PublishedOut,
+    PublishIn,
+    ReviewIn,
+    SentenceEditIn,
+)
 from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
+from signalforge.db.repositories.published import PublishedArticleRepository
+from signalforge.publishing import meta_description, slugify, unique_slug
 from signalforge.stages.draft_review import apply_sentence_edit
 
 router = APIRouter()
@@ -49,7 +58,7 @@ def editor_drafts(
     return summaries
 
 
-def _out(row: Any) -> ArticleDraftOut:
+def _out(row: Any, published_slug: str | None = None) -> ArticleDraftOut:
     return ArticleDraftOut(
         card_id=row.card_id,
         status=cast(Any, row.status),
@@ -61,6 +70,7 @@ def _out(row: Any) -> ArticleDraftOut:
         review_status=cast(Any, row.review_status),
         review_note=row.review_note,
         reviewed_at=row.reviewed_at,
+        published_slug=published_slug,
         cost_usd=row.cost_usd,
         calls=row.calls,
         tokens=row.tokens,
@@ -81,9 +91,13 @@ def _row(repo: ArticleDraftRepository, card_id: UUID) -> Any:
     dependencies=[Depends(require_editor_key)],
 )
 def editor_draft(
-    card_id: UUID, repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)]
+    card_id: UUID,
+    repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> ArticleDraftOut:
-    return _out(_row(repo, card_id))
+    row = _row(repo, card_id)
+    live = published.get_by_card(card_id)
+    return _out(row, live.slug if live is not None and live.status == "published" else None)
 
 
 @router.post(
@@ -147,3 +161,78 @@ def review_draft(
         row, payload.decision, payload.note, {"type": "review", "decision": payload.decision}
     )
     return _out(row)
+
+
+@router.post(
+    "/editor/drafts/{card_id}/publish",
+    response_model=PublishedOut,
+    dependencies=[Depends(require_editor_key)],
+)
+def publish_draft(
+    card_id: UUID,
+    payload: PublishIn,
+    request: Request,
+    repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishedOut:
+    """Publish an approved draft as an immutable snapshot with its SEO fields."""
+    row = _row(repo, card_id)
+    if row.review_status != "approved" or row.status != "drafted" or not row.draft:
+        raise HTTPException(status_code=409, detail="Only an approved, drafted article can publish")
+    if row.draft.get("flags"):
+        raise HTTPException(status_code=409, detail="Resolve every flagged sentence first")
+    existing = published.get_by_card(card_id)
+    if existing is not None and existing.status == "published":
+        raise HTTPException(status_code=409, detail="Already published")
+    body = ArticleBody.model_validate(row.draft)
+    if payload.slug is not None:
+        slug = payload.slug
+        taken = published.get_by_slug(slug)
+        if taken is not None and (existing is None or taken.id != existing.id):
+            raise HTTPException(status_code=409, detail="That slug is already in use")
+    elif existing is not None:
+        slug = existing.slug
+    else:
+        slug = unique_slug(slugify(body.title), published.slug_exists)
+    settings = request.app.state.settings
+    saved = published.publish(
+        card_id,
+        {
+            "slug": slug,
+            "template": row.template,
+            "seo_title": payload.seo_title or body.title,
+            "meta_description": payload.meta_description or meta_description(body.dek),
+            "byline": settings.publish_byline,
+            "process_note": settings.publish_process_note,
+            "editor_analysis": payload.editor_analysis.strip(),
+            "body": body.model_dump(mode="json"),
+        },
+    )
+    return PublishedOut(
+        slug=saved.slug,
+        status=cast(Any, saved.status),
+        published_at=saved.published_at,
+        modified_at=saved.modified_at,
+    )
+
+
+@router.post(
+    "/editor/articles/{slug}/unpublish",
+    response_model=PublishedOut,
+    dependencies=[Depends(require_editor_key)],
+)
+def unpublish_article(
+    slug: str,
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishedOut:
+    row = published.get_by_slug(slug)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if row.status == "published":
+        published.unpublish(row)
+    return PublishedOut(
+        slug=row.slug,
+        status=cast(Any, row.status),
+        published_at=row.published_at,
+        modified_at=row.modified_at,
+    )

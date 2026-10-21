@@ -356,6 +356,7 @@ export type EditorDraft = {
   failure_reason: string | null;
   review_status: ReviewStatus;
   review_note: string;
+  published_slug: string | null;
 };
 
 const DRAFT_STATUSES: readonly string[] = [
@@ -465,6 +466,7 @@ export function parseEditorDraft(json: unknown): EditorDraft {
     failure_reason,
     review_status,
     review_note,
+    published_slug,
   } = json;
   if (
     !isString(card_id) ||
@@ -486,6 +488,7 @@ export function parseEditorDraft(json: unknown): EditorDraft {
       ? (review_status as ReviewStatus)
       : "pending",
     review_note: isString(review_note) ? review_note : "",
+    published_slug: isString(published_slug) ? published_slug : null,
   };
 }
 
@@ -588,4 +591,29 @@ export async function postDraftAction(
   );
   if (!response.ok) throw await errorFromResponse(response);
   return parseEditorDraft(await response.json());
+}
+
+// Publish an approved draft. Returns the public slug.
+export async function publishDraft(
+  cardId: string,
+  editorAnalysis: string,
+  editorKey: string,
+): Promise<string> {
+  const response = await fetch(
+    `/api/editor/drafts/${encodeURIComponent(cardId)}/publish`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Editor-Key": editorKey,
+      },
+      body: JSON.stringify({ editor_analysis: editorAnalysis }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+  const json: unknown = await response.json();
+  if (!isRecord(json) || !isString(json.slug)) throw badDraft();
+  return json.slug;
 }
