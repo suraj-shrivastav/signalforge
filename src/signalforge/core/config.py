@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     llm_model_claim_judge: str = "google/gemini-2.5-flash-lite"
     # Vendor-specific request fields, as JSON, merged into the request body.
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
+    # Extra fields for embedding requests, e.g. NVIDIA's {"input_type": "passage"}.
+    llm_embed_extra_body: dict[str, Any] = Field(default_factory=dict)
     # Output cap sent as max_tokens on every chat call. Reasoning models spend part of it
     # thinking before the reply, so it leaves room for that plus a 1000-word draft as JSON.
     llm_max_output_tokens: int = Field(default=16_384, ge=1)

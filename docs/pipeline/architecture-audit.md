@@ -197,3 +197,14 @@ Findings re-checked against the code and against a real run (writer `nvidia/nemo
 Live result for b84beb7f after the fixes: the draft is `needs_more_info`. Two sentences were blocked, one for a number (740) missing from its cited claim context and one that the judge did not confirm (an Apache 2.0 licence claim). That is the intended outcome: the system now says exactly what it could not ground instead of publishing it.
 
 Residual gaps in grounding: a sentence can still misstate a fact that has no number (only the judge catches that), name checks are advisory notes rather than blocks, and `conflicting` needs a real contradiction check.
+
+## 10. All-NVIDIA run (2026-10-21)
+
+OpenRouter credit ran out, so every role was moved to NVIDIA's OpenAI-compatible API. Only Nemotron models answer on this account (every non-NVIDIA chat model tried returned 404 or hung), so the writer-vs-judge guard changed from "different family" to "different model, warn on same family".
+
+- Writer `nvidia/nemotron-3-ultra-550b-a55b` (25 to 85 s per call), judge, extraction and card roles `nvidia/nemotron-3.5-lightning-30b-a3b`, embeddings `nvidia/nemotron-3.5-embed-1b`.
+- Lightning is a reasoning model: with a 4,096 token cap its thinking consumed the whole cap and every extraction reply was truncated. `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}` fixes it.
+- NVIDIA embedding models require `input_type`, set through `LLM_EMBED_EXTRA_BODY`.
+- Result on two fresh cards: Granite Speech 5.0 `drafted` (577 words, 40 cited claims), Kumo Forecast `needs_more_info` (judge rejected 3 claims).
+- Consequence for A-05 and section 3.4: the judge is now a small model from the writer's family. Its pass is weaker evidence than a cross-vendor pass (it accepted "seven languages" next to a list of six). The golden set should measure judge false accepts and false rejects before the judge is trusted for publishing.
+- Still open: research `--retry-failed` (A-10) and a retry path for research `needs_more_info`.

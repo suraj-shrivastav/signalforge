@@ -34,14 +34,14 @@ FILLER = " ".join(["word"] * 760)
 
 
 def factory(
-    replies: list[str], judge_family: str = "other"
+    replies: list[str], judge_family: str = "other", judge_model: str | None = None
 ) -> Callable[[Session, Budget], LLMGateway]:
     provider = FakeProvider(replies)
 
     def make(session: Session, budget: Budget) -> LLMGateway:
         roles = {
             WRITER_ROLE: ModelSpec("acme/w", "acme"),
-            JUDGE_ROLE: ModelSpec(f"{judge_family}/j", judge_family),
+            JUDGE_ROLE: ModelSpec(judge_model or f"{judge_family}/j", judge_family),
         }
         return LLMGateway(provider, roles, budget, session)
 
@@ -176,10 +176,12 @@ def test_budget_exhausted_mid_card_fails_with_empty_draft(db_session: Session) -
     assert (draft.status, draft.draft, draft.calls) == ("failed", {}, 1)
 
 
-def test_same_family_roles_fail_fast_before_any_card(db_session: Session) -> None:
+def test_same_model_roles_fail_fast_before_any_card(db_session: Session) -> None:
     card = seed(db_session)
     with pytest.raises(ConfigurationError):
-        run_draft(db_session, factory([], judge_family="acme"), budget_limits=LIMITS)
+        run_draft(
+            db_session, factory([], judge_family="acme", judge_model="acme/w"), budget_limits=LIMITS
+        )
     assert db_session.query(ArticleDraftRow).filter_by(card_id=card.id).count() == 0
     # Latest run, not .one(): a shared dev database already holds real draft runs.
     latest = (
