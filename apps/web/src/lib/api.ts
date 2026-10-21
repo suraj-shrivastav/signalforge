@@ -617,3 +617,20 @@ export async function publishDraft(
   if (!isRecord(json) || !isString(json.slug)) throw badDraft();
   return json.slug;
 }
+
+// Take a published article offline. The editor can publish it again later.
+export async function unpublishArticle(
+  slug: string,
+  editorKey: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/editor/articles/${encodeURIComponent(slug)}/unpublish`,
+    {
+      method: "POST",
+      headers: { "X-Editor-Key": editorKey },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    },
+  );
+  if (!response.ok) throw await errorFromResponse(response);
+}
