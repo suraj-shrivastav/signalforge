@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from apps.api.deps import get_article_repository
+from apps.api.deps import get_article_repository, get_published_repository
 from apps.api.main import create_app
 from apps.api.schemas import PublicArticleOut
 from fastapi.testclient import TestClient
@@ -88,11 +88,49 @@ class StubRepo:
         return [(row, "Signal title") for row in self.rows.values()]
 
 
+class StubPublished:
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Any] = {}
+
+    def slug_exists(self, slug: str) -> bool:
+        return any(r.slug == slug for r in self.rows.values())
+
+    def get_by_card(self, card_id: UUID) -> Any:
+        return self.rows.get(card_id)
+
+    def get_by_slug(self, slug: str) -> Any:
+        return next((r for r in self.rows.values() if r.slug == slug), None)
+
+    def get_public(self, slug: str) -> Any:
+        row = self.get_by_slug(slug)
+        return row if row is not None and row.status == "published" else None
+
+    def list_public(self, limit: int) -> list[Any]:
+        return [r for r in self.rows.values() if r.status == "published"][:limit]
+
+    def publish(self, card_id: UUID, fields: dict[str, Any]) -> Any:
+        now = datetime(2026, 10, 21, tzinfo=UTC)
+        row = self.rows.get(card_id) or SimpleNamespace(
+            id=uuid4(), card_id=card_id, published_at=now
+        )
+        for name, value in fields.items():
+            setattr(row, name, value)
+        row.status, row.modified_at = "published", now
+        self.rows[card_id] = row
+        return row
+
+    def unpublish(self, row: Any) -> None:
+        row.status = "unpublished"
+
+
 @pytest.fixture
 def ctx() -> Iterator[tuple[TestClient, StubRepo]]:
     app = create_app(Settings(_env_file=None, database_url=DSN, editor_api_key=KEY))  # type: ignore[call-arg,arg-type]
     repo = StubRepo()
+    published = StubPublished()
     app.dependency_overrides[get_article_repository] = lambda: repo
+    app.dependency_overrides[get_published_repository] = lambda: published
+    repo.published = published  # type: ignore[attr-defined]
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, repo
 
@@ -165,8 +203,17 @@ def _keys(value: object) -> set[str]:
     return set()
 
 
+def published_row(body: ArticleBody, *, slug: str = "a-title", status: str = "published") -> Any:
+    now = datetime(2026, 10, 21, tzinfo=UTC)
+    return SimpleNamespace(
+        id=uuid4(), card_id=uuid4(), slug=slug, status=status, seo_title="SEO title",
+        meta_description="Meta.", byline="An Editor", process_note="Checked.",
+        editor_analysis="", body=body.model_dump(mode="json"), published_at=now, modified_at=now,
+    )  # fmt: skip
+
+
 def test_public_shape_omits_editor_only_fields() -> None:
-    dumped = PublicArticleOut.from_body(BODY).model_dump(mode="json")
+    dumped = PublicArticleOut.from_row(published_row(BODY)).model_dump(mode="json")
     leaked = _keys(dumped) & set(EDITOR_ONLY)
     assert leaked == set()
     schema = json.dumps(PublicArticleOut.model_json_schema())
@@ -262,3 +309,83 @@ def test_review_routes_require_the_key(ctx: tuple[TestClient, StubRepo]) -> None
         client.post(f"/editor/drafts/{card_id}/review", json={"decision": "revise"}).status_code
         == 401
     )
+
+
+def approve(client: TestClient, repo: StubRepo, body: ArticleBody = BODY) -> UUID:
+    card_id = repo.add(body.model_dump(mode="json"))
+    r = client.post(f"/editor/drafts/{card_id}/review", headers=H, json={"decision": "approved"})
+    assert r.status_code == 200
+    return card_id
+
+
+def test_publish_needs_an_approved_unflagged_draft(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    pending = repo.add(BODY.model_dump(mode="json"))
+    assert client.post(f"/editor/drafts/{pending}/publish", headers=H, json={}).status_code == 409
+    flagged = repo.add(FLAGGED.model_dump(mode="json"))
+    repo.rows[flagged].review_status = "approved"
+    assert client.post(f"/editor/drafts/{flagged}/publish", headers=H, json={}).status_code == 409
+    assert client.post(f"/editor/drafts/{pending}/publish", json={}).status_code == 401
+
+
+def test_publish_snapshots_the_body_and_defaults_the_seo_fields(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = approve(client, repo)
+    r = client.post(
+        f"/editor/drafts/{card_id}/publish", headers=H, json={"editor_analysis": " Our take. "}
+    )
+    assert r.status_code == 200
+    assert (r.json()["slug"], r.json()["status"]) == ("title", "published")
+    saved = repo.published.rows[card_id]  # type: ignore[attr-defined]
+    assert (saved.seo_title, saved.meta_description) == ("Title", "Dek")
+    assert saved.editor_analysis == "Our take."
+    assert saved.byline == "SignalForge Editorial"
+    assert client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).status_code == 409
+    detail = client.get(f"/editor/drafts/{card_id}", headers=H).json()
+    assert detail["published_slug"] == "title"
+
+
+def test_publish_slug_is_unique_and_validated(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    first, second = approve(client, repo), approve(client, repo)
+    assert (
+        client.post(f"/editor/drafts/{first}/publish", headers=H, json={}).json()["slug"] == "title"
+    )
+    auto = client.post(f"/editor/drafts/{second}/publish", headers=H, json={})
+    assert auto.json()["slug"] == "title-2"
+    third = approve(client, repo)
+    taken = client.post(f"/editor/drafts/{third}/publish", headers=H, json={"slug": "title"})
+    assert taken.status_code == 409
+    bad = client.post(f"/editor/drafts/{third}/publish", headers=H, json={"slug": "Bad Slug!"})
+    assert bad.status_code == 422
+
+
+def test_public_routes_serve_only_published_and_hide_editor_fields(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = approve(client, repo)
+    assert client.get("/articles/title").status_code == 404
+    client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    article = client.get("/articles/title")
+    assert article.status_code == 200
+    assert _keys(article.json()) & set(EDITOR_ONLY) == set()
+    assert [a["slug"] for a in client.get("/articles").json()] == ["title"]
+    client.post("/editor/articles/title/unpublish", headers=H)
+    assert client.get("/articles/title").status_code == 404
+    assert client.get("/articles").json() == []
+    assert client.post("/editor/articles/title/unpublish").status_code == 401
+
+
+def test_unpublished_article_can_be_republished_at_the_same_slug(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = approve(client, repo)
+    client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    client.post("/editor/articles/title/unpublish", headers=H)
+    again = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    assert (again.status_code, again.json()["slug"]) == (200, "title")
+    assert client.get("/articles/title").status_code == 200

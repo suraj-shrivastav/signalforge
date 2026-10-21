@@ -210,3 +210,9 @@ Primary sources read:
 - [schema.org Article](https://schema.org/Article), [NewsArticle](https://schema.org/NewsArticle)
 
 Secondary, vendor material (used only for the landscape and flagged above): the GEO guides from [Frase](https://frase.io/blog/what-is-generative-engine-optimization-geo), [Conductor](https://www.conductor.com/academy/glossary/generative-engine-optimization), [Search Engine Land](https://searchengineland.com/generative-engine-optimization-framework-introduced-research-paper-435855) and others returned by search.
+
+## 9. Implementation status
+
+- **Publish backend (shipped):** `published_articles` table (migration 0011) holds an immutable snapshot of the approved body plus `slug`, `seo_title`, `meta_description`, `byline`, `process_note`, `editor_analysis`, `published_at`, `modified_at` and a published or unpublished status. `POST /editor/drafts/{id}/publish` needs an approved, drafted, unflagged article. Slug and meta description default from the title and dek. The byline and process note come from `PUBLISH_BYLINE` and `PUBLISH_PROCESS_NOTE`. `POST /editor/articles/{slug}/unpublish` takes an article down without deleting it. Public read routes `GET /articles` and `GET /articles/{slug}` serve published articles through an explicit allow-list (no flags, review state, template or cost).
+- **Set `PUBLISH_BYLINE` to the editor's real name.** The default is "SignalForge Editorial".
+- Next: public pages with metadata, JSON-LD, sitemap, robots, feed, and the machine-readable twin (rules 1 to 8, 15 and 16).

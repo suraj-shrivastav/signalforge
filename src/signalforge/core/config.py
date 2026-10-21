@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     # afford the full cap, so a 250 to 1000 word JSON article gets a tight one.
     llm_max_output_tokens_article_writer: int = Field(default=6_000, ge=1)
 
+    # Shown on every published article. Set PUBLISH_BYLINE to the editor's real name: Google
+    # treats invented authors as deceptive, and asks that AI use be clear to readers.
+    publish_byline: str = "SignalForge Editorial"
+    publish_process_note: str = (
+        "Sources were collected and checked automatically against their stored text. "
+        "An editor reviewed and approved this article before it was published."
+    )
+
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.
     budget_per_topic_usd: Decimal = Decimal("0.50")

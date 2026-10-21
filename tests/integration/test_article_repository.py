@@ -18,6 +18,7 @@ from signalforge.core.artifacts.signal import RawSignal
 from signalforge.db.models import ArticleDraftRow, StageRun, StageRunStatus, TopicCardRow
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.cards import CardRepository
+from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.db.repositories.signals import SignalRepository
 
@@ -201,3 +202,55 @@ def test_review_decision_and_edit_log_persist(db_session: Session) -> None:
     assert stored.reviewed_at is not None
     assert [e["type"] for e in stored.review_log] == ["edit", "review"]
     assert all("at" in e for e in stored.review_log)
+
+
+def published_fields(slug: str) -> dict[str, object]:
+    body = ArticleBody(
+        title="Title",
+        dek="Dek",
+        sections=(ArticleSection(heading="H", paragraphs=("P",)),),
+        cover=ArticleCover(alt="Cover"),
+    )
+    return {
+        "slug": slug,
+        "template": "explainer",
+        "seo_title": "SEO",
+        "meta_description": "Meta",
+        "byline": "Editor",
+        "process_note": "Checked.",
+        "editor_analysis": "",
+        "body": body.model_dump(mode="json"),
+    }
+
+
+def card(session: Session, url: str) -> UUID:
+    return seed_researched(session, url, ResearchStatus.RESEARCHED)
+
+
+def test_publish_list_and_unpublish_roundtrip(db_session: Session) -> None:
+    repo = PublishedArticleRepository(db_session)
+    card_id = card(db_session, "https://example.com/pub-1")
+    row = repo.publish(card_id, published_fields("pub-one"))
+    first_published = row.published_at
+    assert repo.slug_exists("pub-one")
+    assert [r.slug for r in repo.list_public(10)] == ["pub-one"]
+    assert repo.get_public("pub-one") is not None
+
+    repo.unpublish(row)
+    assert repo.get_public("pub-one") is None
+    assert repo.list_public(10) == []
+    assert repo.get_by_slug("pub-one") is not None
+
+    again = repo.publish(card_id, published_fields("pub-one"))
+    assert again.status == "published"
+    assert again.published_at == first_published
+    assert again.modified_at >= first_published
+    assert again.modified_at.tzinfo is not None
+
+
+def test_newest_published_first(db_session: Session) -> None:
+    repo = PublishedArticleRepository(db_session)
+    repo.publish(card(db_session, "https://example.com/pub-a"), published_fields("pub-a"))
+    repo.publish(card(db_session, "https://example.com/pub-b"), published_fields("pub-b"))
+    slugs = [r.slug for r in repo.list_public(10)]
+    assert slugs.index("pub-b") < slugs.index("pub-a")

@@ -21,6 +21,7 @@ const draft: EditorDraft = {
   failure_reason: null,
   review_status: "pending",
   review_note: "",
+  published_slug: null,
   draft: {
     title: "T",
     dek: "D",
@@ -83,6 +84,25 @@ describe("ReviewPanel", () => {
     render(<ReviewPanel draft={draft} editorKey="k" onUpdated={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Request revision" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("offers Publish only for an approved, unpublished draft", () => {
+    const approved = { ...draft, review_status: "approved" as const };
+    const { rerender } = render(
+      <ReviewPanel draft={approved} editorKey="k" onUpdated={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled();
+    rerender(
+      <ReviewPanel
+        draft={{ ...approved, published_slug: "my-article" }}
+        editorKey="k"
+        onUpdated={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "/articles/my-article" }),
+    ).toBeInTheDocument();
   });
 
   it("hides the controls once the draft is decided", () => {

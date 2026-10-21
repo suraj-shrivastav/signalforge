@@ -9,6 +9,7 @@ from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.reason_tags import REASON_TAGS
 from signalforge.db.models.assessments import SignalAssessmentRow
 from signalforge.db.models.signals import Signal
+from signalforge.publishing import SLUG_PATTERN
 
 
 class AssessmentOut(BaseModel):
@@ -131,6 +132,7 @@ class ArticleDraftOut(BaseModel):
     review_status: Literal["pending", "approved", "revise", "rejected"] = "pending"
     review_note: str = ""
     reviewed_at: datetime | None = None
+    published_slug: str | None = None
     cost_usd: Decimal
     calls: int
     tokens: int
@@ -205,18 +207,35 @@ class PublicArticleOut(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    slug: str
     title: str
+    seo_title: str
+    meta_description: str
     dek: str
+    byline: str
+    process_note: str
+    editor_analysis: str
+    published_at: datetime
+    modified_at: datetime
     sections: list[PublicSectionOut]
     claims: list[PublicClaimOut]
     sources: list[PublicSourceOut]
     cover: PublicCoverOut
 
     @classmethod
-    def from_body(cls, body: ArticleBody) -> "PublicArticleOut":
+    def from_row(cls, row: Any) -> "PublicArticleOut":
+        body = ArticleBody.model_validate(row.body)
         return cls(
+            slug=row.slug,
             title=body.title,
+            seo_title=row.seo_title,
+            meta_description=row.meta_description,
             dek=body.dek,
+            byline=row.byline,
+            process_note=row.process_note,
+            editor_analysis=row.editor_analysis,
+            published_at=row.published_at,
+            modified_at=row.modified_at,
             sections=[
                 PublicSectionOut(heading=s.heading, paragraphs=list(s.paragraphs))
                 for s in body.sections
@@ -230,3 +249,46 @@ class PublicArticleOut(BaseModel):
             sources=[PublicSourceOut(label=s.label, url=s.url) for s in body.sources],
             cover=PublicCoverOut(src=body.cover.src, alt=body.cover.alt, credit=body.cover.credit),
         )
+
+
+class PublicArticleSummaryOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    title: str
+    dek: str
+    meta_description: str
+    published_at: datetime
+    modified_at: datetime
+    cover: PublicCoverOut
+
+    @classmethod
+    def from_row(cls, row: Any) -> "PublicArticleSummaryOut":
+        body = ArticleBody.model_validate(row.body)
+        return cls(
+            slug=row.slug,
+            title=body.title,
+            dek=body.dek,
+            meta_description=row.meta_description,
+            published_at=row.published_at,
+            modified_at=row.modified_at,
+            cover=PublicCoverOut(src=body.cover.src, alt=body.cover.alt, credit=body.cover.credit),
+        )
+
+
+class PublishIn(BaseModel):
+    """Editor's publish request. Every field is optional: defaults come from the article."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str | None = Field(default=None, max_length=120, pattern=SLUG_PATTERN)
+    seo_title: str | None = Field(default=None, min_length=1, max_length=160)
+    meta_description: str | None = Field(default=None, min_length=1, max_length=320)
+    editor_analysis: str = Field(default="", max_length=4000)
+
+
+class PublishedOut(BaseModel):
+    slug: str
+    status: Literal["published", "unpublished"]
+    published_at: datetime
+    modified_at: datetime

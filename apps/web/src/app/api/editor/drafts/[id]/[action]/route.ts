@@ -44,7 +44,7 @@ export async function POST(
   if (!UUID_RE.test(id)) {
     return errorResponse(400, "invalid_card_id", "Card id must be a UUID");
   }
-  if (action !== "sentence" && action !== "review") {
+  if (action !== "sentence" && action !== "review" && action !== "publish") {
     return errorResponse(404, "unknown_action", "Unknown draft action");
   }
   const base = process.env.API_BASE_URL;
