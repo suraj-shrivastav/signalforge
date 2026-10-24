@@ -8,23 +8,24 @@ const LINKS = [
   { href: "/feed.xml", label: "RSS" },
 ] as const;
 
-// Centered, quiet navigation. The wordmark only shows on inner pages (the landing page has its own).
-export function PublicHeader({ wordmark = true }: { wordmark?: boolean }) {
+export function PublicHeader() {
   return (
     <header className="px-4 pt-6 md:px-6">
-      <div className="mx-auto flex max-w-page flex-col items-center gap-3">
-        {wordmark && (
-          <Link href="/" className="font-serif text-h3 text-ink">
-            SignalForge
-          </Link>
-        )}
-        <div className="flex items-center gap-6">
-          <nav aria-label="Main" className="flex gap-8 font-serif text-lead">
+      <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 border-b border-line pb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 font-display text-lead font-extrabold tracking-tight text-ink"
+        >
+          <span aria-hidden="true" className="size-4 rounded-pill bg-ink" />
+          SignalForge
+        </Link>
+        <div className="flex items-center gap-2">
+          <nav aria-label="Main" className="flex gap-1 text-small">
             {LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-ink transition-opacity hover:opacity-60"
+                className="rounded-pill px-3 py-1.5 text-ink transition-colors hover:bg-sunken"
               >
                 {link.label}
               </Link>

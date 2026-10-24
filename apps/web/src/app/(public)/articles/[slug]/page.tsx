@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Link2 } from "lucide-react";
+import { PostTile } from "@/components/public/PostTile";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { CoverImage } from "@/components/ui/CoverImage";
 import { safeHref } from "@/lib/format";
@@ -31,7 +32,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 const MAX_FACTS = 5;
 
 const SHARE_BUTTON =
-  "inline-flex size-10 items-center justify-center border border-line bg-surface text-small font-semibold text-ink transition-colors hover:bg-sunken";
+  "inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-small font-semibold text-ink transition-colors hover:bg-sunken";
 
 // The writer can return a whole section as one paragraph. Break long ones into short
 // chunks of whole sentences so the page stays readable.
@@ -113,7 +114,7 @@ export default async function ArticlePage({ params }: Params) {
             >
               <ArrowLeft aria-hidden="true" className="size-4" />
             </Link>
-            <span className="bg-ink px-2 py-1 text-caption font-semibold uppercase tracking-wider text-page">
+            <span className="rounded-pill bg-ink px-3 py-1 text-caption font-semibold uppercase tracking-wider text-page">
               {readMinutes(article)} min read
             </span>
             {next ? (
@@ -160,7 +161,7 @@ export default async function ArticlePage({ params }: Params) {
               slug={article.slug}
               alt={article.cover.alt}
               src={article.cover.src ?? undefined}
-              className="rounded-none"
+              className="rounded-tile"
             />
             {article.cover.credit && (
               <figcaption className="mt-2 text-caption text-muted">
@@ -216,7 +217,7 @@ export default async function ArticlePage({ params }: Params) {
             {facts.length > 0 && (
               <section
                 aria-labelledby="key-facts"
-                className="mt-8 bg-surface px-6 py-5"
+                className="mt-8 rounded-tile bg-surface px-6 py-6 md:px-8"
               >
                 <h2
                   id="key-facts"
@@ -260,7 +261,7 @@ export default async function ArticlePage({ params }: Params) {
             {article.editor_analysis && (
               <section
                 aria-labelledby="analysis"
-                className="mt-12 border-l-4 border-ink bg-surface px-6 py-5"
+                className="mt-12 rounded-tile bg-surface px-6 py-6 md:px-8"
               >
                 <h2
                   id="analysis"
@@ -314,26 +315,24 @@ export default async function ArticlePage({ params }: Params) {
         >
           <h2
             id="more"
-            className="text-center font-serif text-h3 font-semibold text-ink"
+            className="text-center font-display text-h3 font-bold text-ink"
           >
             Read next
           </h2>
           <ul className="mt-8 grid gap-6 md:grid-cols-3">
             {more.map((item) => (
-              <li key={item.slug} className="bg-surface p-6">
-                <p className="text-caption text-muted">
-                  <time dateTime={item.published_at}>
-                    {DATE.format(new Date(item.published_at))}
-                  </time>
-                </p>
-                <h3 className="mt-2 font-serif text-lead font-semibold text-ink">
-                  <Link
-                    href={`/articles/${item.slug}`}
-                    className="hover:underline"
-                  >
+              <li key={item.slug}>
+                <Link href={`/articles/${item.slug}`} className="group block">
+                  <PostTile article={item} />
+                  <p className="mt-4 text-caption text-muted">
+                    <time dateTime={item.published_at}>
+                      {DATE.format(new Date(item.published_at))}
+                    </time>
+                  </p>
+                  <h3 className="mt-1 font-display text-lead font-bold leading-tight tracking-tight text-ink group-hover:underline">
                     {item.title}
-                  </Link>
-                </h3>
+                  </h3>
+                </Link>
               </li>
             ))}
           </ul>
