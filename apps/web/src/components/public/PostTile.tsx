@@ -11,9 +11,11 @@ type Props = {
 
 // A rounded image, or a soft colour block carrying the article's headline figure.
 export function PostTile({ article, className, size = "md" }: Props) {
+  // Generated covers are drawn 4:3, so they never use the tall tile shape (it would crop them).
+  const drawn = article.cover.src?.endsWith(".svg") ?? false;
   const box = cx(
     "relative w-full overflow-hidden rounded-tile",
-    size === "lg" ? "aspect-4/5" : "aspect-4/3",
+    size === "lg" && !drawn ? "aspect-4/5" : "aspect-4/3",
     className,
   );
   if (article.cover.src) {
@@ -25,7 +27,7 @@ export function PostTile({ article, className, size = "md" }: Props) {
           <img
             src={article.cover.src}
             alt={article.cover.alt}
-            className="absolute inset-0 size-full object-cover"
+            className="absolute inset-0 size-full object-contain"
           />
         </div>
       );
