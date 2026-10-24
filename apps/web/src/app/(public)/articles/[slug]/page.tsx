@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Link2 } from "lucide-react";
 import { PostTile } from "@/components/public/PostTile";
 import { PublicHeader } from "@/components/public/PublicHeader";
-import { CoverImage } from "@/components/ui/CoverImage";
 import { safeHref } from "@/lib/format";
 import { fetchPublicArticle, fetchPublicArticlesSafe } from "@/lib/public";
 import {
@@ -30,6 +29,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 const MAX_FACTS = 5;
+const FIGURE_AFTER = 1; // inline image sits after the second section
 
 const SHARE_BUTTON =
   "inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-small font-semibold text-ink transition-colors hover:bg-sunken";
@@ -156,13 +156,8 @@ export default async function ArticlePage({ params }: Params) {
         </header>
 
         {article.cover.src && (
-          <figure className="mx-auto mt-10 max-w-4xl">
-            <CoverImage
-              slug={article.slug}
-              alt={article.cover.alt}
-              src={article.cover.src ?? undefined}
-              className="rounded-tile"
-            />
+          <figure className="mx-auto mt-10 max-w-3xl">
+            <PostTile article={article} />
             {article.cover.credit && (
               <figcaption className="mt-2 text-caption text-muted">
                 {article.cover.credit}
@@ -254,6 +249,21 @@ export default async function ArticlePage({ params }: Params) {
                     .map((paragraph, p) => (
                       <p key={p}>{paragraph}</p>
                     ))}
+                  {article.figure && index === FIGURE_AFTER && (
+                    <figure className="mt-10">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={article.figure.src}
+                        alt={article.figure.alt}
+                        className="w-full rounded-tile"
+                      />
+                      {article.figure.caption && (
+                        <figcaption className="mt-2 text-caption text-muted">
+                          {article.figure.caption}
+                        </figcaption>
+                      )}
+                    </figure>
+                  )}
                 </section>
               ))}
             </div>

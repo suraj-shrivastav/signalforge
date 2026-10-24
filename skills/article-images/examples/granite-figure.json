@@ -1,0 +1,8 @@
+{
+  "role": "figure",
+  "template": "waveform",
+  "label": "Speech recognition",
+  "figure": "5.06%",
+  "caption": "word error rate",
+  "alt": "Speech waveform above the 5.06% English word error rate reported for Granite Speech 5.0 2B"
+}

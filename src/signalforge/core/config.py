@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     auto_pipeline_on_accept: bool = False
     auto_pipeline_daily_cap: int = Field(default=10, ge=1)
 
+    # Supabase project URL. Article images are stored in its public bucket and the API only
+    # accepts image URLs from this host. Leave empty to reject image attachments.
+    supabase_url: str = ""
+
     # IndexNow: tells Bing and other participating engines about new or changed URLs.
     # Both must be set (SITE_URL matches the web app's, INDEXNOW_KEY is also served by the web
     # app at /indexnow-key.txt). Leave either empty to turn the ping off.

@@ -69,3 +69,21 @@ class PublishedArticleRepository:
         row.status = "unpublished"
         row.modified_at = datetime.now(UTC)
         self._session.flush()
+
+    def set_images(
+        self,
+        row: PublishedArticleRow,
+        *,
+        cover: dict[str, str] | None,
+        figure: dict[str, str] | None,
+    ) -> None:
+        """Attach the cover and inline image to the published body (a new dict, so the
+        JSON column registers the change)."""
+        body = dict(row.body)
+        if cover is not None:
+            body["cover"] = {**body.get("cover", {}), "src": cover["src"], "alt": cover["alt"]}
+        if figure is not None:
+            body["figure"] = figure
+        row.body = body
+        row.modified_at = datetime.now(UTC)
+        self._session.flush()

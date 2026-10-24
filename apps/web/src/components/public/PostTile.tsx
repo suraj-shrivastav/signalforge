@@ -17,6 +17,19 @@ export function PostTile({ article, className, size = "md" }: Props) {
     className,
   );
   if (article.cover.src) {
+    // Generated covers are SVG: next/image does not optimise them, so use a plain img.
+    if (article.cover.src.endsWith(".svg")) {
+      return (
+        <div className={box}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={article.cover.src}
+            alt={article.cover.alt}
+            className="absolute inset-0 size-full object-cover"
+          />
+        </div>
+      );
+    }
     return (
       <div className={box}>
         <Image

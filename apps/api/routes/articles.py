@@ -2,6 +2,7 @@
 
 from collections import Counter
 from typing import Annotated, Any, cast
+from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
@@ -11,6 +12,7 @@ from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import (
     ArticleDraftOut,
     ArticleDraftSummaryOut,
+    ImagesIn,
     PublishedOut,
     PublishIn,
     ReviewIn,
@@ -234,6 +236,58 @@ def unpublish_article(
         raise HTTPException(status_code=404, detail="Article not found")
     if row.status == "published":
         published.unpublish(row)
+    return PublishedOut(
+        slug=row.slug,
+        status=cast(Any, row.status),
+        published_at=row.published_at,
+        modified_at=row.modified_at,
+    )
+
+
+_IMAGE_PATH = "/storage/v1/object/public/article-images/"
+
+
+def _image_url_ok(src: str, supabase_url: str) -> bool:
+    """Only images in the project's public article-images bucket are accepted."""
+    if not supabase_url:
+        return False
+    allowed = urlparse(supabase_url)
+    url = urlparse(src)
+    return (
+        url.scheme == "https"
+        and url.netloc == allowed.netloc
+        and url.path.startswith(_IMAGE_PATH)
+        and not url.query
+        and not url.fragment
+    )
+
+
+@router.post(
+    "/editor/articles/{slug}/images",
+    response_model=PublishedOut,
+    dependencies=[Depends(require_editor_key)],
+)
+def attach_images(
+    slug: str,
+    payload: ImagesIn,
+    request: Request,
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishedOut:
+    """Attach the cover and the inline image (stored in the Supabase bucket) to an article."""
+    row = published.get_by_slug(slug)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    supabase_url = request.app.state.settings.supabase_url
+    for image in (payload.cover, payload.figure):
+        if image is not None and not _image_url_ok(image.src, supabase_url):
+            raise HTTPException(
+                status_code=422, detail="Image must be in the article-images bucket"
+            )
+    published.set_images(
+        row,
+        cover=payload.cover.model_dump() if payload.cover else None,
+        figure=payload.figure.model_dump() if payload.figure else None,
+    )
     return PublishedOut(
         slug=row.slug,
         status=cast(Any, row.status),

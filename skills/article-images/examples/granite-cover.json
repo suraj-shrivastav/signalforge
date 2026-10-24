@@ -1,0 +1,18 @@
+{
+  "role": "cover",
+  "template": "compare-blocks",
+  "label": "Model comparison",
+  "alt": "Two blocks sized by model scale: a 2B parameter speech model and the much smaller 470M TurboCTC",
+  "values": {
+    "a": {
+      "value": 2000,
+      "text": "2B",
+      "name": "parameters"
+    },
+    "b": {
+      "value": 470,
+      "text": "470M",
+      "name": "TurboCTC"
+    }
+  }
+}

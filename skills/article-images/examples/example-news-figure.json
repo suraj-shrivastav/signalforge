@@ -1,0 +1,11 @@
+{
+  "role": "figure",
+  "template": "constellation",
+  "label": "Investors",
+  "figure": "3",
+  "caption": "backers in the round",
+  "values": {
+    "count": 3
+  },
+  "alt": "A hub linked to three nodes, one per investor in the round"
+}

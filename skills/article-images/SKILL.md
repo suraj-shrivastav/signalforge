@@ -1,0 +1,74 @@
+---
+name: article-images
+description: Create the two images (cover and inline figure) for a published SignalForge article from its verified facts, upload them to Supabase and attach them. Use after an article is published and has no images.
+---
+
+# Article images
+
+Every published article gets exactly two images: a **cover** and an **inline figure**.
+You never draw. You fill in two small JSON specs. The script checks them against the
+article, draws the SVG, uploads it and attaches it. The same spec always gives the same
+image. Different articles give different images because the look is derived from the slug.
+
+## Rules that never bend
+
+1. Use only numbers, names and facts that appear in the article's title, dek or verified claims. The script rejects any number it cannot find there.
+2. Two different templates: the cover and the figure must not use the same template.
+3. No faces, logos, brand marks, photos, emoji or invented statistics.
+4. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
+5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8.
+6. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
+
+## Steps
+
+1. **Read the article.** `GET $API_BASE_URL/articles/<slug>` returns title, dek, claims (each with `status`) and sources. Use only claims whose status is `verified` or `supported`.
+2. **Find the headline fact for the cover.** The single most important number in the title or dek, with the unit that makes it meaningful (for example `5.06%` with `word error rate`, `$118M` with `raised from BlackRock`, `390K` with `hours of public audio`). Write it exactly as the article writes it.
+3. **Choose the cover template** with the table below. Take the first row that matches.
+4. **Choose a different figure template** for the inline image. It shows a second aspect of the article (a different number, a comparison, the structure, a count). Use the table again, skipping the cover's template.
+5. **Fill each spec** using the form for its template (see `references/templates.md`). Copy the shape from `examples/`.
+6. **Write `alt`** for each image: one plain sentence saying what the image shows and the fact it carries. Under 140 characters.
+7. **Publish both** with one command:
+
+```
+python3 scripts/articleimg.py publish --slug <slug> --cover cover.json --figure figure.json
+```
+
+Use `--dry-run DIR` first to render into a folder without uploading. Needs the environment variables `API_BASE_URL`, `EDITOR_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. Never print them.
+
+## Template choice (first match wins)
+
+| If the article is mainly about | Template | Fields to fill |
+|---|---|---|
+| Two named things compared, each with a number of the same kind (parameters, price, score, size) | `compare-blocks` | `values.a`, `values.b` |
+| An amount of money, users, data or time raised, trained or spent | `figure-ripples` | `figure`, `caption` |
+| A rate, score, speed or accuracy of something audio, speech, time series or signal | `waveform` | `figure`, `caption` |
+| A count of things that connect: languages, partners, backers, integrations, regions (3 to 9) | `constellation` | `figure`, `caption`, `values.count` |
+| A benchmark, dataset, test set or evaluation with a size | `spectrogram` | `figure` (a short word or number), `caption` |
+| How something works or is built, as exactly three steps or components | `layers` | `values.items` (3) |
+
+For the inline figure, prefer a template that shows structure or comparison if the cover shows a single number, and the reverse.
+
+## The spec
+
+```
+{
+  "role": "cover" | "figure",
+  "template": "<one of the six>",
+  "label": "TOPIC IN FEW WORDS",         // at most 28 characters, shown in capitals
+  "figure": "5.06%",                     // hero text, at most 8 characters (not for compare-blocks, layers)
+  "caption": "word error rate",          // at most 34 characters (not for compare-blocks, layers)
+  "alt": "One sentence describing the image and its fact",
+  "values": { }                          // only for compare-blocks, constellation, layers
+}
+```
+
+`compare-blocks` values: `{"a": {"value": 2000, "text": "2B", "name": "parameters"}, "b": {"value": 470, "text": "470M", "name": "TurboCTC"}}`. `value` sets the block size, so use comparable plain numbers (2000 and 470 in millions). Both blocks must measure the same thing.
+
+`constellation` values: `{"count": 7}`. `layers` values: `{"items": ["step one", "step two", "step three"]}`.
+
+## Check before publishing
+
+- The figure and every number in the captions appear in the article text.
+- The cover and the figure use different templates and tell different things.
+- `label` names the topic, not the headline. `caption` says what the number measures.
+- If no fact in the article fits any row of the table, use `figure-ripples` with the most important number and its unit. If the article has no number at all, stop and report it; do not invent one.
