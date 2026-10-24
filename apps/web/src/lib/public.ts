@@ -5,6 +5,7 @@ export type PublicCover = {
   alt: string;
   credit: string | null;
 };
+export type PublicFigure = { src: string; alt: string; caption: string };
 export type PublicSource = { label: string; url: string };
 export type PublicClaim = {
   text: string;
@@ -31,6 +32,7 @@ export type PublicArticle = PublicSummary & {
   sections: PublicSection[];
   claims: PublicClaim[];
   sources: PublicSource[];
+  figure: PublicFigure | null;
 };
 
 const REVALIDATE_S = 300;
@@ -103,6 +105,13 @@ export function parseArticle(value: unknown): PublicArticle {
       const source = rec(s);
       return { label: str(source.label), url: str(source.url) };
     }),
+    figure: isRecord(a.figure)
+      ? {
+          src: str(a.figure.src),
+          alt: str(a.figure.alt),
+          caption: typeof a.figure.caption === "string" ? a.figure.caption : "",
+        }
+      : null,
   };
 }
 

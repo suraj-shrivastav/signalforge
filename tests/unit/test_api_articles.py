@@ -119,6 +119,14 @@ class StubPublished:
         self.rows[card_id] = row
         return row
 
+    def set_images(self, row: Any, *, cover: Any, figure: Any) -> None:
+        body = dict(row.body)
+        if cover is not None:
+            body["cover"] = {**body["cover"], "src": cover["src"], "alt": cover["alt"]}
+        if figure is not None:
+            body["figure"] = figure
+        row.body = body
+
     def unpublish(self, row: Any) -> None:
         row.status = "unpublished"
 
@@ -409,3 +417,66 @@ def test_publish_pings_indexnow_only_when_configured(
     client.post(f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={})
     assert len(pings) == 1
     assert pings[0][:2] == ("https://example.com", "k")
+
+
+BUCKET = "https://proj.supabase.co/storage/v1/object/public/article-images"
+
+
+def test_attach_images_stores_cover_and_figure_and_exposes_them(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"supabase_url": "https://proj.supabase.co"}
+    )
+    card_id = approve(client, repo)
+    slug = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).json()["slug"]
+    payload = {
+        "cover": {"src": f"{BUCKET}/{slug}/cover.svg", "alt": "Cover alt"},
+        "figure": {"src": f"{BUCKET}/{slug}/figure.svg", "alt": "Figure alt", "caption": "Cap"},
+    }
+    assert client.post(f"/editor/articles/{slug}/images", json=payload).status_code == 401
+    ok = client.post(f"/editor/articles/{slug}/images", headers=H, json=payload)
+    assert ok.status_code == 200
+    public = client.get(f"/articles/{slug}").json()
+    assert public["cover"]["src"] == f"{BUCKET}/{slug}/cover.svg"
+    assert public["figure"] == {
+        "src": f"{BUCKET}/{slug}/figure.svg",
+        "alt": "Figure alt",
+        "caption": "Cap",
+    }
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "http://proj.supabase.co/storage/v1/object/public/article-images/a.svg",
+        "https://evil.example/storage/v1/object/public/article-images/a.svg",
+        "https://proj.supabase.co/storage/v1/object/public/other/a.svg",
+        "https://proj.supabase.co/storage/v1/object/public/article-images/a.svg?x=1",
+    ],
+)
+def test_attach_images_rejects_foreign_urls(ctx: tuple[TestClient, StubRepo], src: str) -> None:
+    client, repo = ctx
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"supabase_url": "https://proj.supabase.co"}
+    )
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    r = client.post(
+        f"/editor/articles/{slug}/images", headers=H, json={"cover": {"src": src, "alt": "a"}}
+    )
+    assert r.status_code == 422
+
+
+def test_attach_images_needs_supabase_configured_and_known_article(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    body = {"cover": {"src": f"{BUCKET}/a.svg", "alt": "a"}}
+    assert client.post(f"/editor/articles/{slug}/images", headers=H, json=body).status_code == 422
+    assert client.post("/editor/articles/nope/images", headers=H, json=body).status_code == 404

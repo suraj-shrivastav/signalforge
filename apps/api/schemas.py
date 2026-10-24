@@ -201,6 +201,31 @@ class PublicCoverOut(BaseModel):
     credit: str | None
 
 
+class PublicFigureOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    src: str
+    alt: str
+    caption: str
+
+
+class ImageIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    src: str = Field(min_length=1, max_length=500)
+    alt: str = Field(min_length=1, max_length=300)
+    caption: str = Field(default="", max_length=300)
+
+
+class ImagesIn(BaseModel):
+    """Both images for one article. Either may be sent alone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cover: ImageIn | None = None
+    figure: ImageIn | None = None
+
+
 class PublicArticleOut(BaseModel):
     """Reader-facing shape. An explicit allow-list, so a new editor-only field on the
     artifact never reaches a public response by default (2026-09-27 spec)."""
@@ -221,6 +246,7 @@ class PublicArticleOut(BaseModel):
     claims: list[PublicClaimOut]
     sources: list[PublicSourceOut]
     cover: PublicCoverOut
+    figure: PublicFigureOut | None = None
 
     @classmethod
     def from_row(cls, row: Any) -> "PublicArticleOut":
@@ -248,6 +274,11 @@ class PublicArticleOut(BaseModel):
             ],
             sources=[PublicSourceOut(label=s.label, url=s.url) for s in body.sources],
             cover=PublicCoverOut(src=body.cover.src, alt=body.cover.alt, credit=body.cover.credit),
+            figure=PublicFigureOut(
+                src=body.figure.src, alt=body.figure.alt, caption=body.figure.caption
+            )
+            if body.figure
+            else None,
         )
 
 

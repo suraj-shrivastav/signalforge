@@ -1,0 +1,8 @@
+{
+  "role": "cover",
+  "template": "spectrogram",
+  "label": "Benchmark",
+  "figure": "1,500",
+  "caption": "test samples",
+  "alt": "A grid of rounded cells, one per test sample, with the number 1,500"
+}

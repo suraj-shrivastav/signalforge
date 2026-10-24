@@ -18,23 +18,24 @@
    -------------------------------------------------------------------------- */
 :root {
   /* Color: surfaces */
-  --page-bg: #f5f1ea;
+  --page-bg: #f6f8f3;
   --surface-bg: #ffffff;
-  --sunken-bg: #ebe6dd;
-  --border-color: #e0dad0;
+  --sunken-bg: #e8eee4;
+  --border-color: #dbe3d6;
 
   /* Color: text */
-  --ink: #141414;
-  --muted: #6b675f;
+  --ink: #14201a;
+  --muted: #5a6860;
 
   /* Color: accent (near-black, no hue) */
-  --accent: #141414;
-  --on-accent: #f5f1ea;
+  --accent: #14201a;
+  --on-accent: #f6f8f3;
 
   /* Radii - soft, rounded, no sharp corners */
   --raw-radius-card: 16px;
   --raw-radius-control: 12px;
   --raw-radius-pill: 9999px;
+  --raw-radius-tile: 28px;
 
   /* Shadows - flat by default, one soft hover shadow */
   --raw-shadow-none: none;
@@ -43,13 +44,13 @@
   /* Borders */
   --border-width-hairline: 1px;
 
-  /* Fonts - next/font injects --font-inter / --font-source-serif */
+  /* Fonts - next/font injects --font-body, --font-fraunces, --font-display */
   --raw-font-sans:
-    var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
-  --raw-font-serif:
-    var(--font-source-serif), "Source Serif 4", Georgia, "Times New Roman",
-    serif;
+  --raw-font-serif: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --raw-font-display:
+    var(--font-display), var(--font-body), -apple-system, "Segoe UI", sans-serif;
 
   /* Type scale - sizes in px, tight negative tracking on large sizes */
   --text-caption-size: 13px;
@@ -126,7 +127,7 @@
 
 /* --------------------------------------------------------------------------
    2. Dark theme - explicit opt-in via [data-theme="dark"], and automatic
-      via prefers-color-scheme unless the user has explicitly chosen light.
+      (light is the default; the OS setting is ignored).
       Warm greys throughout - never blue-black.
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
@@ -140,21 +141,6 @@
 
   --accent: #f2eee6;
   --on-accent: #121110;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page-bg: #121110;
-    --surface-bg: #1b1a18;
-    --sunken-bg: #1a180f;
-    --border-color: #2a2825;
-
-    --ink: #f2eee6;
-    --muted: #9a958b;
-
-    --accent: #f2eee6;
-    --on-accent: #121110;
-  }
 }
 
 /* --------------------------------------------------------------------------
@@ -173,12 +159,14 @@
   --radius-card: var(--raw-radius-card);
   --radius-control: var(--raw-radius-control);
   --radius-pill: var(--raw-radius-pill);
+  --radius-tile: var(--raw-radius-tile);
 
   --shadow-none: var(--raw-shadow-none);
   --shadow-hover: var(--raw-shadow-hover);
 
   --font-sans: var(--raw-font-sans);
   --font-serif: var(--raw-font-serif);
+  --font-display: var(--raw-font-display);
 
   --text-caption: var(--text-caption-size);
   --text-caption--line-height: var(--text-caption-line);
@@ -465,5 +453,74 @@
       var(--border-color),
       var(--sunken-bg) 60%
     );
+  }
+}
+
+/* --------------------------------------------------------------------------
+   6. Public site: landing page and article page
+   -------------------------------------------------------------------------- */
+:root {
+  --tile-0: #f4c9cc;
+  --tile-1: #f6e0a4;
+  --tile-2: #bfe0d2;
+  --tile-3: #c3d5ef;
+  --tile-4: #dccdef;
+}
+
+[data-theme="dark"] {
+  --tile-0: #5a3a3d;
+  --tile-1: #5a4b27;
+  --tile-2: #2f4d42;
+  --tile-3: #34465f;
+  --tile-4: #473b5c;
+}
+
+@layer components {
+  .tile-c0 {
+    background: var(--tile-0);
+  }
+  .tile-c1 {
+    background: var(--tile-1);
+  }
+  .tile-c2 {
+    background: var(--tile-2);
+  }
+  .tile-c3 {
+    background: var(--tile-3);
+  }
+  .tile-c4 {
+    background: var(--tile-4);
+  }
+
+  .article-body {
+    font-size: var(--text-body);
+    line-height: 1.85;
+    color: var(--color-ink);
+  }
+
+  .article-body h2 {
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-3);
+    font-size: 26px;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  .article-body p + p {
+    margin-top: var(--space-5);
+  }
+
+  .article-body a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .article-title {
+    font-family: var(--raw-font-display);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    text-wrap: balance;
   }
 }

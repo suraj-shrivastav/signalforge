@@ -97,6 +97,16 @@ class ArticleCover(BaseModel):
     credit: str | None = None
 
 
+class ArticleFigure(BaseModel):
+    """One inline image shown after the second section."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    src: str = Field(min_length=1)
+    alt: str = Field(min_length=1)
+    caption: str = ""
+
+
 class ArticleBody(BaseModel):
     """The structured shape every template outputs."""
 
@@ -108,6 +118,7 @@ class ArticleBody(BaseModel):
     claims: tuple[ArticleClaim, ...] = ()
     sources: tuple[ArticleSource, ...] = ()
     cover: ArticleCover
+    figure: ArticleFigure | None = None
     # Sentences the checks could not ground. Empty on drafts written before flagging.
     flags: tuple[ArticleFlag, ...] = ()
 

@@ -1,0 +1,13 @@
+{
+  "role": "figure",
+  "template": "layers",
+  "label": "How it works",
+  "values": {
+    "items": [
+      "Partial views in",
+      "Language-guided generation",
+      "Consistency check"
+    ]
+  },
+  "alt": "Three stacked steps: partial views in, language-guided generation, consistency check"
+}
