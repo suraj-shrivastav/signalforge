@@ -68,7 +68,7 @@ def test_too_many_flags_ask_for_a_revision() -> None:
 
 
 def test_flagged_dek_is_replaced_by_the_first_unflagged_body_sentence() -> None:
-    b = body(dek="A bad dek.", flags=(flag(-1, 0, "A bad dek."),))
+    b = body(dek="A bad dek.", flags=(flag(-1, -1, "A bad dek."),))
     result = decide(b, ArticleTemplate.EXPLAINER, 0, POLICY)
     assert result.action == "approve"
     assert result.body.dek == GOOD
@@ -82,7 +82,7 @@ def test_flagged_dek_without_a_usable_lead_is_revised() -> None:
     b = body(
         paragraphs=(lead, f"{GOOD} {GOOD}"),
         dek="A bad dek.",
-        flags=(flag(-1, 0, "A bad dek."), flag(0, 0, lead)),
+        flags=(flag(-1, -1, "A bad dek."), flag(0, 0, lead)),
     )
     loose = ReviewPolicy(min_words=20, min_claims=2, max_flagged_share=0.9, max_redrafts=1)
     result = decide(b, ArticleTemplate.EXPLAINER, 0, loose)
