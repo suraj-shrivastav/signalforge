@@ -1,0 +1,16 @@
+# Never ship secrets or local state into an image.
+.env
+.env.*
+.venv
+.git
+**/node_modules
+**/.next
+apps/web
+tests
+docs
+skills
+SESSION_PROGRESS.md
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
