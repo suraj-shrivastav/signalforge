@@ -14,7 +14,14 @@ function walk(dir, out) {
     if (name === "node_modules") continue;
     const full = join(dir, name);
     if (statSync(full).isDirectory()) walk(full, out);
-    else if (EXT.test(name) && name !== "globals.css") out.push(full);
+    // opengraph-image files render to PNG with Satori, which needs inline styles and
+    // literal colours; they are not themed UI.
+    else if (
+      EXT.test(name) &&
+      name !== "globals.css" &&
+      !name.startsWith("opengraph-image")
+    )
+      out.push(full);
   }
 }
 

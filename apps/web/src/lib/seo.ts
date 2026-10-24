@@ -34,6 +34,30 @@ function authorType(byline: string): "Organization" | "Person" {
     : "Person";
 }
 
+export function socialImageUrl(site: string, slug: string): string {
+  return `${articleUrl(site, slug)}/og.png`;
+}
+
+// BreadcrumbList for the visible trail: Home, then the article.
+export function breadcrumbJsonLd(
+  article: PublicArticle,
+  site: string,
+): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${site}/` },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: article.title,
+        item: articleUrl(site, article.slug),
+      },
+    ],
+  };
+}
+
 export function articleJsonLd(
   article: PublicArticle,
   site: string,
@@ -57,7 +81,9 @@ export function articleJsonLd(
     url,
     inLanguage: "en",
     isAccessibleForFree: true,
-    ...(article.cover.src ? { image: [article.cover.src] } : {}),
+    // A PNG card for every article (see opengraph-image-card.tsx); the SVG cover is not a valid
+    // social or search thumbnail.
+    image: [socialImageUrl(site, article.slug)],
     ...(citations.length ? { citation: citations } : {}),
   };
 }
@@ -182,7 +208,7 @@ export function articleMetadata(
   site: string,
 ): Metadata {
   const url = articleUrl(site, article.slug);
-  const images = article.cover.src ? [{ url: article.cover.src }] : undefined;
+  const image = socialImageUrl(site, article.slug);
   return {
     title: article.seo_title,
     description: article.meta_description,
@@ -203,10 +229,13 @@ export function articleMetadata(
       publishedTime: article.published_at,
       modifiedTime: article.modified_at,
       authors: [article.byline],
-      images,
+      images: [
+        { url: image, width: 1200, height: 630, alt: article.cover.alt },
+      ],
     },
     twitter: {
-      card: images ? "summary_large_image" : "summary",
+      card: "summary_large_image",
+      images: [image],
       title: article.seo_title,
       description: article.meta_description,
     },

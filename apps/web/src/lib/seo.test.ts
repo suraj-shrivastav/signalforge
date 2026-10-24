@@ -4,6 +4,7 @@ import {
   articleJsonLd,
   articleMarkdown,
   articleMetadata,
+  breadcrumbJsonLd,
   atomFeed,
   escapeXml,
   jsonLdString,
@@ -75,7 +76,7 @@ describe("articleJsonLd", () => {
       "@type": "WebPage",
       "@id": `${SITE}/articles/granite-5`,
     });
-    expect(ld.image).toEqual(["https://cdn.example.org/c.jpg"]);
+    expect(ld.image).toEqual([`${SITE}/articles/granite-5/og.png`]);
     expect(ld.citation).toEqual([
       {
         "@type": "CreativeWork",
@@ -85,7 +86,7 @@ describe("articleJsonLd", () => {
     ]);
   });
 
-  it("uses a Person for a named editor and omits a missing image", () => {
+  it("uses a Person for a named editor", () => {
     const ld = articleJsonLd(
       {
         ...article,
@@ -95,7 +96,6 @@ describe("articleJsonLd", () => {
       SITE,
     );
     expect((ld.author as { "@type": string })["@type"]).toBe("Person");
-    expect("image" in ld).toBe(false);
   });
 
   it("cannot break out of the script tag", () => {
@@ -130,12 +130,31 @@ describe("articleMetadata", () => {
     expect(meta.twitter).toMatchObject({ card: "summary_large_image" });
   });
 
-  it("uses the small card when there is no image", () => {
+  it("always uses the large card and the PNG share card", () => {
     const meta = articleMetadata(
       { ...article, cover: { src: null, alt: "a", credit: null } },
       SITE,
     );
-    expect(meta.twitter).toMatchObject({ card: "summary" });
+    expect(meta.twitter).toMatchObject({ card: "summary_large_image" });
+    expect(meta.openGraph).toMatchObject({
+      images: [{ url: `${SITE}/articles/granite-5/og.png`, width: 1200 }],
+    });
+  });
+});
+
+describe("breadcrumbJsonLd", () => {
+  it("lists Home then the article with absolute URLs", () => {
+    const ld = breadcrumbJsonLd(article, SITE);
+    expect(ld["@type"]).toBe("BreadcrumbList");
+    expect(ld.itemListElement).toEqual([
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE}/` },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: article.title,
+        item: `${SITE}/articles/granite-5`,
+      },
+    ]);
   });
 });
 

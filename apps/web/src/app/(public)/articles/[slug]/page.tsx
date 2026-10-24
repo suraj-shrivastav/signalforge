@@ -9,6 +9,7 @@ import { fetchPublicArticle, fetchPublicArticlesSafe } from "@/lib/public";
 import {
   articleJsonLd,
   articleMetadata,
+  breadcrumbJsonLd,
   jsonLdString,
   keyFacts,
 } from "@/lib/seo";
@@ -85,6 +86,12 @@ export default async function ArticlePage({ params }: Params) {
           __html: jsonLdString(articleJsonLd(article, site)),
         }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdString(breadcrumbJsonLd(article, site)),
+        }}
+      />
       <article className="mx-auto mt-8 max-w-page px-4 md:px-6">
         <header className="mx-auto max-w-4xl">
           <nav aria-label="Breadcrumb" className="text-caption text-muted">
@@ -95,14 +102,8 @@ export default async function ArticlePage({ params }: Params) {
                 </Link>
               </li>
               <li aria-hidden="true">/</li>
-              <li>
-                <Link href="/#latest" className="hover:text-ink">
-                  Latest
-                </Link>
-              </li>
-              <li aria-hidden="true">/</li>
-              <li aria-current="page" className="text-ink">
-                Article
+              <li aria-current="page" className="max-w-xs truncate text-ink">
+                {article.title}
               </li>
             </ol>
           </nav>
