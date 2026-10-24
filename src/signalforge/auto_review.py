@@ -94,7 +94,11 @@ def decide(
                         body, ["the dek is flagged and no lead sentence fits"], redrafts, policy
                     )
                 current = apply_sentence_edit(
-                    current, section=DEK, paragraph=0, text=flag.text, replacement=lead
+                    current,
+                    section=DEK,
+                    paragraph=flag.paragraph,
+                    text=flag.text,
+                    replacement=lead,
                 )
                 new_dek = lead
                 if len(_SPLIT.split(current.sections[0].paragraphs[0])) > 1:
