@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, Link2 } from "lucide-react";
 import { PostTile } from "@/components/public/PostTile";
 import { PublicHeader } from "@/components/public/PublicHeader";
-import { safeHref } from "@/lib/format";
+import { safeHref, uniqueByUrl } from "@/lib/format";
 import { fetchPublicArticle, fetchPublicArticlesSafe } from "@/lib/public";
 import {
   articleJsonLd,
@@ -45,11 +45,6 @@ function chunkParagraph(text: string, per = 3): string[] {
     chunks.push(sentences.slice(i, i + per).join(" "));
   }
   return chunks;
-}
-
-function dedupe<T extends { label: string }>(items: T[]): T[] {
-  const seen = new Set<string>();
-  return items.filter((i) => !seen.has(i.label) && !!seen.add(i.label));
 }
 
 function readMinutes(article: {
@@ -225,7 +220,7 @@ export default async function ArticlePage({ params }: Params) {
                   {facts.map((fact, index) => (
                     <li key={index}>
                       {fact.text}{" "}
-                      {dedupe(fact.sources).map((source) => (
+                      {uniqueByUrl(fact.sources).map((source) => (
                         <a
                           key={source.url}
                           href={safeHref(source.url) ?? undefined}
@@ -292,7 +287,7 @@ export default async function ArticlePage({ params }: Params) {
                 Sources
               </h2>
               <ol className="mt-3 list-decimal space-y-1 pl-5 text-small">
-                {article.sources.map((source) => {
+                {uniqueByUrl(article.sources).map((source) => {
                   const href = safeHref(source.url);
                   return (
                     <li key={source.url}>

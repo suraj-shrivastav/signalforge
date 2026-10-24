@@ -29,3 +29,9 @@ export function safeHref(url: string): string | null {
 export function formatScore(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
+
+// Keeps the first item for each URL. Two sources can share a URL under different labels.
+export function uniqueByUrl<T extends { url: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((i) => !seen.has(i.url) && !!seen.add(i.url));
+}
