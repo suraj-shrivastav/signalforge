@@ -18,18 +18,18 @@
    -------------------------------------------------------------------------- */
 :root {
   /* Color: surfaces */
-  --page-bg: #f5f1ea;
+  --page-bg: #f6f8f3;
   --surface-bg: #ffffff;
-  --sunken-bg: #ebe6dd;
-  --border-color: #e0dad0;
+  --sunken-bg: #e8eee4;
+  --border-color: #dbe3d6;
 
   /* Color: text */
-  --ink: #141414;
-  --muted: #6b675f;
+  --ink: #14201a;
+  --muted: #5a6860;
 
   /* Color: accent (near-black, no hue) */
-  --accent: #141414;
-  --on-accent: #f5f1ea;
+  --accent: #14201a;
+  --on-accent: #f6f8f3;
 
   /* Radii - soft, rounded, no sharp corners */
   --raw-radius-card: 16px;
@@ -43,13 +43,13 @@
   /* Borders */
   --border-width-hairline: 1px;
 
-  /* Fonts - next/font injects --font-inter / --font-source-serif */
+  /* Fonts - next/font injects --font-body, --font-fraunces, --font-display */
   --raw-font-sans:
-    var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif;
-  --raw-font-serif:
-    var(--font-source-serif), "Source Serif 4", Georgia, "Times New Roman",
-    serif;
+  --raw-font-serif: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --raw-font-display:
+    var(--font-display), var(--font-body), -apple-system, "Segoe UI", sans-serif;
 
   /* Type scale - sizes in px, tight negative tracking on large sizes */
   --text-caption-size: 13px;
@@ -126,7 +126,7 @@
 
 /* --------------------------------------------------------------------------
    2. Dark theme - explicit opt-in via [data-theme="dark"], and automatic
-      via prefers-color-scheme unless the user has explicitly chosen light.
+      (light is the default; the OS setting is ignored).
       Warm greys throughout - never blue-black.
    -------------------------------------------------------------------------- */
 [data-theme="dark"] {
@@ -140,21 +140,6 @@
 
   --accent: #f2eee6;
   --on-accent: #121110;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --page-bg: #121110;
-    --surface-bg: #1b1a18;
-    --sunken-bg: #1a180f;
-    --border-color: #2a2825;
-
-    --ink: #f2eee6;
-    --muted: #9a958b;
-
-    --accent: #f2eee6;
-    --on-accent: #121110;
-  }
 }
 
 /* --------------------------------------------------------------------------
@@ -179,6 +164,7 @@
 
   --font-sans: var(--raw-font-sans);
   --font-serif: var(--raw-font-serif);
+  --font-display: var(--raw-font-display);
 
   --text-caption: var(--text-caption-size);
   --text-caption--line-height: var(--text-caption-line);
@@ -493,19 +479,6 @@
   --label-bg: #26231f;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --spine-0: #c4673a;
-    --spine-1: #c2963c;
-    --spine-2: #3a7480;
-    --spine-3: #3c6384;
-    --spine-4: #a98657;
-    --shelf: #7a4a2a;
-    --shelf-shadow: rgba(0, 0, 0, 0.4);
-    --label-bg: #26231f;
-  }
-}
-
 @layer components {
   .shelf {
     display: flex;
@@ -646,6 +619,7 @@
   }
 
   .article-title {
+    font-family: var(--raw-font-display);
     font-weight: 800;
     letter-spacing: -0.03em;
     line-height: 1.08;

@@ -23,7 +23,7 @@ export default async function Home() {
       >
         <h1
           id="hero"
-          className="font-serif text-6xl font-semibold tracking-tight text-ink md:text-8xl"
+          className="font-display text-6xl font-extrabold tracking-tight text-ink md:text-8xl"
         >
           SignalForge
         </h1>

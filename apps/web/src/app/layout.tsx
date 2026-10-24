@@ -1,18 +1,28 @@
 import type { Metadata } from "next";
-import { Inter, Source_Serif_4 } from "next/font/google";
+import {
+  Bricolage_Grotesque,
+  Fraunces,
+  Instrument_Sans,
+} from "next/font/google";
 import "./globals.css";
 import { siteUrl } from "@/lib/site";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
-const inter = Inter({
+const body = Instrument_Sans({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-body",
   display: "swap",
 });
 
-const sourceSerif = Source_Serif_4({
+const fraunces = Fraunces({
   subsets: ["latin"],
-  variable: "--font-source-serif",
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-display",
   display: "swap",
 });
 
@@ -32,7 +42,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${sourceSerif.variable}`}
+      className={`${body.variable} ${fraunces.variable} ${display.variable}`}
       suppressHydrationWarning
     >
       <head>
