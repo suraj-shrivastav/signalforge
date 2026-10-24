@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Container } from "@/components/layout/Container";
-import { Card } from "@/components/ui/Card";
+import { Bookshelf } from "@/components/public/Bookshelf";
+import { PublicHeader } from "@/components/public/PublicHeader";
 import { fetchPublicArticlesSafe } from "@/lib/public";
 
 // Read at request time: SITE_URL and the article list are not known at build. The fetch
@@ -15,42 +15,61 @@ const DATE = new Intl.DateTimeFormat("en-US", {
 export default async function Home() {
   const articles = await fetchPublicArticlesSafe(30);
   return (
-    <Container className="py-16">
-      <section aria-labelledby="hero" className="mb-12">
-        <h1 id="hero" className="text-display text-ink">
-          What changed this week
+    <>
+      <PublicHeader wordmark={false} />
+      <section
+        aria-labelledby="hero"
+        className="px-4 pb-16 pt-16 text-center md:px-6 md:pt-24"
+      >
+        <h1
+          id="hero"
+          className="font-serif text-6xl font-semibold tracking-tight text-ink md:text-8xl"
+        >
+          SignalForge
         </h1>
-        <p className="mt-4 max-w-article text-lead text-muted">
-          Short, sourced write-ups on new releases, research and tools. Read in
-          five minutes, skip the noise.
+        <p className="mt-4 font-serif text-lead text-muted md:text-h3">
+          Sourced write-ups on new releases, research and tools
         </p>
       </section>
-      {articles.length === 0 ? (
-        <Card className="p-12 text-center">
-          <h2 className="text-h3 text-ink">No articles yet</h2>
-          <p className="mt-2 text-muted">Check back soon.</p>
-        </Card>
-      ) : (
-        <ul className="space-y-6">
-          {articles.map((article) => (
-            <li key={article.slug}>
-              <Card className="p-6">
-                <h2 className="text-h3 text-ink">
-                  <Link href={`/articles/${article.slug}`}>
-                    {article.title}
-                  </Link>
-                </h2>
-                <p className="mt-2 text-muted">{article.dek}</p>
-                <p className="mt-2 text-caption text-muted">
-                  <time dateTime={article.published_at}>
-                    {DATE.format(new Date(article.published_at))}
-                  </time>
-                </p>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Container>
+      <div className="mx-auto max-w-page px-4 md:px-6">
+        <Bookshelf articles={articles} />
+        <section id="latest" aria-labelledby="latest-h" className="mt-24">
+          <h2
+            id="latest-h"
+            className="text-center font-serif text-h3 font-semibold text-ink"
+          >
+            Latest
+          </h2>
+          {articles.length === 0 ? (
+            <p className="mt-6 text-center font-serif text-muted">
+              No articles yet. The shelves fill as stories are published.
+            </p>
+          ) : (
+            <ul className="mx-auto mt-8 max-w-article divide-y divide-line">
+              {articles.map((article) => (
+                <li key={article.slug} className="py-6">
+                  <p className="text-caption text-muted">
+                    <time dateTime={article.published_at}>
+                      {DATE.format(new Date(article.published_at))}
+                    </time>
+                  </p>
+                  <h3 className="mt-1 font-serif text-h3 font-semibold text-ink">
+                    <Link
+                      href={`/articles/${article.slug}`}
+                      className="hover:underline"
+                    >
+                      {article.title}
+                    </Link>
+                  </h3>
+                  <p className="mt-2 font-serif text-body text-muted">
+                    {article.dek}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </>
   );
 }

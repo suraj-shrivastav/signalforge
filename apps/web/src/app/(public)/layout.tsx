@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { Footer } from "@/components/layout/Footer";
-import { Header } from "@/components/layout/Header";
+import { PublicFooter } from "@/components/public/PublicFooter";
 
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
@@ -11,9 +10,8 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <Header />
       <main id="main">{children}</main>
-      <Footer />
+      <PublicFooter />
     </>
   );
 }
