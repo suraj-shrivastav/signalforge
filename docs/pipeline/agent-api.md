@@ -30,8 +30,8 @@ endpoints below).
 
 `auto-review` replaces the editor's read-through with rules (`signalforge/auto_review.py`):
 
-- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (30%) of sentences flagged: revise.
-- Otherwise every flagged sentence is deleted (a flagged dek cannot be, so revise).
+- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (40%) of sentences flagged: revise.
+- Otherwise every flagged sentence is deleted. A flagged dek is replaced by the first unflagged sentence of the article (that sentence leaves the body); if none fits, revise.
 - After deletions the draft needs at least `AUTO_REVIEW_MIN_WORDS` (250) words,
   `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims and no dash or banned phrasing.
 - Pass: approved (and published with `publish=true`). Fail: `revise` with the reasons as the

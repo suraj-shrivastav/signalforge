@@ -151,6 +151,7 @@ def auto_review(
                     "type": "auto_edit",
                     "actor": actor,
                     "deleted": [f.text for f in decision.deleted],
+                    "new_dek": decision.new_dek,
                 },
             )
         repo.save_review(

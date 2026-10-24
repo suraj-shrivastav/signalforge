@@ -83,9 +83,10 @@ class Settings(BaseSettings):
     # Output cap sent as max_tokens on every chat call. Reasoning models spend part of it
     # thinking before the reply, so it leaves room for that plus a 1000-word draft as JSON.
     llm_max_output_tokens: int = Field(default=16_384, ge=1)
-    # Writer cap. Routers such as OpenRouter reject a call (402) when the account cannot
-    # afford the full cap, so a 250 to 1000 word JSON article gets a tight one.
-    llm_max_output_tokens_article_writer: int = Field(default=6_000, ge=1)
+    # Writer cap. A 700 to 1000 word article with per-sentence claim ids is long JSON and was
+    # cut off at 6,000 tokens. Lower it for providers that reject a call (402) when the account
+    # cannot afford the full cap.
+    llm_max_output_tokens_article_writer: int = Field(default=12_000, ge=1)
 
     # Shown on every published article. Set PUBLISH_BYLINE to the editor's real name: Google
     # treats invented authors as deceptive, and asks that AI use be clear to readers.
@@ -130,7 +131,7 @@ class Settings(BaseSettings):
     # Rules the agent's automatic review applies (see signalforge/auto_review.py).
     auto_review_min_words: int = Field(default=250, ge=1)
     auto_review_min_claims: int = Field(default=3, ge=1)
-    auto_review_max_flagged_share: float = Field(default=0.3, ge=0, le=1)
+    auto_review_max_flagged_share: float = Field(default=0.4, ge=0, le=1)
     auto_review_max_redrafts: int = Field(default=2, ge=0)
 
     @model_validator(mode="after")

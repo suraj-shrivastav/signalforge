@@ -67,10 +67,27 @@ def test_too_many_flags_ask_for_a_revision() -> None:
     assert "flagged" in reasons[0]
 
 
-def test_flagged_dek_cannot_be_deleted() -> None:
+def test_flagged_dek_is_replaced_by_the_first_unflagged_body_sentence() -> None:
     b = body(dek="A bad dek.", flags=(flag(-1, 0, "A bad dek."),))
-    action, reasons = run(b)
-    assert (action, "dek" in reasons[0]) == ("revise", True)
+    result = decide(b, ArticleTemplate.EXPLAINER, 0, POLICY)
+    assert result.action == "approve"
+    assert result.body.dek == GOOD
+    assert result.new_dek == GOOD
+    assert result.body.sections[0].paragraphs[0].count(GOOD) == 2  # moved out of the lead
+    assert result.body.flags == ()
+
+
+def test_flagged_dek_without_a_usable_lead_is_revised() -> None:
+    lead = "A lead."
+    b = body(
+        paragraphs=(lead, f"{GOOD} {GOOD}"),
+        dek="A bad dek.",
+        flags=(flag(-1, 0, "A bad dek."), flag(0, 0, lead)),
+    )
+    loose = ReviewPolicy(min_words=20, min_claims=2, max_flagged_share=0.9, max_redrafts=1)
+    result = decide(b, ArticleTemplate.EXPLAINER, 0, loose)
+    assert result.action == "revise"
+    assert "no lead sentence" in result.reasons[0]
 
 
 def test_short_or_thin_drafts_are_sent_back() -> None:

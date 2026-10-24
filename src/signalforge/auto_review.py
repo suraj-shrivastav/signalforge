@@ -26,7 +26,7 @@ _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 class ReviewPolicy:
     min_words: int = 250
     min_claims: int = 3
-    max_flagged_share: float = 0.3
+    max_flagged_share: float = 0.4
     max_redrafts: int = 2
 
 
@@ -36,6 +36,21 @@ class AutoDecision:
     reasons: tuple[str, ...]
     body: ArticleBody
     deleted: tuple[ArticleFlag, ...] = ()
+    new_dek: str | None = None
+
+
+_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"(\d])")
+_MAX_DEK_CHARS = 280
+
+
+def _lead_sentence(body: ArticleBody) -> str | None:
+    """First sentence of the first paragraph that is not flagged and is short enough for a dek."""
+    flagged = {f.text for f in body.flags}
+    for sentence in _SPLIT.split(body.sections[0].paragraphs[0]):
+        text = sentence.strip()
+        if text and text not in flagged and len(text) <= _MAX_DEK_CHARS:
+            return text
+    return None
 
 
 def _sentences(body: ArticleBody) -> int:
@@ -68,21 +83,34 @@ def decide(
         )
     current = body
     deleted: list[ArticleFlag] = []
+    new_dek: str | None = None
     for flag in flags:
-        if flag.section == DEK:
-            return _fail(body, ["the dek is flagged and cannot be deleted"], redrafts, policy)
         try:
-            current = apply_sentence_edit(
-                current,
-                section=flag.section,
-                paragraph=flag.paragraph,
-                text=flag.text,
-                replacement=None,
-            )
+            if flag.section == DEK:
+                # A dek cannot be deleted: use the article's first unflagged sentence instead.
+                lead = _lead_sentence(body)
+                if lead is None:
+                    return _fail(
+                        body, ["the dek is flagged and no lead sentence fits"], redrafts, policy
+                    )
+                current = apply_sentence_edit(
+                    current, section=DEK, paragraph=0, text=flag.text, replacement=lead
+                )
+                new_dek = lead
+                if len(_SPLIT.split(current.sections[0].paragraphs[0])) > 1:
+                    current = apply_sentence_edit(
+                        current, section=0, paragraph=0, text=lead, replacement=None
+                    )
+            else:
+                current = apply_sentence_edit(
+                    current,
+                    section=flag.section,
+                    paragraph=flag.paragraph,
+                    text=flag.text,
+                    replacement=None,
+                )
         except ArtifactValidationError as exc:
-            return _fail(
-                body, [f"cannot delete a flagged sentence: {exc.message}"], redrafts, policy
-            )
+            return _fail(body, [f"cannot fix a flagged sentence: {exc.message}"], redrafts, policy)
         deleted.append(flag)
     reasons: list[str] = []
     words = word_count(current)
@@ -94,4 +122,4 @@ def decide(
     reasons.extend(f for f in publish_gate(current, template) if not f.startswith("length"))
     if reasons:
         return _fail(body, reasons, redrafts, policy)
-    return AutoDecision("approve", (), current, tuple(deleted))
+    return AutoDecision("approve", (), current, tuple(deleted), new_dek)
