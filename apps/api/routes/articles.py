@@ -81,7 +81,7 @@ def _out(row: Any, published_slug: str | None = None) -> ArticleDraftOut:
     )
 
 
-def _row(repo: ArticleDraftRepository, card_id: UUID) -> Any:
+def get_draft_row(repo: ArticleDraftRepository, card_id: UUID) -> Any:
     row = repo.get(card_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Draft not found")
@@ -98,7 +98,7 @@ def editor_draft(
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> ArticleDraftOut:
-    row = _row(repo, card_id)
+    row = get_draft_row(repo, card_id)
     live = published.get_by_card(card_id)
     return _out(row, live.slug if live is not None and live.status == "published" else None)
 
@@ -113,7 +113,7 @@ def edit_sentence(
     payload: SentenceEditIn,
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
 ) -> ArticleDraftOut:
-    row = _row(repo, card_id)
+    row = get_draft_row(repo, card_id)
     if not row.draft:
         raise HTTPException(status_code=409, detail="This draft has no body to edit")
     if row.review_status in _FINAL:
@@ -152,7 +152,7 @@ def review_draft(
     payload: ReviewIn,
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
 ) -> ArticleDraftOut:
-    row = _row(repo, card_id)
+    row = get_draft_row(repo, card_id)
     if row.review_status in _FINAL:
         raise HTTPException(status_code=409, detail=f"Draft is already {row.review_status}")
     if payload.decision == "approved":
@@ -166,21 +166,16 @@ def review_draft(
     return _out(row)
 
 
-@router.post(
-    "/editor/drafts/{card_id}/publish",
-    response_model=PublishedOut,
-    dependencies=[Depends(require_editor_key)],
-)
-def publish_draft(
+def publish_approved(
     card_id: UUID,
     payload: PublishIn,
-    request: Request,
+    settings: Any,
     background: BackgroundTasks,
-    repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
-    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+    repo: ArticleDraftRepository,
+    published: PublishedArticleRepository,
 ) -> PublishedOut:
     """Publish an approved draft as an immutable snapshot with its SEO fields."""
-    row = _row(repo, card_id)
+    row = get_draft_row(repo, card_id)
     if row.review_status != "approved" or row.status != "drafted" or not row.draft:
         raise HTTPException(status_code=409, detail="Only an approved, drafted article can publish")
     if row.draft.get("flags"):
@@ -198,7 +193,6 @@ def publish_draft(
         slug = existing.slug
     else:
         slug = unique_slug(slugify(body.title), published.slug_exists)
-    settings = request.app.state.settings
     saved = published.publish(
         card_id,
         {
@@ -219,6 +213,24 @@ def publish_draft(
         status=cast(Any, saved.status),
         published_at=saved.published_at,
         modified_at=saved.modified_at,
+    )
+
+
+@router.post(
+    "/editor/drafts/{card_id}/publish",
+    response_model=PublishedOut,
+    dependencies=[Depends(require_editor_key)],
+)
+def publish_draft(
+    card_id: UUID,
+    payload: PublishIn,
+    request: Request,
+    background: BackgroundTasks,
+    repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishedOut:
+    return publish_approved(
+        card_id, payload, request.app.state.settings, background, repo, published
     )
 
 

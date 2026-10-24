@@ -68,6 +68,7 @@ class StubRepo:
             review_summary="Single source. Claim 0", cost_usd=Decimal("0.12"), calls=2,
             tokens=900, review_status="pending", review_note="", reviewed_at=None,
             failure_reason=None if draft else "ProviderRejectedError: status=402",
+            review_log=[],
             created_at=datetime(2026, 10, 1, tzinfo=UTC),
         )  # fmt: skip
         return card_id
@@ -480,3 +481,93 @@ def test_attach_images_needs_supabase_configured_and_known_article(
     body = {"cover": {"src": f"{BUCKET}/a.svg", "alt": "a"}}
     assert client.post(f"/editor/articles/{slug}/images", headers=H, json=body).status_code == 422
     assert client.post("/editor/articles/nope/images", headers=H, json=body).status_code == 404
+
+
+AGENT_KEY = "agent-secret-value"
+HA = {"X-Editor-Key": AGENT_KEY}
+
+
+@pytest.fixture
+def actx() -> Iterator[tuple[TestClient, StubRepo]]:
+    app = create_app(
+        Settings(  # type: ignore[call-arg]
+            _env_file=None,
+            database_url=DSN,  # type: ignore[arg-type]
+            editor_api_key=KEY,  # type: ignore[arg-type]
+            agent_api_key=AGENT_KEY,  # type: ignore[arg-type]
+            auto_review_min_words=1,
+            auto_review_min_claims=1,
+        )
+    )
+    repo = StubRepo()
+    published = StubPublished()
+    app.dependency_overrides[get_article_repository] = lambda: repo
+    app.dependency_overrides[get_published_repository] = lambda: published
+    repo.published = published  # type: ignore[attr-defined]
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client, repo
+
+
+def test_agent_key_works_on_editor_endpoints_and_wrong_keys_do_not(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    assert client.get(f"/editor/drafts/{card_id}", headers=HA).status_code == 200
+    assert client.get(f"/editor/drafts/{card_id}", headers=H).status_code == 200
+    assert (
+        client.get(f"/editor/drafts/{card_id}", headers={"X-Editor-Key": "nope"}).status_code == 401
+    )
+    assert client.get("/agent/runs").status_code == 401
+    assert client.get("/agent/runs", headers=HA).status_code == 200
+
+
+def test_run_stage_starts_in_the_background_and_reports_busy(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api import agent_runs
+
+    started: list[tuple[str, int, bool]] = []
+
+    def fake_start(stage: str, _settings: object, limit: int, retry: bool) -> bool:
+        started.append((stage, limit, retry))
+        return True
+
+    monkeypatch.setattr(agent_runs, "start", fake_start)
+    client, _ = actx
+    r = client.post("/agent/run/draft?limit=3&retry_failed=true", headers=HA)
+    assert (r.status_code, r.json()) == (202, {"started": True, "stage": "draft"})
+    assert started == [("draft", 3, True)]
+    assert client.post("/agent/run/bogus", headers=HA).status_code == 422
+    monkeypatch.setattr(agent_runs, "start", lambda *_a: False)
+    assert client.post("/agent/run/tick", headers=HA).status_code == 409
+
+
+def test_auto_review_approves_and_publishes_with_the_actor_logged(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    r = client.post(f"/agent/drafts/{card_id}/auto-review?publish=true", headers=HA)
+    assert r.status_code == 200
+    out = r.json()
+    assert (out["action"], out["reasons"]) == ("approve", [])
+    assert out["published"]["status"] == "published"
+    assert repo.rows[card_id].review_status == "approved"
+    assert repo.rows[card_id].log[-1]["actor"] == "agent"
+    assert client.post(f"/agent/drafts/{card_id}/auto-review", headers=HA).status_code == 409
+
+
+def test_auto_review_sends_a_thin_draft_back_with_the_reasons(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"auto_review_min_words": 500}
+    )
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{card_id}/auto-review", headers=HA).json()
+    assert out["action"] == "revise"
+    assert "words" in out["reasons"][0]
+    assert repo.rows[card_id].review_status == "revise"
+    assert "words" in repo.rows[card_id].review_note
