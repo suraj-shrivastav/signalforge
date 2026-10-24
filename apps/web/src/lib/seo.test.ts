@@ -142,6 +142,30 @@ describe("articleMetadata", () => {
   });
 });
 
+describe("duplicate source URLs", () => {
+  const dup: PublicArticle = {
+    ...article,
+    sources: [
+      { label: "arXiv abstract", url: "https://arxiv.org/abs/1" },
+      { label: "arXiv paper", url: "https://arxiv.org/abs/1" },
+    ],
+    claims: [
+      {
+        text: "A verified claim.",
+        status: "verified",
+        source_indices: [0, 1],
+      },
+    ],
+  };
+
+  it("lists each URL once in facts, citations and the markdown sources", () => {
+    expect(keyFacts(dup)[0].sources).toHaveLength(1);
+    expect(articleJsonLd(dup, SITE).citation).toHaveLength(1);
+    const md = articleMarkdown(dup, SITE);
+    expect(md.match(/arxiv\.org\/abs\/1\)/g)).toHaveLength(2); // fact ref + source list
+  });
+});
+
 describe("breadcrumbJsonLd", () => {
   it("lists Home then the article with absolute URLs", () => {
     const ld = breadcrumbJsonLd(article, SITE);

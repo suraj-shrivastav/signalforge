@@ -277,15 +277,21 @@ def draw_compare(spec: dict[str, Any], seed: Seed) -> str:
     big, small = (a, b) if a["value"] >= b["value"] else (b, a)
     ratio = math.sqrt(small["value"] / big["value"])  # area proportional to value
     big_s = 640
-    small_s = max(190, min(560, int(big_s * ratio)))
-    flip = seed.pick([False, True])
+    small_s = max(190, min(640, int(big_s * ratio)))
     gap = 40
-    x_big = 80 if not flip else 1120 - big_s
-    x_small = x_big + big_s + gap if not flip else x_big - gap - small_s
+    room = 1040  # canvas width minus the 80px margins
+    if big_s + gap + small_s > room:  # near-equal values: shrink both so the pair fits
+        scale = (room - gap) / (big_s + small_s)
+        big_s, small_s = int(big_s * scale), int(small_s * scale)
+    first, second = ((big, big_s, True), (small, small_s, False))
+    if seed.pick([False, True]):
+        first, second = second, first
+    x_first = 80
+    x_second = x_first + first[1] + gap
     top = 190
     parts = [label(spec["label"])]
-    for blk, size, x, dark in ((big, big_s, x_big, True), (small, small_s, x_small, False)):
-        y = top + big_s - size
+    for (blk, size, dark), x in ((first, x_first), (second, x_second)):
+        y = top + 640 - size
         fill, ink = (INK, PALETTE[seed.palette]) if dark else (WHITE, INK)
         fs = fit(blk["text"], size - 60, 200 if dark else 120)
         parts.append(

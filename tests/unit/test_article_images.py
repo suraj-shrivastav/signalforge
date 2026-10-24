@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -93,3 +94,24 @@ def test_compare_blocks_scale_with_values() -> None:
         },
     }
     assert img.render(even, "s") != img.render(cover, "s")
+
+
+@pytest.mark.parametrize("small", [470, 1000, 1900, 2000])
+def test_compare_blocks_stay_inside_the_canvas(small: int) -> None:
+    cover = example("granite-cover.json")
+    spec = {
+        **cover,
+        "values": {
+            "a": {**cover["values"]["a"], "value": 2000},
+            "b": {**cover["values"]["b"], "value": small},
+        },
+    }
+    for slug in ("a", "b", "c", "d", "e", "f"):
+        rects = [
+            (int(x), int(w))
+            for x, w in re.findall(
+                r'<rect x="(-?\d+)" y="\d+" width="(\d+)" height="\d+" rx', img.render(spec, slug)
+            )
+        ]
+        assert len(rects) == 2, slug
+        assert all(x >= 80 and x + w <= 1120 for x, w in rects), (slug, rects)

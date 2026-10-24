@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { safeHref } from "@/lib/format";
+import { safeHref, uniqueByUrl } from "@/lib/format";
 import type { PublicArticle, PublicSummary } from "@/lib/public";
 import { SITE_NAME } from "@/lib/site";
 
@@ -21,10 +21,12 @@ export function keyFacts(article: PublicArticle): KeyFact[] {
     .filter((c) => GOOD_STATUSES.includes(c.status))
     .map((claim) => ({
       text: claim.text,
-      sources: claim.source_indices.flatMap((i) => {
-        const source = article.sources[i];
-        return source && safeHref(source.url) ? [source] : [];
-      }),
+      sources: uniqueByUrl(
+        claim.source_indices.flatMap((i) => {
+          const source = article.sources[i];
+          return source && safeHref(source.url) ? [source] : [];
+        }),
+      ),
     }));
 }
 
@@ -63,7 +65,7 @@ export function articleJsonLd(
   site: string,
 ): Record<string, unknown> {
   const url = articleUrl(site, article.slug);
-  const citations = article.sources.flatMap((s) =>
+  const citations = uniqueByUrl(article.sources).flatMap((s) =>
     safeHref(s.url)
       ? [{ "@type": "CreativeWork", name: s.label, url: s.url }]
       : [],
@@ -133,7 +135,7 @@ export function articleMarkdown(article: PublicArticle, site: string): string {
     lines.push("## Editor's analysis", "", article.editor_analysis, "");
   }
   lines.push("## Sources", "");
-  article.sources.forEach((s, i) =>
+  uniqueByUrl(article.sources).forEach((s, i) =>
     lines.push(`${i + 1}. [${s.label}](${s.url})`),
   );
   lines.push("", `_${article.process_note}_`, "");
