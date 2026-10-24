@@ -123,6 +123,15 @@ class Settings(BaseSettings):
 
     # Shared key for editor decision writes (X-Editor-Key). Unset: writes get 503.
     editor_api_key: SecretStr | None = None
+    # Separate, revocable key for the automation agent (sent in the same X-Editor-Key header).
+    # It opens the same write endpoints plus /agent/*. Unset: the agent has no access.
+    agent_api_key: SecretStr | None = None
+
+    # Rules the agent's automatic review applies (see signalforge/auto_review.py).
+    auto_review_min_words: int = Field(default=250, ge=1)
+    auto_review_min_claims: int = Field(default=3, ge=1)
+    auto_review_max_flagged_share: float = Field(default=0.3, ge=0, le=1)
+    auto_review_max_redrafts: int = Field(default=2, ge=0)
 
     @model_validator(mode="after")
     def _require_token_for_ingest_endpoint(self) -> Self:

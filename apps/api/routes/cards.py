@@ -25,15 +25,24 @@ log = logging.getLogger(__name__)
 def require_editor_key(
     request: Request, x_editor_key: Annotated[str | None, Header()] = None
 ) -> None:
-    expected = request.app.state.settings.editor_api_key
-    # Fail closed: an unset or empty key never accepts writes.
-    if expected is None or not expected.get_secret_value():
+    """Accept the editor key or the agent key; record which one in request.state.actor."""
+    settings = request.app.state.settings
+    keys = {
+        actor: key.get_secret_value()
+        for actor, key in (("editor", settings.editor_api_key), ("agent", settings.agent_api_key))
+        if key is not None and key.get_secret_value()
+    }
+    # Fail closed: with no key configured nothing is accepted.
+    if not keys:
         log.warning("editor key not configured; refusing decision write")
         raise EditorKeyNotConfiguredError("editor key not configured")
     # Bytes so non-ASCII input cannot raise TypeError; same body for missing and wrong.
     supplied = (x_editor_key or "").encode()
-    if not secrets.compare_digest(supplied, expected.get_secret_value().encode()):
-        raise HTTPException(status_code=401, detail="Invalid or missing editor key")
+    for actor, key in keys.items():
+        if secrets.compare_digest(supplied, key.encode()):
+            request.state.actor = actor
+            return
+    raise HTTPException(status_code=401, detail="Invalid or missing editor key")
 
 
 async def decision_body(request: Request) -> DecisionIn:
