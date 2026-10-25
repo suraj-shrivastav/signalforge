@@ -146,3 +146,9 @@ def test_upload_via_api_reports_a_refusal(monkeypatch: pytest.MonkeyPatch) -> No
         img.upload_via_api(
             "s", ("<svg/>", {"alt": "a"}), ("<svg/>", {"alt": "b"}), "https://api.example", "k"
         )
+
+
+def test_script_avoids_python_310_only_calls() -> None:
+    """Hermes runs the script with the system python3, which is 3.9 on macOS."""
+    source = (ROOT / "scripts" / "articleimg.py").read_text()
+    assert "strict=" not in source  # zip(strict=True) needs 3.10

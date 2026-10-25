@@ -369,7 +369,8 @@ def draw_layers(spec: dict[str, Any], seed: Seed) -> str:
     accent = PALETTE[(seed.palette + 1) % len(PALETTE)]
     fills = [(INK, PALETTE[seed.palette]), (WHITE, INK), (accent, INK)]
     parts = [label(spec["label"])]
-    for i, (text, w) in enumerate(zip(items, widths, strict=True)):
+    for i, text in enumerate(items):
+        w = widths[i]
         x = 1120 - w - 30 if right else 150
         y = 230 + i * 190
         fill, ink = fills[i]
