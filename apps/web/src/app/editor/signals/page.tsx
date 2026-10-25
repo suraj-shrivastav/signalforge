@@ -19,7 +19,7 @@ export default async function Home({
   } catch {
     return (
       <main>
-        <h1>Signals</h1>
+        <h1 className="mb-6 text-h2 text-ink">Signals</h1>
         <Card className="p-6">
           <p role="alert" className="text-ink mb-4">
             Could not load signals. Check that the API is running.
@@ -35,7 +35,7 @@ export default async function Home({
   const now = new Date();
   return (
     <main>
-      <h1>Signals</h1>
+      <h1 className="mb-6 text-h2 text-ink">Signals</h1>
       <div className="mb-6 flex gap-2">
         {showAll ? (
           <Button href="/editor/signals" variant="secondary" size="sm">

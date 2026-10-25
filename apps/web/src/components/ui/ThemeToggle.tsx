@@ -52,7 +52,7 @@ export function ThemeToggle() {
       type="button"
       onClick={onClick}
       aria-label={LABEL[theme]}
-      className="inline-flex items-center justify-center rounded-control p-2 text-ink transition-colors hover:bg-sunken"
+      className="inline-flex items-center justify-center rounded-control p-2.5 text-ink transition-colors hover:bg-sunken"
     >
       <Icon aria-hidden="true" className="size-5" />
     </button>
