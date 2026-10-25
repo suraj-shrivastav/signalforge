@@ -70,6 +70,9 @@ def apply_sentence_edit(
         )
     sections = list(body.sections)
     sections[section] = ArticleSection(
-        heading=target.heading, paragraphs=tuple(paragraphs), citations=tuple(citations)
+        heading=target.heading,
+        paragraphs=tuple(paragraphs),
+        citations=tuple(citations),
+        table=target.table,
     )
     return body.model_copy(update={"sections": tuple(sections), "flags": remaining})

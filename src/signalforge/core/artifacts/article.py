@@ -49,6 +49,18 @@ class ArticleFlag(BaseModel):
     detail: str = ""
 
 
+class ArticleTable(BaseModel):
+    """A source table shown under a section, copied cell by cell by code, never by a model."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    caption: str = ""
+    header: tuple[str, ...] = Field(min_length=2)
+    rows: tuple[tuple[str, ...], ...] = Field(min_length=2)
+    # Index into ``ArticleBody.sources`` (the research documents), for the source line.
+    source_index: int = Field(ge=0)
+
+
 class ArticleSection(BaseModel):
     """One titled section; same shape the web draft preview renders."""
 
@@ -56,6 +68,8 @@ class ArticleSection(BaseModel):
 
     heading: str = Field(min_length=1)
     paragraphs: tuple[Annotated[str, Field(min_length=1)], ...] = Field(min_length=1)
+    # A source table shown after the paragraphs; at most one per section.
+    table: ArticleTable | None = None
     # Per paragraph, indices into ``ArticleBody.claims`` that its sentences rest on.
     # Empty on drafts written before sentence-level grounding (schema v1).
     citations: tuple[tuple[Annotated[int, Field(ge=0)], ...], ...] = ()
