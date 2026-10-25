@@ -202,7 +202,7 @@ Expected: no output. Run `ruff check src apps tests skills`, `ruff format --chec
 
 - [ ] **Step 2: Run, expect FAIL** (`ImportError: extract_tables`).
 
-- [ ] **Step 3: Implement.** Parse with `lxml.html.fromstring`; for each `table` element not containing another `table`: reject if any `td`/`th` has `colspan` or `rowspan` greater than 1; header = cells of the first `tr` when they are `th` or contain no digit; rows = the rest, each cell `" ".join(text_content().split())`; reject if rows have unequal lengths, fewer than 2 columns or 2 rows, more than 8 columns or 30 rows, any cell over 120 characters, or fewer than a third of data cells containing a digit. Caption: `<caption>` text, else the text of the nearest preceding `h1` to `h4`, else `""`. Return the 3 tables with the most numeric cells, in page order.
+- [ ] **Step 3: Implement.** Parse with `lxml.html.fromstring`; for each `table` element not containing another `table`: reject if any `td`/`th` has `colspan` or `rowspan` greater than 1; header = cells of the first `tr` when they are `th` or contain no digit; rows = the rest, each cell `" ".join(text_content().split())`; reject if rows have unequal lengths, fewer than 2 columns or 2 rows, more than 8 columns or 30 rows, any cell over 120 characters, or fewer than a third of data cells containing a digit. Caption: the table's own `<caption>` text, else `""` (a nearby heading was wrong on a real page). Return the 3 tables with the most numeric cells, in page order.
 
 - [ ] **Step 4: Run, expect PASS.** `ruff`, `mypy`.
 - [ ] **Step 5: Commit** `feat: research keeps data tables from source pages`.

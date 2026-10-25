@@ -80,8 +80,9 @@ A table is kept only when it looks like data:
 - at least a third of data cells contain a digit;
 - no nested tables, no `colspan` or `rowspan` above 1, no cell over 120 characters.
 
-Anything else is dropped, never trimmed, so a half table never appears. Caption comes from
-`<caption>` or the nearest preceding heading, if there is one. At most 3 tables per document,
+Anything else is dropped, never trimmed, so a half table never appears. Caption is the
+table's own `<caption>` and nothing else: a nearby heading was tried on the Granite model card and
+both tables took an unrelated section title. At most 3 tables per document,
 the ones with the most numeric cells. Cell text is whitespace-normalised plain text.
 
 Known limits, accepted for the first version: merged-cell headers, tables built from images
