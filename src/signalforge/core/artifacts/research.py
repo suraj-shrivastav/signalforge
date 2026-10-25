@@ -29,6 +29,16 @@ class ClaimStatus(StrEnum):
     UNVERIFIED = "unverified"
 
 
+class ResearchTable(BaseModel):
+    """A data table copied from a source page, cell by cell. Never written by a model."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    caption: str = ""
+    header: tuple[str, ...] = Field(min_length=2)
+    rows: tuple[tuple[str, ...], ...] = Field(min_length=2)
+
+
 class ResearchDocument(BaseModel):
     """One fetched source, nested inside a ``ResearchPackage``."""
 
@@ -43,6 +53,8 @@ class ResearchDocument(BaseModel):
     )
     text: str = Field(min_length=1, description="Extracted clean article text, capped length.")
     fetched_at: datetime
+    # Data tables found on the page; empty for packages researched before tables were kept.
+    tables: tuple[ResearchTable, ...] = ()
 
 
 class ResearchClaim(BaseModel):

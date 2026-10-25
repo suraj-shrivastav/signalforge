@@ -38,6 +38,7 @@ from signalforge.llm.gateway import LLMGateway
 from signalforge.stages.ingest import _ENTITY_NAMESPACE, _MAX_ERROR_CHARS, _sha
 from signalforge.stages.research_extraction import (
     extract_clean_text,
+    extract_tables,
     merge_claims,
     page_title,
     reference_links,
@@ -49,7 +50,7 @@ log = logging.getLogger(__name__)
 RESEARCH_STAGE = "research"
 ROLE = "research_extraction"
 EMBEDDING_ROLE = "claim_embedding"
-PROMPT_VERSION = "research-v3"
+PROMPT_VERSION = "research-v4"
 # Large enough for a paper's method and results sections, not just its abstract.
 MAX_DOCUMENT_CHARS = 30_000
 SECONDARY_RESULT_CAP = 4
@@ -94,7 +95,7 @@ class ResearchResult:
 
 
 def _build_document(
-    *, url: str, title: str, source_label: str, is_primary: bool, clean_text: str
+    *, url: str, title: str, source_label: str, is_primary: bool, clean_text: str, html: str
 ) -> ResearchDocument:
     raw_text_ref = "sha256:" + hashlib.sha256(clean_text.encode()).hexdigest()
     stored_text = clean_text[:MAX_DOCUMENT_CHARS]
@@ -106,6 +107,7 @@ def _build_document(
         raw_text_ref=raw_text_ref,
         text=stored_text,
         fetched_at=datetime.now(UTC),
+        tables=extract_tables(html),
     )
 
 
@@ -199,19 +201,21 @@ def _process_card(
             source_label=signal.source,
             is_primary=True,
             clean_text=primary_text,
+            html=html,
         )
     )
     texts.append(primary_text)
     seen_urls = {signal.canonical_url}
     seen_texts = {documents[0].raw_text_ref}
 
-    def add_secondary(url: str, title: str, clean_text: str) -> None:
+    def add_secondary(url: str, title: str, clean_text: str, html: str) -> None:
         document = _build_document(
             url=url,
             title=title,
             source_label=urllib.parse.urlsplit(url).hostname or url,
             is_primary=False,
             clean_text=clean_text,
+            html=html,
         )
         # A mirror of a page already held is not independent evidence.
         if document.raw_text_ref in seen_texts:
@@ -227,7 +231,9 @@ def _process_card(
         if fetched is not None:
             reference_html, reference_text = fetched
             hostname = urllib.parse.urlsplit(link.url).hostname or link.url
-            add_secondary(link.url, page_title(reference_html) or hostname, reference_text)
+            add_secondary(
+                link.url, page_title(reference_html) or hostname, reference_text, reference_html
+            )
 
     # Step 5-6: secondary search and documents.
     try:
@@ -247,7 +253,7 @@ def _process_card(
         if secondary_text is None:
             continue
         hostname = urllib.parse.urlsplit(result.url).hostname or result.url
-        add_secondary(result.url, result.title.strip() or hostname, secondary_text)
+        add_secondary(result.url, result.title.strip() or hostname, secondary_text, secondary_html)
 
     # Step 7-8: per-document extraction, span check, merge.
     candidates: list[tuple[int, ResearchClaim]] = []

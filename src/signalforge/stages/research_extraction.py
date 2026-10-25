@@ -8,11 +8,14 @@ import math
 import re
 from dataclasses import dataclass
 from html import unescape
+from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import trafilatura
+from lxml import etree  # type: ignore[import-untyped]
+from lxml import html as lxml_html
 
-from signalforge.core.artifacts.research import ResearchClaim
+from signalforge.core.artifacts.research import ResearchClaim, ResearchTable
 
 # Evidence spans must come from the article body. The default recall-leaning fallback
 # keeps nav chrome on short pages, so a span could "match" boilerplate.
@@ -31,6 +34,82 @@ def extract_clean_text(html: str) -> str | None:
         html, favor_precision=_FAVOR_PRECISION, include_comments=_INCLUDE_COMMENTS
     )
     return text if text else None
+
+
+# A table is kept only when it looks like clean data; anything else is dropped whole, never
+# trimmed, so a half table can never reach a reader.
+MAX_TABLE_COLUMNS = 8
+MAX_TABLE_ROWS = 30
+MAX_TABLE_CELL_CHARS = 120
+MAX_TABLES_PER_DOCUMENT = 3
+_MAX_CAPTION_CHARS = 160
+
+
+def _cells_text(cells: list[Any]) -> tuple[str, ...]:
+    return tuple(" ".join(cell.text_content().split()) for cell in cells)
+
+
+def _is_merged(cell: Any) -> bool:
+    for attribute in ("colspan", "rowspan"):
+        value = (cell.get(attribute) or "").strip()
+        if value.isdigit() and int(value) > 1:
+            return True
+    return False
+
+
+def _table_caption(table: Any) -> str:
+    """Only the table's own <caption>. A nearby heading was tried and was wrong on a real model
+    card (two tables both took an unrelated section title), so there is no fallback."""
+    own = table.xpath("./caption")
+    return " ".join(own[0].text_content().split())[:_MAX_CAPTION_CHARS] if own else ""
+
+
+def _read_table(table: Any) -> tuple[int, ResearchTable] | None:
+    """The table and its count of numeric cells, or None when it is not clean data."""
+    grid: list[tuple[str, ...]] = []
+    first_is_th = False
+    for row in table.xpath(".//tr"):
+        cells = row.xpath("./th|./td")
+        if not cells:
+            continue
+        if any(_is_merged(cell) for cell in cells):
+            return None
+        if not grid:
+            first_is_th = all(cell.tag == "th" for cell in cells)
+        grid.append(_cells_text(cells))
+    if len(grid) < 3 or len({len(row) for row in grid}) != 1:
+        return None
+    header, rows = grid[0], tuple(grid[1:])
+    columns = len(header)
+    if not 2 <= columns <= MAX_TABLE_COLUMNS or len(rows) > MAX_TABLE_ROWS:
+        return None
+    if not any(header):
+        return None
+    if any(len(cell) > MAX_TABLE_CELL_CHARS for row in grid for cell in row):
+        return None
+    if not first_is_th and any(any(ch.isdigit() for ch in cell) for cell in header):
+        return None  # no header row: the first row is data
+    numeric = sum(any(ch.isdigit() for ch in cell) for row in rows for cell in row)
+    if numeric * 3 < len(rows) * columns:
+        return None
+    return numeric, ResearchTable(caption=_table_caption(table), header=header, rows=rows)
+
+
+def extract_tables(html: str) -> tuple[ResearchTable, ...]:
+    """Data tables of a page, at most three: the ones with the most numeric cells, in page order."""
+    try:
+        root = lxml_html.fromstring(html)
+    except (ValueError, etree.ParserError):
+        return ()
+    found: list[tuple[int, int, ResearchTable]] = []
+    for position, table in enumerate(root.iter("table")):
+        if table.xpath(".//table"):
+            continue  # a table that holds a table is layout
+        read = _read_table(table)
+        if read is not None:
+            found.append((read[0], position, read[1]))
+    best = sorted(found, key=lambda item: (-item[0], item[1]))[:MAX_TABLES_PER_DOCUMENT]
+    return tuple(item[2] for item in sorted(best, key=lambda item: item[1]))
 
 
 def span_exists(span: str, document_text: str) -> bool:
