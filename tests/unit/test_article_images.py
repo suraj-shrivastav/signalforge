@@ -115,3 +115,34 @@ def test_compare_blocks_stay_inside_the_canvas(small: int) -> None:
         ]
         assert len(rects) == 2, slug
         assert all(x >= 80 and x + w <= 1120 for x, w in rects), (slug, rects)
+
+
+def test_upload_via_api_posts_both_svgs_and_no_storage_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_request(url: str, **kwargs: Any) -> tuple[int, bytes]:
+        calls.append({"url": url, **kwargs})
+        return 200, b"{}"
+
+    monkeypatch.setattr(img, "_request", fake_request)
+    img.upload_via_api(
+        "my-slug",
+        ("<svg/>", {"alt": "Cover"}),
+        ("<svg></svg>", {"alt": "Fig", "caption": "Cap"}),
+        "https://api.example/",
+        "agent-key",
+    )
+    (call,) = calls
+    assert call["url"] == "https://api.example/editor/articles/my-slug/images/upload"
+    assert call["headers"]["X-Editor-Key"] == "agent-key"
+    body = json.loads(call["data"])
+    assert body["figure"] == {"svg": "<svg></svg>", "alt": "Fig", "caption": "Cap"}
+    assert "supabase" not in str(call).lower()
+
+
+def test_upload_via_api_reports_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(img, "_request", lambda *_a, **_k: (503, b"not configured"))
+    with pytest.raises(img.SpecError, match="HTTP 503"):
+        img.upload_via_api(
+            "s", ("<svg/>", {"alt": "a"}), ("<svg/>", {"alt": "b"}), "https://api.example", "k"
+        )

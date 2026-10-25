@@ -217,6 +217,25 @@ class ImageIn(BaseModel):
     caption: str = Field(default="", max_length=300)
 
 
+class ImageUploadIn(BaseModel):
+    """A rendered SVG for the API to store; the caption is shown under the inline figure."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    svg: str = Field(min_length=1, max_length=400_000)
+    alt: str = Field(min_length=1, max_length=300)
+    caption: str = Field(default="", max_length=300)
+
+
+class ImagesUploadIn(BaseModel):
+    """Cover and figure SVGs together, so an article never ends up with only one of them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cover: ImageUploadIn
+    figure: ImageUploadIn
+
+
 class ImagesIn(BaseModel):
     """Both images for one article. Either may be sent alone."""
 

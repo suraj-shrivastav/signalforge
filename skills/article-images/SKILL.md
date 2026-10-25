@@ -33,7 +33,7 @@ image. Different articles give different images because the look is derived from
 python3 scripts/articleimg.py publish --slug <slug> --cover cover.json --figure figure.json
 ```
 
-Use `--dry-run DIR` first to render into a folder without uploading. Needs the environment variables `API_BASE_URL`, `EDITOR_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`. Never print them.
+Use `--dry-run DIR` first to render into a folder without uploading. Needs only `API_BASE_URL` and `EDITOR_API_KEY` (the agent key works). The script sends the rendered SVGs to `POST /editor/articles/{slug}/images/upload`; the API holds the storage key and stores them. Never print the keys.
 
 ## Template choice (first match wins)
 
