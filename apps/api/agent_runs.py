@@ -49,6 +49,11 @@ def _summary(result: Any) -> dict[str, Any]:
 
 def start(stage: str, settings: Settings, limit: int, retry_failed: bool) -> bool:
     """Start ``stage`` in a thread. False when another run is still going."""
+    return start_job(stage, lambda: _run_stage(stage, settings, limit, retry_failed))
+
+
+def start_job(stage: str, job: Callable[[], Any]) -> bool:
+    """Start any ``job`` under the one pipeline slot. False when another run is still going."""
     if not _LOCK.acquire(blocking=False):
         return False
     started = datetime.now(UTC).isoformat()
@@ -57,10 +62,7 @@ def start(stage: str, settings: Settings, limit: int, retry_failed: bool) -> boo
     def work() -> None:
         outcome: dict[str, Any]
         try:
-            outcome = {
-                "ok": True,
-                "result": _summary(_run_stage(stage, settings, limit, retry_failed)),
-            }
+            outcome = {"ok": True, "result": _summary(job())}
         except Exception as exc:
             log.exception("agent run failed", extra={"stage": stage})
             outcome = {"ok": False, "error": type(exc).__name__}

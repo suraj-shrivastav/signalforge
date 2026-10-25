@@ -43,6 +43,26 @@ the `article-images` bucket with its own Supabase key and attaches it. Set `SUPA
 `SUPABASE_SECRET_KEY` on the **API** only; the endpoint answers 503 without them. The script
 runs on Python 3.9 or newer.
 
+## Ask for a topic
+
+`POST /agent/topics` takes `{"url": "..."}` or `{"query": "plain text"}` (exactly one), an
+optional `note` (the angle, passed on to drafting when the card is accepted) and `hot`. It
+runs in the background; the outcome is in `GET /agent/runs` under `last.topic`.
+
+- A **URL** is fetched, and its readable text must be at least 400 characters.
+- A **query** is searched (Tavily). The first readable page whose URL is not already a signal
+  is used; the other hits come back as `alternatives`, so the owner can pick another.
+- The page becomes a signal (source `manual`), is assessed (always treated as relevant, the
+  owner asked for it) and carded. The result has the card: scores, format, risk flags,
+  suggested angle. Without `hot` it stops there. The owner then accepts or rejects it like any
+  other card, and whether it can be published shows in research: `needs_more_info` means no.
+- With `hot: true` the card is accepted at once, scored above every other card so research
+  takes it next, then researched and drafted, outside the daily research cap. Finish with
+  `POST /agent/drafts/{card_id}/auto-review?publish=true&force=true` to publish past the pace.
+
+Errors come back as `{"ok": false, "error": "..."}` in the run result, for example the page
+could not be fetched, search is not configured, or nothing readable was found.
+
 ## One at a time, best first
 
 Research costs money, so it never fans out:
