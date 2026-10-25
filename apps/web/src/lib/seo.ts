@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { safeHref, uniqueByUrl } from "@/lib/format";
-import type { PublicArticle, PublicSummary } from "@/lib/public";
+import type { PublicArticle, PublicSummary, PublicTable } from "@/lib/public";
 import { SITE_NAME } from "@/lib/site";
 
 const GOOD_STATUSES = ["verified", "supported"];
@@ -104,6 +104,26 @@ export function escapeXml(text: string): string {
     .replace(/'/g, "&apos;");
 }
 
+function mdCell(text: string): string {
+  return text.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+}
+
+// A source table as a GitHub-style Markdown table, with its source on the line after.
+export function tableMarkdown(table: PublicTable): string[] {
+  const lines: string[] = [];
+  if (table.caption) lines.push(`**${mdCell(table.caption)}**`, "");
+  lines.push(
+    `| ${table.header.map(mdCell).join(" | ")} |`,
+    `| ${table.header.map(() => "---").join(" | ")} |`,
+    ...table.rows.map((row) => `| ${row.map(mdCell).join(" | ")} |`),
+    "",
+  );
+  if (table.source && safeHref(table.source.url)) {
+    lines.push(`Source: [${table.source.label}](${table.source.url})`, "");
+  }
+  return lines;
+}
+
 // The same article as plain Markdown, for agents: claims keep their sources.
 export function articleMarkdown(article: PublicArticle, site: string): string {
   const lines = [
@@ -129,6 +149,7 @@ export function articleMarkdown(article: PublicArticle, site: string): string {
       `## ${section.heading}`,
       "",
       ...section.paragraphs.flatMap((p) => [p, ""]),
+      ...(section.table ? tableMarkdown(section.table) : []),
     );
   }
   if (article.editor_analysis) {

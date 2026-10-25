@@ -274,3 +274,100 @@ describe("robots and sitemap", () => {
     expect(entries[1].lastModified).toEqual(new Date(article.modified_at));
   });
 });
+
+describe("tables in the Markdown twin and the API shape", () => {
+  const table = {
+    caption: "Word error rate",
+    header: ["Model", "WER"],
+    rows: [
+      ["Granite", "5.06"],
+      ["A | B", "7.40"],
+    ],
+    source: { label: "IBM model card", url: "https://huggingface.co/ibm" },
+  };
+
+  it("writes a GitHub-style table with its caption and source", () => {
+    const md = articleMarkdown(
+      {
+        ...article,
+        sections: [{ heading: "Results", paragraphs: ["See below."], table }],
+      },
+      SITE,
+    );
+    expect(md).toContain("**Word error rate**");
+    expect(md).toContain("| Model | WER |\n| --- | --- |\n| Granite | 5.06 |");
+    expect(md).toContain("| A \\| B | 7.40 |");
+    expect(md).toContain(
+      "Source: [IBM model card](https://huggingface.co/ibm)",
+    );
+    expect(md.indexOf("See below.")).toBeLessThan(md.indexOf("| Model |"));
+  });
+
+  it("leaves the source out of Markdown when its link is unsafe", () => {
+    const md = articleMarkdown(
+      {
+        ...article,
+        sections: [
+          {
+            heading: "Results",
+            paragraphs: ["x."],
+            table: { ...table, source: { label: "Bad", url: "javascript:x" } },
+          },
+        ],
+      },
+      SITE,
+    );
+    expect(md).not.toContain("Source:");
+  });
+
+  it("parses a table from the API and drops a malformed one without failing", () => {
+    const base = {
+      slug: "s",
+      title: "T",
+      dek: "D",
+      meta_description: "M",
+      published_at: "2026-10-21T10:00:00Z",
+      modified_at: "2026-10-21T10:00:00Z",
+      cover: { src: null, alt: "a", credit: null },
+      seo_title: "T",
+      byline: "B",
+      process_note: "P",
+      editor_analysis: "",
+      claims: [],
+      sources: [],
+      figure: null,
+    };
+    const good = parseArticle({
+      ...base,
+      sections: [{ heading: "H", paragraphs: ["p"], table }],
+    });
+    expect(good.sections[0].table?.rows[1]).toEqual(["A | B", "7.40"]);
+    expect(good.sections[0].table?.source?.label).toBe("IBM model card");
+    const ragged = parseArticle({
+      ...base,
+      sections: [
+        {
+          heading: "H",
+          paragraphs: ["p"],
+          table: { ...table, rows: [["only one cell"]] },
+        },
+      ],
+    });
+    expect(ragged.sections[0].table).toBeNull();
+    const none = parseArticle({
+      ...base,
+      sections: [{ heading: "H", paragraphs: ["p"] }],
+    });
+    expect(none.sections[0].table).toBeNull();
+  });
+
+  it("keeps the table in the JSON twin through the article object", () => {
+    const withTable = {
+      ...article,
+      sections: [{ heading: "H", paragraphs: ["p"], table }],
+    };
+    expect(
+      JSON.parse(JSON.stringify(withTable)).sections[0].table.header,
+    ).toEqual(["Model", "WER"]);
+  });
+});

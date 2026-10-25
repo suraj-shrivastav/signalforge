@@ -883,3 +883,46 @@ def test_a_topic_needs_a_key_and_a_free_pipeline(
     assert client.post("/agent/topics", json={"query": "fine query"}).status_code == 401
     monkeypatch.setattr(agent_runs, "start_job", lambda *_a: False)
     assert client.post("/agent/topics", headers=HA, json={"query": "fine query"}).status_code == 409
+
+
+def test_a_published_table_reaches_the_public_article_with_its_source(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    body = BODY.model_dump(mode="json")
+    body["sections"][0]["table"] = {
+        "caption": "Scores",
+        "header": ["Model", "Score"],
+        "rows": [["A", "91"], ["B", "88"]],
+        "source_index": 0,
+    }
+    card_id = repo.add(body)
+    client.post(f"/editor/drafts/{card_id}/review", headers=H, json={"decision": "approved"})
+    slug = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).json()["slug"]
+    sections = client.get(f"/articles/{slug}").json()["sections"]
+    assert sections[0]["table"] == {
+        "caption": "Scores",
+        "header": ["Model", "Score"],
+        "rows": [["A", "91"], ["B", "88"]],
+        "source": {"label": "example", "url": "https://example.com"},
+    }
+    assert all(section["table"] is None for section in sections[1:])
+
+
+def test_a_table_whose_source_is_missing_still_shows_without_one(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    body = BODY.model_dump(mode="json")
+    body["sections"][0]["table"] = {
+        "caption": "",
+        "header": ["A", "B"],
+        "rows": [["1", "2"], ["3", "4"]],
+        "source_index": 9,
+    }
+    card_id = repo.add(body)
+    client.post(f"/editor/drafts/{card_id}/review", headers=H, json={"decision": "approved"})
+    slug = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).json()["slug"]
+    table = client.get(f"/articles/{slug}").json()["sections"][0]["table"]
+    assert table["source"] is None
+    assert table["rows"] == [["1", "2"], ["3", "4"]]
