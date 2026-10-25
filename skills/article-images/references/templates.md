@@ -12,6 +12,7 @@ figure image is always a different colour from the cover.
 | `constellation` | Big number beside a hub linked to 3 to 9 nodes | Counts of connected things | Anything over 9 or under 3 |
 | `spectrogram` | Grid of rounded cells, short word or number below | Benchmarks, datasets, evaluations | Process descriptions |
 | `layers` | Three stacked pills with text | Three steps or components | Numbers, comparisons |
+| `bar-chart` | 3 to 6 horizontal bars on one scale from zero, the first (the subject) dark, values after the bars | One metric across several named things | Different units, or a single number |
 | `architecture` | 3 to 5 rounded boxes joined by arrows, reading left to right and wrapping to a second row | How data moves through a system | Comparisons, a single number, more than 5 parts |
 
 ## Writing good fields
@@ -24,5 +25,5 @@ figure image is always a different colour from the cover.
 
 ## Examples
 
-See `examples/`. `granite-*` is the first article. `example-architecture-*` shows the architecture template with a ripples cover. `example-news-*` and `example-paper-*` show
+See `examples/`. `granite-*` is the first article. `example-bar-chart-*` shows the bar chart with a ripples cover. `example-architecture-*` shows the architecture template with a ripples cover. `example-news-*` and `example-paper-*` show
 the same rules applied to other articles; they change the template, the colour and the details.

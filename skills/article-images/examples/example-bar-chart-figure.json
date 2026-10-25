@@ -1,0 +1,14 @@
+{
+  "role": "figure",
+  "template": "bar-chart",
+  "label": "Word error rate",
+  "caption": "lower is better",
+  "values": {
+    "bars": [
+      {"name": "Granite", "value": 5.06, "text": "5.06%"},
+      {"name": "Canary", "value": 6.1, "text": "6.1%"},
+      {"name": "Whisper", "value": 7.4, "text": "7.4%"}
+    ]
+  },
+  "alt": "Bar chart of word error rate: Granite 5.06 percent, Canary 6.1, Whisper 7.4"
+}

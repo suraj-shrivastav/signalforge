@@ -205,3 +205,47 @@ def test_architecture_cover_and_figure_pair_with_the_ripples_cover() -> None:
     cover = example("example-architecture-cover.json")
     figure = example("example-architecture-figure.json")
     assert img.check_pair(cover, figure) == []
+
+
+def bars(*items: tuple[str, float, str]) -> dict[str, Any]:
+    spec = example("example-bar-chart-figure.json")
+    spec["values"] = {"bars": [{"name": n, "value": v, "text": t} for n, v, t in items]}
+    return spec
+
+
+GOOD_BARS = (("Granite", 5.06, "5.06%"), ("Whisper", 7.4, "7.4%"), ("Canary", 6.1, "6.1%"))
+
+
+def test_bar_chart_validates_count_value_text_and_fields() -> None:
+    assert img.validate(bars(*GOOD_BARS), None) == []
+    assert any("3 to 6" in e for e in img.validate(bars(*GOOD_BARS[:2]), None))
+    assert any("3 to 6" in e for e in img.validate(bars(*(GOOD_BARS * 3)), None))
+    bad = bars(("A", 5.0, "9%"), GOOD_BARS[1], GOOD_BARS[2])
+    assert any("must show the value" in e for e in img.validate(bad, None))
+    assert any("positive" in e for e in img.validate(bars(("A", 0, "0"), *GOOD_BARS[1:]), None))
+    assert any(
+        "limit 14" in e for e in img.validate(bars(("x" * 15, 5, "5"), *GOOD_BARS[1:]), None)
+    )
+    assert any("limit 8" in e for e in img.validate(bars(("A", 5, "5" * 9), *GOOD_BARS[1:]), None))
+    assert any("no figure" in e for e in img.validate({**bars(*GOOD_BARS), "figure": "5"}, None))
+    unknown = bars(("A", 9.99, "9.99%"), *GOOD_BARS[1:])
+    assert any("'9.99'" in e for e in img.validate(unknown, ARTICLE))
+
+
+@pytest.mark.parametrize("count", [3, 4, 5, 6])
+def test_bar_chart_draws_proportional_bars_inside_the_canvas(count: int) -> None:
+    items = tuple((f"Model {i}", float(10 * (i + 1)), f"{10 * (i + 1)}") for i in range(count))
+    svg = img.render(bars(*items), "some-slug")
+    widths = [int(w) for w in re.findall(r'<rect class="bar" [^>]*width="(\d+)"', svg)]
+    assert len(widths) == count
+    for i, width in enumerate(widths):
+        assert abs(width / widths[-1] - (i + 1) / count) < 0.02  # linear scale from zero
+    for x, w in re.findall(r'<rect class="bar" x="(\d+)"[^>]*width="(\d+)"', svg):
+        assert int(x) + int(w) <= 1120
+    assert svg == img.render(bars(*items), "some-slug")
+    assert "NaN" not in svg
+
+
+def test_bar_chart_pairs_with_another_template() -> None:
+    cover = example("example-bar-chart-cover.json")
+    assert img.check_pair(cover, example("example-bar-chart-figure.json")) == []

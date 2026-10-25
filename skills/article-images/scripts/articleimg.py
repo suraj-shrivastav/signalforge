@@ -41,6 +41,7 @@ TEMPLATES = (
     "spectrogram",
     "layers",
     "architecture",
+    "bar-chart",
 )
 ROLES = ("cover", "figure")
 LIMITS = {
@@ -143,6 +144,33 @@ def validate(spec: dict[str, Any], article: dict[str, Any] | None) -> list[str]:
                     texts.append(box)
         if "figure" in spec:
             errors.append("architecture takes no figure; use values.boxes")
+    elif template == "bar-chart":
+        texts.append(_text(spec, "caption", errors, required=False))
+        found = values.get("bars")
+        if not isinstance(found, list) or not 3 <= len(found) <= 6:
+            errors.append("values.bars: 3 to 6 objects with name, value, text")
+        else:
+            for i, bar in enumerate(found):
+                if not isinstance(bar, dict):
+                    errors.append(f"values.bars[{i}]: object with name, value, text")
+                    continue
+                texts += [_text(bar, "name", errors), _text(bar, "text", errors)]
+                value = bar.get("value")
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                    errors.append(f"values.bars[{i}].value: positive number")
+                    continue
+                tokens = NUMBER.findall(str(bar.get("text", "")))
+                first = tokens[0].rstrip(".,").replace(",", "") if tokens else ""
+                try:
+                    shown = float(first)
+                except ValueError:
+                    shown = -1.0
+                if abs(shown - value) > 1e-9 * max(1.0, abs(value)):
+                    errors.append(
+                        f"values.bars[{i}]: text {bar.get('text')!r} must show the value {value}"
+                    )
+        if "figure" in spec:
+            errors.append("bar-chart takes no figure; use values.bars")
     elif template == "layers":
         items = values.get("items")
         if not isinstance(items, list) or len(items) != 3:
@@ -451,6 +479,41 @@ def draw_architecture(spec: dict[str, Any], seed: Seed) -> str:
     return "".join(parts) + caption(spec, 80, 860, 40)
 
 
+def draw_barchart(spec: dict[str, Any], seed: Seed) -> str:
+    """Horizontal bars on one linear scale from zero; the first bar (the subject) is dark."""
+    found = spec["values"]["bars"]
+    n = len(found)
+    top = max(bar["value"] for bar in found)
+    left, room = 400, 520  # bars start here and may use this much width; values sit after them
+    gap = 26
+    height = int(min(96, (570 - (n - 1) * gap) / n))
+    start = 190 + (570 - (n * height + (n - 1) * gap)) // 2
+    radius = seed.pick([height // 2, 18])  # pill bars, or softly squared ones
+    parts = [label(spec["label"])]
+    for i, bar in enumerate(found):
+        y = start + i * (height + gap)
+        width = max(24, int(room * bar["value"] / top))
+        fill = INK if i == 0 else WHITE
+        parts.append(
+            txt(
+                80,
+                y + height / 2 + 12,
+                bar["name"],
+                fit(bar["name"], 290, 36, 0.56),
+                weight=700,
+                spacing=0,
+            )
+        )
+        parts.append(
+            f'<rect class="bar" x="{left}" y="{y}" width="{width}" height="{height}" '
+            f'rx="{radius}" fill="{fill}"/>'
+        )
+        parts.append(
+            txt(left + width + 18, y + height / 2 + 14, bar["text"], 40, weight=800, spacing=0)
+        )
+    return "".join(parts) + caption(spec, 80, 860, 40)
+
+
 DRAW = {
     "waveform": draw_waveform,
     "figure-ripples": draw_ripples,
@@ -459,6 +522,7 @@ DRAW = {
     "spectrogram": draw_spectrogram,
     "layers": draw_layers,
     "architecture": draw_architecture,
+    "bar-chart": draw_barchart,
 }
 
 
