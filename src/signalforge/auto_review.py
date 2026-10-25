@@ -43,14 +43,30 @@ _SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"(\d])")
 _MAX_DEK_CHARS = 280
 
 
-def _lead_sentence(body: ArticleBody) -> str | None:
+def _lead_sentence(body: ArticleBody, flagged: set[str]) -> str | None:
     """First sentence of the first paragraph that is not flagged and is short enough for a dek."""
-    flagged = {f.text for f in body.flags}
     for sentence in _SPLIT.split(body.sections[0].paragraphs[0]):
         text = sentence.strip()
         if text and text not in flagged and len(text) <= _MAX_DEK_CHARS:
             return text
     return None
+
+
+def _delete(body: ArticleBody, flag: ArticleFlag) -> ArticleBody:
+    """Delete a flagged sentence; a section it would leave empty is dropped with its heading."""
+    section = body.sections[flag.section]
+    only = len(section.paragraphs) == 1 and section.paragraphs[0].strip() == flag.text.strip()
+    if only and len(body.sections) > 1:
+        sections = tuple(s for i, s in enumerate(body.sections) if i != flag.section)
+        flags = tuple(
+            f.model_copy(update={"section": f.section - 1}) if f.section > flag.section else f
+            for f in body.flags
+            if f.section != flag.section
+        )
+        return body.model_copy(update={"sections": sections, "flags": flags})
+    return apply_sentence_edit(
+        body, section=flag.section, paragraph=flag.paragraph, text=flag.text, replacement=None
+    )
 
 
 def _sentences(body: ArticleBody) -> int:
@@ -84,11 +100,15 @@ def decide(
     current = body
     deleted: list[ArticleFlag] = []
     new_dek: str | None = None
-    for flag in flags:
+    flagged_texts = {f.text for f in flags}
+    # Body flags last to first, so deleting a paragraph or section never shifts a flag still to
+    # come; the dek goes last, after the body it borrows its lead from is final.
+    ordered = sorted(flags, key=lambda f: (f.section != DEK, f.section, f.paragraph), reverse=True)
+    for flag in ordered:
         try:
             if flag.section == DEK:
                 # A dek cannot be deleted: use the article's first unflagged sentence instead.
-                lead = _lead_sentence(body)
+                lead = _lead_sentence(current, flagged_texts)
                 if lead is None:
                     return _fail(
                         body, ["the dek is flagged and no lead sentence fits"], redrafts, policy
@@ -106,13 +126,7 @@ def decide(
                         current, section=0, paragraph=0, text=lead, replacement=None
                     )
             else:
-                current = apply_sentence_edit(
-                    current,
-                    section=flag.section,
-                    paragraph=flag.paragraph,
-                    text=flag.text,
-                    replacement=None,
-                )
+                current = _delete(current, flag)
         except ArtifactValidationError as exc:
             return _fail(body, [f"cannot fix a flagged sentence: {exc.message}"], redrafts, policy)
         deleted.append(flag)

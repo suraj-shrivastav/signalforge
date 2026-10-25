@@ -26,6 +26,20 @@ endpoints below).
 | `human_review` | needs a person (draft had no usable claims); skip or reject |
 | `wait`, `none` | nothing to do |
 
+## Decisions and reason tags
+
+`POST /cards/{id}/decision` takes `{"decision": "accepted" | "rejected"}`. `reason_tags` is
+optional. When sent, every tag must come from this fixed list (anything else returns 422):
+`off_niche`, `too_incremental`, `duplicate`, `already_covered`, `low_quality_source`,
+`great_angle`, `timely`, `evergreen`, `needs_more_evidence`. Omit the field if none fits.
+
+## Images
+
+`skills/article-images/scripts/articleimg.py publish` needs `API_BASE_URL`, `EDITOR_API_KEY`
+(or the agent key), `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the environment of whatever
+runs it. Without the Supabase secret the upload fails with HTTP 400. The script runs on
+Python 3.9 or newer.
+
 ## Automatic review
 
 `auto-review` replaces the editor's read-through with rules (`signalforge/auto_review.py`):
@@ -34,6 +48,7 @@ endpoints below).
 - Otherwise every flagged sentence is deleted. A flagged dek is replaced by the first unflagged sentence of the article (that sentence leaves the body); if none fits, revise.
 - After deletions the draft needs at least `AUTO_REVIEW_MIN_WORDS` (250) words,
   `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims and no dash or banned phrasing.
+- A flagged sentence that is the only content of a section removes that section.
 - Pass: approved (and published with `publish=true`). Fail: `revise` with the reasons as the
   note; `POST /agent/run/revise` redrafts with that note. After `AUTO_REVIEW_MAX_REDRAFTS`
   (2) failed redrafts the draft is rejected.
