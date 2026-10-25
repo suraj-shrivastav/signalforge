@@ -103,11 +103,17 @@ class CardRepository:
         return self._session.execute(statement).first() is not None
 
     def list_uncarded(
-        self, prompt_version: str, limit: int, *, published_within_days: int = 14
+        self,
+        prompt_version: str,
+        limit: int,
+        *,
+        published_within_days: int = 14,
+        only: Sequence[uuid.UUID] | None = None,
     ) -> list[tuple[Signal, SignalAssessmentRow]]:
         """Relevant signals with no card for this prompt version, newest first.
 
-        Only signals published within ``published_within_days`` are considered.
+        Only signals published within ``published_within_days`` are considered. ``only`` limits
+        the choice to those signal ids (a topic the owner asked for).
         """
         cutoff = datetime.now(UTC) - timedelta(days=published_within_days)
         assessment = latest_assessment()
@@ -123,6 +129,8 @@ class CardRepository:
             .order_by(Signal.published_at.desc(), Signal.id.desc())
             .limit(limit)
         )
+        if only is not None:
+            query = query.where(Signal.id.in_(only))
         return [(signal, found) for signal, found in self._session.execute(query).all()]
 
     def exists(self, card_id: uuid.UUID) -> bool:

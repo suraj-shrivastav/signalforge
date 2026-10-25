@@ -6,7 +6,7 @@ assessment text are untrusted, so they go to the model inside ``<signal>`` tags 
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -88,7 +88,11 @@ def build_messages(signal: Signal, assessment: SignalAssessmentRow) -> tuple[str
 
 
 def run_cards(
-    session: Session, gateway_factory: Callable[[Session], LLMGateway], *, limit: int
+    session: Session,
+    gateway_factory: Callable[[Session], LLMGateway],
+    *,
+    limit: int,
+    only: Sequence[uuid.UUID] | None = None,
 ) -> CardsResult:
     started_at = datetime.now(UTC)
     run = StageRun(
@@ -110,7 +114,7 @@ def run_cards(
             model = gateway.model_for(ROLE)
             repo = CardRepository(session)
             for signal, assessment in repo.list_uncarded(
-                PROMPT_VERSION, limit, published_within_days=CARD_LOOKBACK_DAYS
+                PROMPT_VERSION, limit, published_within_days=CARD_LOOKBACK_DAYS, only=only
             ):
                 considered += 1
                 system, user = build_messages(signal, assessment)

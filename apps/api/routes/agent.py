@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from apps.api import agent_runs
@@ -18,11 +18,15 @@ from apps.api.deps import get_article_repository, get_published_repository, get_
 from apps.api.routes.articles import get_draft_row, publish_approved
 from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import PublishedOut, PublishIn
+from apps.worker import topic as topic_job
 from signalforge.auto_review import ReviewPolicy, decide
 from signalforge.core.artifacts.article import ArticleBody, ArticleTemplate
+from signalforge.core.canonical import canonical_url
+from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.pipeline import PipelineRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
+from signalforge.db.session import ConnectionMode, create_db_engine
 from signalforge.publish_pacing import next_publish_time
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_editor_key)])
@@ -57,6 +61,29 @@ class AutoReviewOut(BaseModel):
     # earliest time POST /agent/publish-next will publish it.
     queued: bool = False
     next_publish_at: datetime | None = None
+
+
+class TopicIn(BaseModel):
+    """A topic the owner asks for: a page to use, or plain text to search for one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = Field(default=None, max_length=2000)
+    query: str | None = Field(default=None, min_length=3, max_length=300)
+    note: str = Field(default="", max_length=500)
+    # Hot: accept it, research it and draft it now, ahead of every other card.
+    hot: bool = False
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "TopicIn":
+        if (self.url is None) == (self.query is None):
+            raise ValueError("send exactly one of url or query")
+        if self.url is not None:
+            try:
+                canonical_url(self.url)
+            except ArtifactValidationError as exc:
+                raise ValueError("url must be an absolute http or https address") from exc
+        return self
 
 
 class PublishNextOut(BaseModel):
@@ -247,3 +274,36 @@ def publish_next(
         )
     result = publish_approved(chosen.card_id, PublishIn(), settings, background, repo, published)
     return PublishNextOut(published=result, waiting=len(waiting) - 1, next_publish_at=None)
+
+
+@router.post("/topics", response_model=RunOut, status_code=202)
+def request_topic(payload: TopicIn, request: Request) -> RunOut:
+    """Ask for a topic by URL or plain text. It runs in the background; read the outcome in
+    ``GET /agent/runs`` under ``last.topic``.
+
+    Plain text is searched (Tavily) and the first readable page not already in the system is
+    used; the other hits come back as ``alternatives``. The page becomes a signal, gets
+    assessed and carded. Without ``hot`` it stops at the card, which the owner accepts or
+    rejects like any other. With ``hot`` it is accepted at once and researched and drafted next,
+    ahead of every other card and outside the daily research cap; then run auto-review with
+    ``force=true`` to publish past the pace. One run at a time: 409 while another is going.
+    """
+    settings = request.app.state.settings
+
+    def job() -> dict[str, Any]:
+        engine = create_db_engine(settings, ConnectionMode.SESSION)
+        try:
+            return topic_job.run(
+                engine,
+                settings,
+                url=payload.url,
+                query=payload.query,
+                note=payload.note,
+                hot=payload.hot,
+            )
+        finally:
+            engine.dispose()
+
+    if not agent_runs.start_job("topic", job):
+        raise HTTPException(status_code=409, detail="Another run is still going")
+    return RunOut(started=True, stage="topic")

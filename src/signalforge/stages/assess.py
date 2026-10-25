@@ -6,7 +6,7 @@ is untrusted, so it goes to the model inside ``<signal>`` tags only.
 
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -21,6 +21,7 @@ from signalforge.db.models import Signal, StageRun, StageRunStatus
 from signalforge.db.repositories.assessments import AssessmentRepository
 from signalforge.llm.gateway import LLMGateway
 from signalforge.stages.ingest import _ENTITY_NAMESPACE, _MAX_ERROR_CHARS, _sha
+from signalforge.stages.manual_topic import MANUAL_SOURCE
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +75,11 @@ def build_messages(signal: Signal) -> tuple[str, str]:
 
 
 def run_assess(
-    session: Session, gateway_factory: Callable[[Session], LLMGateway], *, limit: int = 25
+    session: Session,
+    gateway_factory: Callable[[Session], LLMGateway],
+    *,
+    limit: int = 25,
+    only: Sequence[uuid.UUID] | None = None,
 ) -> AssessResult:
     started_at = datetime.now(UTC)
     run = StageRun(
@@ -95,7 +100,7 @@ def run_assess(
             gateway = gateway_factory(session)
             model = gateway.model_for(ROLE)
             repo = AssessmentRepository(session)
-            signals = repo.list_unassessed(PROMPT_VERSION, limit)
+            signals = repo.list_unassessed(PROMPT_VERSION, limit, only=only)
             for signal in signals:
                 considered += 1
                 system, user = build_messages(signal)
@@ -111,18 +116,21 @@ def run_assess(
                     log.warning("assessment invalid, skipped", extra={"signal_id": str(signal.id)})
                     session.commit()  # keep the llm_calls rows
                     continue
+                fields = verdict.model_dump()
+                if signal.source == MANUAL_SOURCE:
+                    fields["is_relevant"] = True  # the owner asked for it: always card it
                 repo.insert(
                     SignalAssessment(
                         signal_id=signal.id,
                         prompt_version=PROMPT_VERSION,
                         model=model,
-                        **verdict.model_dump(),
+                        **fields,
                     ),
                     run_id,
                     None,
                 )
                 assessed += 1
-                relevant += verdict.is_relevant
+                relevant += fields["is_relevant"]
                 session.commit()
             session.commit()  # calls recorded before a budget stop
             run.status = StageRunStatus.SUCCEEDED

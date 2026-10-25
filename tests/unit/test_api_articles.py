@@ -810,3 +810,76 @@ def test_publish_next_can_pick_one_waiting_draft(
     assert repo.published.get_by_card(first) is None  # type: ignore[attr-defined]
     stranger = uuid4()
     assert client.post(f"/agent/publish-next?card_id={stranger}", headers=HA).status_code == 404
+
+
+def _run_jobs_inline(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    from apps.api import agent_runs
+    from apps.worker import topic as topic_job
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_run(_engine: object, _settings: object, **kwargs: Any) -> dict[str, Any]:
+        calls.append(kwargs)
+        return {"ok": True}
+
+    def fake_start(stage: str, job: Any) -> bool:
+        assert stage == "topic"
+        job()
+        return True
+
+    engine = SimpleNamespace(dispose=lambda: None)
+    monkeypatch.setattr(topic_job, "run", fake_run)
+    monkeypatch.setattr(agent_runs, "start_job", fake_start)
+    monkeypatch.setattr("apps.api.routes.agent.create_db_engine", lambda *_a: engine)
+    return calls
+
+
+def test_a_topic_by_url_or_text_starts_the_job_with_its_flags(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _ = actx
+    calls = _run_jobs_inline(monkeypatch)
+    by_url = {"url": "https://example.com/post?utm_source=x", "note": "angle", "hot": True}
+    r = client.post("/agent/topics", headers=HA, json=by_url)
+    assert (r.status_code, r.json()) == (202, {"started": True, "stage": "topic"})
+    assert (
+        client.post("/agent/topics", headers=HA, json={"query": "mamba 3 benchmarks"}).status_code
+        == 202
+    )
+    assert calls == [
+        {
+            "url": "https://example.com/post?utm_source=x",
+            "query": None,
+            "note": "angle",
+            "hot": True,
+        },
+        {"url": None, "query": "mamba 3 benchmarks", "note": "", "hot": False},
+    ]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"url": "https://example.com/a", "query": "both given"},
+        {"url": "ftp://example.com/a"},
+        {"url": "not a url"},
+        {"query": "ab"},
+        {"query": "fine query", "hot": "maybe"},
+        {"query": "fine query", "extra": 1},
+    ],
+)
+def test_a_bad_topic_is_refused(actx: tuple[TestClient, StubRepo], body: dict[str, Any]) -> None:
+    client, _ = actx
+    assert client.post("/agent/topics", headers=HA, json=body).status_code == 422
+
+
+def test_a_topic_needs_a_key_and_a_free_pipeline(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api import agent_runs
+
+    client, _ = actx
+    assert client.post("/agent/topics", json={"query": "fine query"}).status_code == 401
+    monkeypatch.setattr(agent_runs, "start_job", lambda *_a: False)
+    assert client.post("/agent/topics", headers=HA, json={"query": "fine query"}).status_code == 409

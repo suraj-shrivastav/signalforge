@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -49,8 +50,13 @@ class AssessmentRepository:
         )
         return self._session.execute(statement).first() is not None
 
-    def list_unassessed(self, prompt_version: str, limit: int) -> list[Signal]:
-        """Signals with no assessment for this prompt version, newest first."""
+    def list_unassessed(
+        self, prompt_version: str, limit: int, *, only: Sequence[uuid.UUID] | None = None
+    ) -> list[Signal]:
+        """Signals with no assessment for this prompt version, newest first.
+
+        ``only`` limits the choice to those signal ids (a topic the owner asked for).
+        """
         assessed = select(SignalAssessmentRow.signal_id).where(
             SignalAssessmentRow.prompt_version == prompt_version
         )
@@ -60,4 +66,6 @@ class AssessmentRepository:
             .order_by(Signal.published_at.desc(), Signal.id.desc())
             .limit(limit)
         )
+        if only is not None:
+            query = query.where(Signal.id.in_(only))
         return list(self._session.scalars(query))
