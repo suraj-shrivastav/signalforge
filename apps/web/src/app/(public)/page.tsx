@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PostTile } from "@/components/public/PostTile";
+import { Button } from "@/components/ui/Button";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { cx } from "@/lib/cx";
 import { fetchPublicArticlesSafe } from "@/lib/public";
@@ -33,19 +34,21 @@ export default async function Home() {
               </p>
               <h1
                 id="hero"
-                className="mt-4 font-display text-4xl font-bold uppercase leading-none tracking-tight text-ink md:text-6xl"
+                className="mt-4 article-title text-4xl text-ink md:text-6xl"
               >
                 {lead.title}
               </h1>
               <p className="mt-6 max-w-article text-body text-muted">
                 {lead.dek}
               </p>
-              <Link
+              <Button
                 href={`/articles/${lead.slug}`}
-                className="mt-8 inline-flex items-center rounded-pill bg-ink px-6 py-3 text-small font-semibold text-page transition-opacity hover:opacity-80"
+                size="lg"
+                pill
+                className="mt-8"
               >
                 Read the article
-              </Link>
+              </Button>
             </div>
             <Link
               href={`/articles/${lead.slug}`}
@@ -57,7 +60,7 @@ export default async function Home() {
           </section>
         ) : (
           <section className="py-24 text-center">
-            <h1 className="font-display text-4xl font-bold text-ink md:text-6xl">
+            <h1 className="article-title text-4xl text-ink md:text-6xl">
               SignalForge
             </h1>
             <p className="mt-4 text-muted">

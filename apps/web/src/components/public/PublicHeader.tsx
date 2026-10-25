@@ -25,7 +25,7 @@ export function PublicHeader() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="rounded-pill px-3 py-1.5 text-ink transition-colors hover:bg-sunken"
+                className="rounded-pill px-3 py-2 text-ink transition-colors hover:bg-sunken"
               >
                 {link.label}
               </Link>

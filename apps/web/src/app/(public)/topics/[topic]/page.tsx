@@ -23,7 +23,7 @@ export default async function TopicPage() {
     <>
       <PublicHeader />
       <div className="mx-auto max-w-page px-4 py-12 md:px-6">
-        <h1 className="font-display text-4xl font-bold tracking-tight text-ink md:text-5xl">
+        <h1 className="article-title text-4xl text-ink md:text-5xl">
           All articles
         </h1>
         {articles.length === 0 ? (

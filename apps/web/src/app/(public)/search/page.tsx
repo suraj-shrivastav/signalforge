@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { fetchPublicArticlesSafe } from "@/lib/public";
 
@@ -26,7 +27,7 @@ export default async function SearchPage({
     <>
       <PublicHeader />
       <div className="mx-auto max-w-article px-4 py-12 md:px-6">
-        <h1 className="font-display text-4xl font-bold tracking-tight text-ink">
+        <h1 className="article-title text-4xl text-ink md:text-5xl">
           Search
         </h1>
         <form action="/search" method="get" className="mt-6 flex gap-2">
@@ -38,12 +39,9 @@ export default async function SearchPage({
             placeholder="Search articles"
             className="min-w-0 flex-1 rounded-pill border border-line bg-surface px-5 py-3 text-body text-ink"
           />
-          <button
-            type="submit"
-            className="rounded-pill bg-ink px-6 py-3 text-small font-semibold text-page"
-          >
+          <Button type="submit" size="lg" pill>
             Search
-          </button>
+          </Button>
         </form>
         {query && (
           <p role="status" className="mt-6 text-small text-muted">

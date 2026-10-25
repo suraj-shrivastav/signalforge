@@ -317,12 +317,13 @@ export default async function ArticlePage({ params }: Params) {
       {more.length > 0 && (
         <section
           aria-labelledby="more"
-          className="mx-auto mt-20 max-w-page px-4 md:px-6"
+          className="mx-auto mt-20 max-w-page border-t border-line px-4 pt-10 md:px-6"
         >
           <h2
             id="more"
-            className="text-center font-display text-h3 font-bold text-ink"
+            className="flex items-center gap-2 text-small font-semibold uppercase tracking-wider text-ink"
           >
+            <span aria-hidden="true" className="size-3 rounded-pill bg-ink" />
             Read next
           </h2>
           <ul className="mt-8 grid gap-6 md:grid-cols-3">
