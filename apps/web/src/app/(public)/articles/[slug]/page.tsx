@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Link2 } from "lucide-react";
+import { ArticleTable } from "@/components/public/ArticleTable";
 import { PostTile } from "@/components/public/PostTile";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { safeHref, uniqueByUrl } from "@/lib/format";
@@ -245,6 +246,7 @@ export default async function ArticlePage({ params }: Params) {
                     .map((paragraph, p) => (
                       <p key={p}>{paragraph}</p>
                     ))}
+                  {section.table && <ArticleTable table={section.table} />}
                   {article.figure && index === FIGURE_AFTER && (
                     <figure className="mt-10">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

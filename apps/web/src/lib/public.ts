@@ -12,7 +12,18 @@ export type PublicClaim = {
   status: string;
   source_indices: number[];
 };
-export type PublicSection = { heading: string; paragraphs: string[] };
+// A source table copied by the pipeline; `source` says which page it came from.
+export type PublicTable = {
+  caption: string;
+  header: string[];
+  rows: string[][];
+  source: PublicSource | null;
+};
+export type PublicSection = {
+  heading: string;
+  paragraphs: string[];
+  table?: PublicTable | null;
+};
 
 export type PublicSummary = {
   slug: string;
@@ -54,6 +65,28 @@ function rec(v: unknown): Record<string, unknown> {
   return v;
 }
 
+// A malformed table is left out rather than failing the whole article.
+function parseTable(value: unknown): PublicTable | null {
+  if (!isRecord(value)) return null;
+  try {
+    const header = list(value.header).map(str);
+    const rows = list(value.rows).map((row) => list(row).map(str));
+    if (header.length < 2 || rows.length < 1) return null;
+    if (rows.some((row) => row.length !== header.length)) return null;
+    const source = isRecord(value.source)
+      ? { label: str(value.source.label), url: str(value.source.url) }
+      : null;
+    return {
+      caption: typeof value.caption === "string" ? value.caption : "",
+      header,
+      rows,
+      source,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseCover(value: unknown): PublicCover {
   const c = rec(value);
   return {
@@ -89,6 +122,7 @@ export function parseArticle(value: unknown): PublicArticle {
       return {
         heading: str(section.heading),
         paragraphs: list(section.paragraphs).map(str),
+        table: parseTable(section.table),
       };
     }),
     claims: list(a.claims).map((c) => {

@@ -171,11 +171,30 @@ class ArticleDraftSummaryOut(BaseModel):
     created_at: datetime
 
 
+class PublicSourceOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    url: str
+
+
+class PublicTableOut(BaseModel):
+    """A source table, copied from the source page. ``source`` names where it came from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    caption: str
+    header: list[str]
+    rows: list[list[str]]
+    source: PublicSourceOut | None = None
+
+
 class PublicSectionOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     heading: str
     paragraphs: list[str]
+    table: PublicTableOut | None = None
 
 
 class PublicClaimOut(BaseModel):
@@ -184,13 +203,6 @@ class PublicClaimOut(BaseModel):
     text: str
     status: str
     source_indices: list[int]
-
-
-class PublicSourceOut(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    label: str
-    url: str
 
 
 class PublicCoverOut(BaseModel):
@@ -245,6 +257,26 @@ class ImagesIn(BaseModel):
     figure: ImageIn | None = None
 
 
+def _public_section(section: Any, body: ArticleBody) -> PublicSectionOut:
+    table = section.table
+    source = None
+    if table is not None and table.source_index < len(body.sources):
+        found = body.sources[table.source_index]
+        source = PublicSourceOut(label=found.label, url=found.url)
+    return PublicSectionOut(
+        heading=section.heading,
+        paragraphs=list(section.paragraphs),
+        table=PublicTableOut(
+            caption=table.caption,
+            header=list(table.header),
+            rows=[list(row) for row in table.rows],
+            source=source,
+        )
+        if table is not None
+        else None,
+    )
+
+
 class PublicArticleOut(BaseModel):
     """Reader-facing shape. An explicit allow-list, so a new editor-only field on the
     artifact never reaches a public response by default (2026-09-27 spec)."""
@@ -281,10 +313,7 @@ class PublicArticleOut(BaseModel):
             editor_analysis=row.editor_analysis,
             published_at=row.published_at,
             modified_at=row.modified_at,
-            sections=[
-                PublicSectionOut(heading=s.heading, paragraphs=list(s.paragraphs))
-                for s in body.sections
-            ],
+            sections=[_public_section(s, body) for s in body.sections],
             claims=[
                 PublicClaimOut(
                     text=c.text, status=c.status.value, source_indices=list(c.document_indices)
