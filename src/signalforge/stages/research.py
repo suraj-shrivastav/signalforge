@@ -49,10 +49,10 @@ log = logging.getLogger(__name__)
 RESEARCH_STAGE = "research"
 ROLE = "research_extraction"
 EMBEDDING_ROLE = "claim_embedding"
-PROMPT_VERSION = "research-v2"
+PROMPT_VERSION = "research-v3"
 # Large enough for a paper's method and results sections, not just its abstract.
 MAX_DOCUMENT_CHARS = 30_000
-SECONDARY_RESULT_CAP = 3
+SECONDARY_RESULT_CAP = 4
 REFERENCE_LINK_CAP = 3
 _MAX_REASON_CHARS = 500
 
@@ -66,7 +66,7 @@ Extract only concrete, checkable facts the document states: results, numbers, da
 releases, methods and stated limitations. Keep numbers, units and names in the claim text.
 Skip opinions, marketing language and vague statements such as "is significant" or "has
 limitations". Each claim stands alone: name its subject instead of using a pronoun. Give at
-most 15 claims, most important first.
+most 25 claims, most important first.
 
 Every claim's "evidence_span" must be copied verbatim from the document text: an exact
 substring, no paraphrase, no ellipsis.

@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 DRAFT_STAGE = "draft"
 WRITER_ROLE = "article_writer"
 JUDGE_ROLE = "claim_judge"
-PROMPT_VERSION = "draft-v5"
+PROMPT_VERSION = "draft-v6"
 _MAX_REASON_CHARS = 500
 _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 
@@ -95,8 +95,17 @@ Grounding rules (hard requirements, checked by code and by a second model):
   date, name, cause, comparison or judgement that the cited claims and their context do not
   contain. Copy numbers, dates and names exactly as the claims write them.
 - Do not write a sentence you cannot cite. No uncited transitions, opinions or background.
-- If the claims cannot support the stated minimum length, write fewer words. Never pad.
-  A short grounded article is correct; a padded one is rejected.
+- Never pad: no repeated points, no uncited filler. A padded article is rejected.
+
+Depth (readers want a complete article, not a summary):
+- Use the research fully. Work in every claim that bears on the topic, not only the headline
+  numbers. An article that cites a handful of claims from a large package is too thin.
+- Give each section two to four paragraphs of three to five sentences. Give each paragraph one
+  point and develop it: the result, then what it was measured on, the setup, the comparison
+  or the stated limit, as far as the claims and their context say.
+- When a claim gives a number, say what it measures and against what, if the claim or its
+  context states it.
+- Write fewer words than the minimum only when the claims truly run out.
 
 Structure (for readers and for search and answer engines that quote the top of a page):
 - The dek is the answer first: one sentence stating the main finding with its key number, name
@@ -185,6 +194,7 @@ class _Sentence:
 
 def _writer_user(package: ResearchPackage, template: ArticleTemplate, brief: str) -> str:
     low, high = LENGTH_BANDS[template]
+    wanted = min(len(package.claims), max(8, low // 35))
     claims = "\n".join(
         f'<claim id="{i}">{escape(c.text, quote=False)}\n'
         f"quote: {escape(c.evidence_span, quote=False)}\n"
@@ -193,8 +203,9 @@ def _writer_user(package: ResearchPackage, template: ArticleTemplate, brief: str
     )
     return (
         f"Template: {template.value}. Skeleton: {_SKELETONS[template]}\n"
-        f"Length: aim for {low} to {high} words across the dek and paragraphs, but only as far "
-        f"as the claims support (see the grounding rules).\n"
+        f"Length: write {low} to {high} words across the dek and paragraphs. Cite at least "
+        f"{wanted} different claims out of the {len(package.claims)} below. Go under {low} words "
+        f"only if the claims run out (see the depth rules).\n"
         f"<editor_brief>{escape(brief, quote=False)}</editor_brief>\n"
         f"<research_claims>\n{claims}\n</research_claims>"
     )
