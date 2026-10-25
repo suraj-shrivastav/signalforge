@@ -104,6 +104,7 @@ def score(result: ArticleDraft) -> dict[str, Any]:
         "judge_rejected": rejected,
         "cited_claims": len(body.claims) if body else 0,
         "dek_has_number": bool(body and re.search(r"\d", body.dek)),
+        "table_chosen": bool(body and any(sec.table for sec in body.sections)),
         "question_headings": sum(sec.heading.rstrip().endswith("?") for sec in body.sections)
         if body
         else 0,
