@@ -8,7 +8,8 @@ script checks it against the article, draws it, and publishes it.
     articleimg.py render   SPEC.json --slug SLUG --out FILE.svg
     articleimg.py publish  --slug SLUG --cover COVER.json --figure FIGURE.json [--dry-run DIR]
 
-Environment for publish: API_BASE_URL, EDITOR_API_KEY, SUPABASE_URL, SUPABASE_SECRET_KEY.
+Environment for publish: API_BASE_URL and EDITOR_API_KEY (the agent key works). The API stores
+the images. SUPABASE_URL and SUPABASE_SECRET_KEY are only for uploading straight to storage.
 """
 
 from __future__ import annotations
@@ -469,6 +470,32 @@ def attach(
         raise SpecError(f"attach failed (HTTP {status}): {body[:200].decode(errors='replace')}")
 
 
+def upload_via_api(
+    slug: str,
+    cover: tuple[str, dict[str, Any]],
+    figure: tuple[str, dict[str, Any]],
+    api_base: str,
+    editor_key: str,
+) -> None:
+    """Send the rendered SVGs to the API, which stores them with its own Supabase key."""
+    body = {
+        "cover": {"svg": cover[0], "alt": cover[1]["alt"]},
+        "figure": {
+            "svg": figure[0],
+            "alt": figure[1]["alt"],
+            "caption": figure[1].get("caption", ""),
+        },
+    }
+    status, reply = _request(
+        f"{api_base.rstrip('/')}/editor/articles/{slug}/images/upload",
+        method="POST",
+        headers={"Content-Type": "application/json", "X-Editor-Key": editor_key},
+        data=json.dumps(body).encode(),
+    )
+    if status != 200:
+        raise SpecError(f"upload failed (HTTP {status}): {reply[:200].decode(errors='replace')}")
+
+
 def _load(path: str) -> dict[str, Any]:
     return json.loads(Path(path).read_text())
 
@@ -523,17 +550,29 @@ def main(argv: list[str] | None = None) -> int:
                 (out / f"{role}.svg").write_text(svg)
             print(f"rendered to {out}")
             return 0
-        urls = {
-            role: upload(svg, args.slug, role, _env("SUPABASE_URL"), _env("SUPABASE_SECRET_KEY"))
-            for role, svg in svgs.items()
-        }
-        attach(
-            args.slug,
-            {"src": urls["cover"], "alt": cover["alt"]},
-            {"src": urls["figure"], "alt": figure["alt"], "caption": figure.get("caption", "")},
-            _env("API_BASE_URL"),
-            _env("EDITOR_API_KEY"),
-        )
+        if os.environ.get("SUPABASE_SECRET_KEY"):
+            urls = {
+                role: upload(
+                    svg, args.slug, role, _env("SUPABASE_URL"), _env("SUPABASE_SECRET_KEY")
+                )
+                for role, svg in svgs.items()
+            }
+            attach(
+                args.slug,
+                {"src": urls["cover"], "alt": cover["alt"]},
+                {"src": urls["figure"], "alt": figure["alt"], "caption": figure.get("caption", "")},
+                _env("API_BASE_URL"),
+                _env("EDITOR_API_KEY"),
+            )
+        else:
+            # Default for an agent: the API holds the storage key, the agent needs only its own.
+            upload_via_api(
+                args.slug,
+                (svgs["cover"], cover),
+                (svgs["figure"], figure),
+                _env("API_BASE_URL"),
+                _env("EDITOR_API_KEY"),
+            )
     except SpecError as exc:
         print(f"ERROR: {exc}")
         return 1

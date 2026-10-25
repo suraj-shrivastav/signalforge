@@ -9,8 +9,10 @@ from uuid import UUID, uuid4
 import pytest
 from apps.api.deps import get_article_repository, get_published_repository
 from apps.api.main import create_app
+from apps.api.routes import articles
 from apps.api.schemas import PublicArticleOut
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from signalforge.core.artifacts.article import (
     ArticleBody,
@@ -23,6 +25,7 @@ from signalforge.core.artifacts.article import (
 )
 from signalforge.core.artifacts.research import ClaimStatus
 from signalforge.core.config import Settings
+from signalforge.image_storage import ImageStorageError
 
 DSN = "postgresql://u:p@localhost:5432/db"
 KEY = "editor-secret-value"
@@ -403,8 +406,6 @@ def test_unpublished_article_can_be_republished_at_the_same_slug(
 def test_publish_pings_indexnow_only_when_configured(
     ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from apps.api.routes import articles
-
     pings: list[tuple[str, str, str]] = []
     monkeypatch.setattr(articles, "ping_indexnow", lambda *a: pings.append(a))
     client, repo = ctx
@@ -481,6 +482,106 @@ def test_attach_images_needs_supabase_configured_and_known_article(
     body = {"cover": {"src": f"{BUCKET}/a.svg", "alt": "a"}}
     assert client.post(f"/editor/articles/{slug}/images", headers=H, json=body).status_code == 422
     assert client.post("/editor/articles/nope/images", headers=H, json=body).status_code == 404
+
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 9"><rect width="9" height="9"/></svg>'
+
+
+def _upload_body(cover: str = SVG, figure: str = SVG) -> dict[str, object]:
+    return {
+        "cover": {"svg": cover, "alt": "Cover alt"},
+        "figure": {"svg": figure, "alt": "Figure alt", "caption": "Cap"},
+    }
+
+
+def _configure_upload(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={
+            "supabase_url": "https://proj.supabase.co",
+            "supabase_secret_key": SecretStr("service-key"),
+        }
+    )
+    sent: list[tuple[str, str]] = []
+
+    def fake(_svg: str, *, slug: str, role: str, supabase_url: str, key: str) -> str:
+        assert supabase_url == "https://proj.supabase.co"
+        sent.append((role, key))
+        return f"{BUCKET}/{slug}/{role}-abc.svg"
+
+    monkeypatch.setattr(articles, "upload_svg", fake)
+    return sent
+
+
+def test_upload_images_stores_svgs_with_the_server_key_and_attaches_them(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = ctx
+    sent = _configure_upload(client, monkeypatch)
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    url = f"/editor/articles/{slug}/images/upload"
+    assert client.post(url, json=_upload_body()).status_code == 401
+    ok = client.post(url, headers=H, json=_upload_body())
+    assert ok.status_code == 200
+    assert sent == [("cover", "service-key"), ("figure", "service-key")]
+    public = client.get(f"/articles/{slug}").json()
+    assert public["cover"]["src"] == f"{BUCKET}/{slug}/cover-abc.svg"
+    assert public["figure"]["caption"] == "Cap"
+
+
+@pytest.mark.parametrize(
+    "svg",
+    [
+        "<html></html>",
+        '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/a.png"/></svg>',
+    ],
+)
+def test_upload_images_refuses_unsafe_svg(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch, svg: str
+) -> None:
+    client, repo = ctx
+    sent = _configure_upload(client, monkeypatch)
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    r = client.post(f"/editor/articles/{slug}/images/upload", headers=H, json=_upload_body(svg))
+    assert r.status_code == 422
+    assert sent == []
+
+
+def test_upload_images_needs_configuration_and_a_known_article(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = ctx
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    url = f"/editor/articles/{slug}/images/upload"
+    assert client.post(url, headers=H, json=_upload_body()).status_code == 503
+    _configure_upload(client, monkeypatch)
+    missing = "/editor/articles/nope/images/upload"
+    assert client.post(missing, headers=H, json=_upload_body()).status_code == 404
+
+
+def test_upload_images_reports_a_storage_failure_as_bad_gateway(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = ctx
+    _configure_upload(client, monkeypatch)
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ImageStorageError("Storage rejected the upload (400)")
+
+    monkeypatch.setattr(articles, "upload_svg", boom)
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    r = client.post(f"/editor/articles/{slug}/images/upload", headers=H, json=_upload_body())
+    assert r.status_code == 502
+    assert "service-key" not in r.text
 
 
 AGENT_KEY = "agent-secret-value"

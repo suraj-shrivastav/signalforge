@@ -35,10 +35,13 @@ optional. When sent, every tag must come from this fixed list (anything else ret
 
 ## Images
 
-`skills/article-images/scripts/articleimg.py publish` needs `API_BASE_URL`, `EDITOR_API_KEY`
-(or the agent key), `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the environment of whatever
-runs it. Without the Supabase secret the upload fails with HTTP 400. The script runs on
-Python 3.9 or newer.
+`skills/article-images/scripts/articleimg.py publish` needs only `API_BASE_URL` and the agent
+key. It renders the SVGs and sends them to `POST /editor/articles/{slug}/images/upload`
+(body: `cover` and `figure`, each `svg` and `alt`, plus `caption` for the figure). The API
+checks the SVG (no scripts, embedded content or event handlers, at most 300 KB), stores it in
+the `article-images` bucket with its own Supabase key and attaches it. Set `SUPABASE_URL` and
+`SUPABASE_SECRET_KEY` on the **API** only; the endpoint answers 503 without them. The script
+runs on Python 3.9 or newer.
 
 ## Automatic review
 

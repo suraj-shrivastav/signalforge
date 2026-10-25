@@ -105,6 +105,9 @@ class Settings(BaseSettings):
     # Supabase project URL. Article images are stored in its public bucket and the API only
     # accepts image URLs from this host. Leave empty to reject image attachments.
     supabase_url: str = ""
+    # Service key used only to upload article images for an agent (POST .../images/upload).
+    # Leave unset to turn that endpoint off; the agent then needs its own key or cannot upload.
+    supabase_secret_key: SecretStr | None = None
 
     # IndexNow: tells Bing and other participating engines about new or changed URLs.
     # Both must be set (SITE_URL matches the web app's, INDEXNOW_KEY is also served by the web

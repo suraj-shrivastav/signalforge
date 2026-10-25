@@ -13,6 +13,7 @@ from apps.api.schemas import (
     ArticleDraftOut,
     ArticleDraftSummaryOut,
     ImagesIn,
+    ImagesUploadIn,
     PublishedOut,
     PublishIn,
     ReviewIn,
@@ -22,6 +23,7 @@ from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
+from signalforge.image_storage import ImageStorageError, check_svg, upload_svg
 from signalforge.indexnow import ping_indexnow
 from signalforge.publishing import meta_description, slugify, unique_slug
 from signalforge.stages.draft_review import apply_sentence_edit
@@ -299,6 +301,59 @@ def attach_images(
         row,
         cover=payload.cover.model_dump() if payload.cover else None,
         figure=payload.figure.model_dump() if payload.figure else None,
+    )
+    return PublishedOut(
+        slug=row.slug,
+        status=cast(Any, row.status),
+        published_at=row.published_at,
+        modified_at=row.modified_at,
+    )
+
+
+@router.post(
+    "/editor/articles/{slug}/images/upload",
+    response_model=PublishedOut,
+    dependencies=[Depends(require_editor_key)],
+)
+def upload_images(
+    slug: str,
+    payload: ImagesUploadIn,
+    request: Request,
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishedOut:
+    """Store the agent's rendered SVGs in the article-images bucket and attach them.
+
+    The Supabase secret stays on the API, so an agent needs only its API key.
+    """
+    settings = request.app.state.settings
+    if not settings.supabase_url or settings.supabase_secret_key is None:
+        raise HTTPException(status_code=503, detail="Image upload is not configured")
+    row = published.get_by_slug(slug)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    try:
+        for image in (payload.cover, payload.figure):
+            check_svg(image.svg)
+    except ImageStorageError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    key = settings.supabase_secret_key.get_secret_value()
+    try:
+        urls = {
+            role: upload_svg(
+                image.svg, slug=slug, role=role, supabase_url=settings.supabase_url, key=key
+            )
+            for role, image in (("cover", payload.cover), ("figure", payload.figure))
+        }
+    except ImageStorageError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
+    published.set_images(
+        row,
+        cover={"src": urls["cover"], "alt": payload.cover.alt, "caption": ""},
+        figure={
+            "src": urls["figure"],
+            "alt": payload.figure.alt,
+            "caption": payload.figure.caption,
+        },
     )
     return PublishedOut(
         slug=row.slug,
