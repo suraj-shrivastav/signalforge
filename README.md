@@ -1,92 +1,132 @@
 # SignalForge
 
-AI-engineering intelligence platform. It discovers emerging signals, surfaces them
-to an editor, researches selected topics from stored evidence, and publishes
-verified, traceable articles.
+**An autonomous AI-engineering newsroom, run by an agent.**
 
-**The article is the output. The intelligence system behind it is the product.**
+SignalForge watches the AI world for emerging signals, researches the ones that matter, and publishes articles in which every claim is traced to a stored source and checked by a second model. A tool-using agent, **Hermes**, can operate the whole thing end to end: pick topics, trigger research and drafting, review, publish and illustrate, with a human able to step in at any point.
 
-- Product and architecture baseline: [`docs/signalforge_prd.md`](docs/signalforge_prd.md)
-- Architecture decisions: [`docs/adr/`](docs/adr/)
-- Working agreements: [`.kiro/steering/`](.kiro/steering/)
+> The article is the output. The agent system behind it is the product.
 
-## Prerequisites
+![SignalForge landing page](docs/assets/site-home.png)
 
-[uv](https://docs.astral.sh/uv/getting-started/installation/). It provisions the
-pinned Python itself, so nothing else is required.
+## The question behind it
 
-## Setup
+Anyone can make an LLM write an article. The interesting problem is agent engineering:
 
-```bash
-uv sync --all-groups        # create .venv and install dependencies
-uv run pre-commit install   # install commit and push hooks
-cp .env.example .env        # then fill in the values
+**How do you give an agent real, multi-step, partly autonomous work, and still be able to trust what comes out?**
+
+SignalForge is my answer, built and iterated over 110+ pull requests. The short version: you do not get trust from a better prompt. You get it from **structure around the model**: typed hand-offs, evidence the model cannot skip, a second model that cannot be the first, rules in code where judgement is cheap to get wrong, and a system that always tells the agent exactly what to do next.
+
+## The agent loop
+
+Hermes does not improvise a plan. It runs a tight **observe, decide, act, verify** loop against a system that exposes its own state.
+
+```mermaid
+flowchart LR
+    O["Observe<br/>what needs a call?"] --> D["Decide<br/>one next action per card"]
+    D --> A["Act<br/>run a stage, review, publish"]
+    A --> V["Verify<br/>rules + judge model + audit log"]
+    V --> O
+    V -. "cannot decide" .-> H(["Human"])
 ```
 
-## Commands
+- **Observe.** The system reports, for every card, a stage and a single `next_action`. The agent never has to infer state from logs or remember where it was. The mapping from stored statuses to the next action is one pure function, easy to test and impossible for the model to misread.
+- **Decide.** The set of actions is small and closed: research, retry, draft, review, revise, publish, attach images, wait, or hand to a human. A closed action space is what makes an agent reliable.
+- **Act.** Each action is idempotent and runs in the background. One run at a time, so an eager agent cannot stampede the pipeline or the budget.
+- **Verify.** Nothing the agent does is trusted on its own say-so. Output passes mechanical checks, then an independent judge model, then deterministic review rules.
+- **Escalate.** When the right move is judgement, such as a draft with no usable claims, the agent routes it to a human instead of forcing it through.
 
-```bash
-uv run ruff check .           # lint
-uv run ruff format .          # format
-uv run mypy                   # type-check
-uv run pytest                 # tests
-uv run pre-commit run --all-files
-uv run alembic upgrade head                                    # apply migrations (dev only from a branch, see ADR-0004)
-uv run python -m apps.worker.ingest hackernews --hours 48      # fetch and store
-uv run python -m apps.worker.assess --limit 25               # summarize and score unassessed signals (needs LLM_PROVIDER + key)
-uv run python -m apps.worker.cards --limit 25                # build topic cards for relevant signals (needs LLM_MODEL_TOPIC_CARD)
-uv run python -m apps.worker.research --limit 10             # research accepted cards (TAVILY_API_KEY optional: primary source only without it)
-uv run python -m apps.worker.draft --limit 10                # draft and verify researched cards (needs LLM_MODEL_ARTICLE_WRITER and LLM_MODEL_CLAIM_JUDGE, different families)
-uv run python -m apps.worker.triage_metrics --days 14          # editor triage numbers (read only)
-uv run python -m apps.worker.tick --hours 24 --assess-limit 25 --cards-limit 25 --research-limit 10 --draft-limit 10  # ingest, assess, cards, research, draft
-uv run uvicorn --factory apps.api.main:create_app --port 8000  # API
-cd apps/web && cp .env.example .env.local && npm run dev       # UI on :3000
-TEST_DATABASE_URL=<migrated db url> uv run pytest -m integration   # integration tests
+### One article's journey
+
+```mermaid
+flowchart TD
+    S["Signals<br/>arXiv · Hacker News · Hugging Face · RSS"] --> AS["Assess<br/>score, summarize"]
+    AS --> C["Topic cards<br/>angle, novelty, risk flags"]
+    C --> P{{"Agent picks topics<br/>accept, or reject with a reason tag"}}
+    P --> R["Research<br/>primary source first, evidence spans stored"]
+    R --> W["Writer model<br/>drafts and declares claims"]
+    W --> J["Judge model, different family<br/>checks every claim and number"]
+    J --> AR{{"Auto-review<br/>rules in code"}}
+    AR -->|pass| PUB["Publish"]
+    AR -->|fixable| RV["Revise with the reasons as the brief"]
+    RV --> W
+    AR -->|still failing after N redrafts| RJ(["Reject"])
+    PUB --> IM["Image skill<br/>cover and figure from verified facts"]
 ```
 
-Scheduling: `tick` ingests all sources, then assesses, builds topic cards, researches accepted cards and drafts researched ones (the LLM stages need `LLM_PROVIDER`, `LLM_BASE_URL` and the `LLM_MODEL_*` settings in `.env`; all four are skipped when the provider is `fake`; research uses `TAVILY_API_KEY` for secondary sources when set; the editor API needs `EDITOR_API_KEY` in `.env`, set it to your own secret and never commit it). One failing stage never stops the later ones. Exit codes:
+## Agentic engineering, in practice
 
-| Code | Meaning |
+### 1. Separate the writer from the grader
+The writer and the claim judge are different roles, and the system **refuses to run them on the same model family**. A model never marks its own homework. This is checked before any card is touched.
+
+### 2. Evidence before prose
+Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first.
+
+### 3. Flag, do not block
+My first design failed closed: any unsupported sentence killed the whole draft. I built an evaluation harness with a golden set and measured it. Across the same four fixtures:
+
+| Contract | Drafts that survived | Grounded-sentence rate |
+| --- | --- | --- |
+| Block on any unsupported sentence | 0 of 4 | 56% |
+| **Flag the sentence, keep the draft** | **4 of 4** | **88%** |
+
+Flagged sentences are then deleted by the review rules rather than shipped. The judge is not perfect either, so I measured it too: on deliberately corrupted sentences it wrongly accepted 20%, and **0%** when a number had been changed, because numbers are checked mechanically rather than by the model. That is the point of the design: **put each check where it is strongest.**
+
+### 4. Judgement as code
+Automatic review is the editor's read-through written as pure, testable functions with no model and no database:
+
+- Too many flagged sentences, too short, or too few verified claims: **revise**, and the reasons become the brief for the next draft.
+- Otherwise flagged sentences are deleted, a flagged headline summary is replaced, and a section left empty is removed.
+- After a fixed number of failed redrafts: **reject**. The loop is bounded by design.
+
+### 5. Budgets, cost and an audit trail
+Every LLM call is logged with its cost, per-card budgets are checked before each call, and every edit or decision is recorded with an `actor`: the agent or a human. You can replay exactly what the agent did and why.
+
+### 6. Roles, not model names
+Stages ask for a *role* such as writer, judge or relevance filter. The role map is the only place a model is named. I have run this system on several different model families by changing configuration alone, and the evaluation harness tells me what each swap does to quality.
+
+### 7. Untrusted text stays data
+Everything the agent reads from the web is wrapped, escaped, and declared as data in the system prompt. Fetching checks URL safety and robots rules. A scraped page cannot give the agent instructions.
+
+### 8. Least privilege for the agent
+Hermes holds one **revocable** key. It has no database access and no storage credentials: even image upload goes through the application, which holds the storage key itself. Revoking the key stops the agent immediately.
+
+### 9. Skills, not scripts
+Capabilities the agent needs are packaged as skills it follows. The `article-images` skill is the example. The agent never draws. It fills in two small JSON specs from the article's verified claims, and a script validates them (any number not in the article is rejected), renders deterministic SVG, and uploads it. The model supplies judgement, and code supplies the guarantees.
+
+## How the autonomy grew
+
+The project moved from "AI assists a human" to "a human supervises an agent", one safe step at a time.
+
+| Stage | What changed |
 | --- | --- |
-| 0 | at least one source ingested and every LLM stage ok or skipped |
-| 1 | every source failed |
-| 2 | ingest ok but an LLM stage failed |
+| Human in every step | Editor triages cards, reads every draft, publishes by hand |
+| Chained pipeline | Accepting a card triggers research and drafting automatically |
+| Reviewer in code | Auto-review replaces the read-through with rules and bounded redrafts |
+| Agent operated | Hermes runs the whole loop through a dedicated, revocable interface |
+| Least privilege | Image upload moved behind the application, so the agent needs no storage key |
 
-Cron, every 30 minutes (cron has a minimal PATH, so use the absolute path from `which uv`, or set `PATH=` in the crontab; the log is not rotated):
+Each step shipped only after the previous one was measured, and I kept the human override at every level.
 
-```
-*/30 * * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick >> $HOME/signalforge-tick.log 2>&1
-```
+## What broke, and what I did about it
 
-Nightly at 02:15 (offset so it never starts with the 02:00 tick), with the same notes (absolute `uv` path, log under `$HOME`, not rotated), to run a larger cards batch:
+I audited my own pipeline and wrote up the failures: invisible failures with no reason recorded, no retry path, a soft budget cap, writer and judge each fed far more source text than needed, and a claim heuristic that marked agreeing sources as conflicting. Each finding became a change: failure reasons and retries, per-card budgets, a state machine, an evaluation harness, a stricter judge prompt, and a prompt that is versioned and compared rather than judged by eye. Most of the engineering in this repo is a response to a measured failure.
 
-```
-15 2 * * * cd /Users/suraj/personal/signalforge && /opt/homebrew/bin/uv run python -m apps.worker.tick --cards-limit 100 >> $HOME/signalforge-tick-nightly.log 2>&1
-```
+## Example output
 
-Overlapping runs are safe (`ON CONFLICT DO NOTHING`) but waste LLM spend, so keep the two schedules apart and wrap each command in `flock -n /tmp/signalforge-tick.lock` on Linux. macOS has no `flock` by default: use a lockfile check in a wrapper script, or launchd (which does not start a job that is still running).
+Every published article is built from its verified claims and carries its sources.
 
-Cost note: the budget is per stage per run (TOPIC scope, $0.50), not per day; real spend is bounded by the number of new signals.
+![A published article](docs/assets/site-article.png)
 
-## Trying it locally
+## Architecture
 
-Run the commands above in order: migrate, ingest, start the API, start the UI at
-`localhost:3000`. `INGEST_ENDPOINT_ENABLED` stays `false` unless you want
-`POST /ingest/hackernews` (send the `X-Ingest-Token` header).
+A modular monolith in one repository, designed so the agent layer sits on top of boring, testable parts.
 
-## Database
+- **Core** defines protocols only (sources, search, LLM gateway, ranker, publisher, stage) plus budgets, retries and typed errors. It imports nothing from stages or plugins.
+- **Plugins** implement those protocols and are chosen by configuration: sources, search providers, rankers.
+- **LLM gateway** resolves roles to models, caps output, records cost and failures.
+- **Stages** each take a typed artifact and return a typed artifact. State lives in Postgres, never in a model's context.
+- **API and workers** expose the pipeline to humans and to the agent. **Web** is a Next.js site that never touches the database.
 
-Supabase Postgres is the only database (no local Docker). Use the session pooler
-string in `DATABASE_URL`, pointed at the dev project. Migrations follow
-[ADR-0004](docs/adr/0004-database-environments.md): run
-`uv run alembic upgrade head` to test a branch's migration, and
-`uv run alembic downgrade -1` before switching branches or merging.
+## Stack
 
-## Status
-
-Phase 1 (foundation) in progress. Nothing is wired end to end yet — see PRD §43
-for the gated build order.
-
-## Assessing signals (Phase 1.6)
-
-`assess` sends each unassessed signal to an LLM and stores a relevance score, category, summary and why-it-matters. The provider is plug-in: set `LLM_PROVIDER=openai_compatible`, `LLM_BASE_URL` (for example `https://openrouter.ai/api/v1`), `LLM_API_KEY` (or `OPENROUTER_API_KEY`) and `LLM_MODEL_RELEVANCE`. With `LLM_PROVIDER=fake` no network call is made. Cost is recorded per call in `llm_calls`; a 25-signal run on `openai/gpt-4o-mini` cost about $0.002.
+Python, FastAPI, SQLAlchemy, Alembic, Postgres with pgvector, any OpenAI-compatible LLM API, Tavily, Next.js, Tailwind.
