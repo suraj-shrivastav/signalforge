@@ -776,3 +776,37 @@ def test_research_runs_one_card_by_default_and_other_stages_ten(
         assert client.post(f"/agent/run/{stage}", headers=HA).status_code == 202
     assert client.post("/agent/run/research?limit=4", headers=HA).status_code == 202
     assert seen == [("research", 1), ("draft", 10), ("research", 4)]
+
+
+def test_force_publishes_past_the_pace(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = actx
+    now = datetime.now(UTC)
+    repo.published.recent = [now - timedelta(minutes=5)] * 3  # type: ignore[attr-defined]
+    held = repo.add(BODY.model_dump(mode="json"))
+    queued = client.post(f"/agent/drafts/{held}/auto-review?publish=true", headers=HA).json()
+    assert queued["queued"] is True
+    hot = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{hot}/auto-review?publish=true&force=true", headers=HA).json()
+    assert out["published"]["status"] == "published"
+    assert out["queued"] is False
+    _waiting(monkeypatch, held)
+    assert client.post("/agent/publish-next", headers=HA).json()["published"] is None
+    forced = client.post("/agent/publish-next?force=true", headers=HA).json()
+    assert forced["published"]["status"] == "published"
+
+
+def test_publish_next_can_pick_one_waiting_draft(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = actx
+    first = _approve_without_publishing(client, repo)
+    second = _approve_without_publishing(client, repo)
+    _waiting(monkeypatch, second, first)
+    out = client.post(f"/agent/publish-next?card_id={second}", headers=HA).json()
+    assert out["published"]["status"] == "published"
+    assert repo.published.get_by_card(second) is not None  # type: ignore[attr-defined]
+    assert repo.published.get_by_card(first) is None  # type: ignore[attr-defined]
+    stranger = uuid4()
+    assert client.post(f"/agent/publish-next?card_id={stranger}", headers=HA).status_code == 404

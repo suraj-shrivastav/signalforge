@@ -134,11 +134,13 @@ def auto_review(
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
     publish: bool = False,
+    force: bool = False,
 ) -> AutoReviewOut:
     """Review a pending draft by the configured rules.
 
     Approve: flagged sentences are deleted, the draft is approved and (with publish=true)
-    published. Revise: it goes back for a redraft with the reasons as the note (run stage
+    published, on the publish pace unless ``force=true`` (a hot topic the owner asked for).
+    Revise: it goes back for a redraft with the reasons as the note (run stage
     'revise'). Reject: it already had the maximum redrafts. Every step is logged.
     """
     settings = request.app.state.settings
@@ -184,7 +186,7 @@ def auto_review(
         )
         if publish:
             slot = _next_slot(settings, published)
-            if slot <= datetime.now(UTC):
+            if force or slot <= datetime.now(UTC):
                 result.published = publish_approved(
                     card_id, PublishIn(), settings, background, repo, published
                 )
@@ -218,20 +220,30 @@ def publish_next(
     session: Annotated[Session, Depends(get_session)],
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+    force: bool = False,
+    card_id: UUID | None = None,
 ) -> PublishNextOut:
     """Publish the longest-waiting approved draft if the publish pace allows it.
 
     Call this on a schedule (every 15 to 30 minutes). Approved drafts wait until a slot opens
     (PUBLISH_MIN_GAP_MINUTES since the last publish, PUBLISH_DAILY_CAP per 24 hours), so
     articles go out spread over the day. ``next_publish_at`` says when to expect the next.
+
+    The pace is a target, not a limit: ``force=true`` publishes now whatever the pace says, for
+    a hot topic the owner asked for. ``card_id`` picks that waiting draft instead of the oldest.
     """
     settings = request.app.state.settings
     waiting = [c for c in _cards(session, 200) if c.next_action == "publish"]
+    if card_id is not None:
+        chosen = next((c for c in waiting if c.card_id == card_id), None)
+        if chosen is None:
+            raise HTTPException(status_code=404, detail="That draft is not waiting to publish")
+    else:
+        chosen = waiting[-1] if waiting else None  # the list is newest first
     slot = _next_slot(settings, published)
-    if not waiting or slot > datetime.now(UTC):
+    if chosen is None or (not force and slot > datetime.now(UTC)):
         return PublishNextOut(
             published=None, waiting=len(waiting), next_publish_at=slot if waiting else None
         )
-    oldest = waiting[-1]  # the list is newest first
-    result = publish_approved(oldest.card_id, PublishIn(), settings, background, repo, published)
+    result = publish_approved(chosen.card_id, PublishIn(), settings, background, repo, published)
     return PublishNextOut(published=result, waiting=len(waiting) - 1, next_publish_at=None)

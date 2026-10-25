@@ -68,6 +68,11 @@ returns `{published, waiting, next_publish_at}`. Call it every 15 to 30 minutes 
 schedule or a cron service. An editor's own publish (`/editor/drafts/{id}/publish`) ignores
 the pace.
 
+The pace is a target, not a limit. For a hot topic the owner asks for, add `force=true` to
+`auto-review?publish=true` or to `publish-next` to publish now whatever the pace says, and
+`card_id=<id>` on `publish-next` to pick that waiting draft instead of the oldest. Forced
+publishes still count toward the pace, so the next scheduled one waits its turn.
+
 ## Automatic review
 
 `auto-review` replaces the editor's read-through with rules (`signalforge/auto_review.py`):
