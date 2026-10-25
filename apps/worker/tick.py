@@ -38,8 +38,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--research-limit",
         type=bounded_limit(research.MAX_LIMIT),
-        default=10,
-        help=f"max accepted cards to research (1..{research.MAX_LIMIT})",
+        default=1,
+        help=f"max accepted cards to research, best first (1..{research.MAX_LIMIT})",
     )
     parser.add_argument(
         "--draft-limit",

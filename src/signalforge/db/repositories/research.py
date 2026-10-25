@@ -24,7 +24,7 @@ class ResearchRepository:
         With ``retry_failed``, a 'failed' or 'needs_more_info' package does not count as
         researched, and ``insert`` replaces it.
 
-        Ordered oldest card first, id as a deterministic tie-break.
+        Best card first (the score set when the card was made), then oldest, then id.
         """
         latest = (
             select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
@@ -47,7 +47,9 @@ class ResearchRepository:
                 latest.c.decision == "accepted",
                 TopicCardRow.id.not_in(researched),
             )
-            .order_by(TopicCardRow.created_at.asc(), TopicCardRow.id.asc())
+            .order_by(
+                TopicCardRow.score.desc(), TopicCardRow.created_at.asc(), TopicCardRow.id.asc()
+            )
             .limit(limit)
         )
         return [(card, signal) for card, signal in self._session.execute(query).all()]

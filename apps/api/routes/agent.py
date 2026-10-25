@@ -5,6 +5,7 @@ here is also written to the draft's review log with ``actor`` so a person can au
 """
 
 from collections import Counter
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from signalforge.core.artifacts.article import ArticleBody, ArticleTemplate
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.pipeline import PipelineRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
+from signalforge.publish_pacing import next_publish_time
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_editor_key)])
 
@@ -51,6 +53,16 @@ class AutoReviewOut(BaseModel):
     reasons: list[str]
     deleted_sentences: int
     published: PublishedOut | None = None
+    # With publish=true: approved but held for the publish pace; next_publish_at is the
+    # earliest time POST /agent/publish-next will publish it.
+    queued: bool = False
+    next_publish_at: datetime | None = None
+
+
+class PublishNextOut(BaseModel):
+    published: PublishedOut | None
+    waiting: int
+    next_publish_at: datetime | None
 
 
 def _cards(session: Session, limit: int) -> list[PipelineCardOut]:
@@ -85,15 +97,25 @@ def work(
     return PipelineOut(counts=dict(Counter(c.next_action for c in cards)), cards=cards)
 
 
+# Research is the costly stage: one card per run unless the caller asks for more. The best
+# accepted card (highest score) goes first.
+_DEFAULT_LIMIT = {"research": 1}
+
+
 @router.post("/run/{stage}", response_model=RunOut, status_code=202)
 def run_stage(
     stage: Stage,
     request: Request,
-    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[int | None, Query(ge=1, le=50)] = None,
     retry_failed: bool = False,
 ) -> RunOut:
-    """Start a stage in the background. One run at a time: 409 while another is going."""
-    if not agent_runs.start(stage, request.app.state.settings, limit, retry_failed):
+    """Start a stage in the background. One run at a time: 409 while another is going.
+
+    ``limit`` is how many cards to take; research defaults to 1 (the best waiting card),
+    every other stage to 10.
+    """
+    count = limit if limit is not None else _DEFAULT_LIMIT.get(stage, 10)
+    if not agent_runs.start(stage, request.app.state.settings, count, retry_failed):
         raise HTTPException(status_code=409, detail="Another run is still going")
     return RunOut(started=True, stage=stage)
 
@@ -161,9 +183,13 @@ def auto_review(
             {"type": "review", "decision": "approved", "actor": actor},
         )
         if publish:
-            result.published = publish_approved(
-                card_id, PublishIn(), settings, background, repo, published
-            )
+            slot = _next_slot(settings, published)
+            if slot <= datetime.now(UTC):
+                result.published = publish_approved(
+                    card_id, PublishIn(), settings, background, repo, published
+                )
+            else:
+                result.queued, result.next_publish_at = True, slot
         return result
     final = "revise" if decision.action == "revise" else "rejected"
     repo.save_review(
@@ -173,3 +199,39 @@ def auto_review(
         {"type": "review", "decision": final, "actor": actor, "reasons": list(decision.reasons)},
     )
     return result
+
+
+def _next_slot(settings: Any, published: PublishedArticleRepository) -> datetime:
+    now = datetime.now(UTC)
+    return next_publish_time(
+        published.published_times_since(now - timedelta(days=1)),
+        now,
+        min_gap=timedelta(minutes=settings.publish_min_gap_minutes),
+        daily_cap=settings.publish_daily_cap,
+    )
+
+
+@router.post("/publish-next", response_model=PublishNextOut)
+def publish_next(
+    request: Request,
+    background: BackgroundTasks,
+    session: Annotated[Session, Depends(get_session)],
+    repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
+    published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+) -> PublishNextOut:
+    """Publish the longest-waiting approved draft if the publish pace allows it.
+
+    Call this on a schedule (every 15 to 30 minutes). Approved drafts wait until a slot opens
+    (PUBLISH_MIN_GAP_MINUTES since the last publish, PUBLISH_DAILY_CAP per 24 hours), so
+    articles go out spread over the day. ``next_publish_at`` says when to expect the next.
+    """
+    settings = request.app.state.settings
+    waiting = [c for c in _cards(session, 200) if c.next_action == "publish"]
+    slot = _next_slot(settings, published)
+    if not waiting or slot > datetime.now(UTC):
+        return PublishNextOut(
+            published=None, waiting=len(waiting), next_publish_at=slot if waiting else None
+        )
+    oldest = waiting[-1]  # the list is newest first
+    result = publish_approved(oldest.card_id, PublishIn(), settings, background, repo, published)
+    return PublishNextOut(published=result, waiting=len(waiting) - 1, next_publish_at=None)

@@ -6,7 +6,8 @@ State lives in memory (single API process). The durable record of each stage is 
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -74,6 +75,21 @@ def start(stage: str, settings: Settings, limit: int, retry_failed: bool) -> boo
 
     threading.Thread(target=work, daemon=True).start()
     return True
+
+
+@contextmanager
+def hold(stage: str) -> Iterator[None]:
+    """Wait for any run to finish, then hold the one pipeline slot until the block ends.
+
+    For work started inside the API (the pass after an accept) so it never overlaps a run an
+    agent started: both use this one lock, so research and drafting stay one at a time.
+    """
+    with _LOCK:
+        _STATE["running"] = {"stage": stage, "started_at": datetime.now(UTC).isoformat()}
+        try:
+            yield
+        finally:
+            _STATE["running"] = None
 
 
 def status() -> dict[str, Any]:
