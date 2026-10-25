@@ -23,7 +23,13 @@ const SIZE: Record<Size, string> = {
 };
 
 export function Button(props: ButtonProps | LinkProps) {
-  const { variant = "primary", size = "md", pill = false, className, ...rest } = props;
+  const {
+    variant = "primary",
+    size = "md",
+    pill = false,
+    className,
+    ...rest
+  } = props;
   const classes = cx(
     "inline-flex items-center justify-center gap-2 font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
     pill ? "rounded-pill" : "rounded-control",

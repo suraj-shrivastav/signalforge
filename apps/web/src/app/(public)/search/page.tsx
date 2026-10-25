@@ -27,9 +27,7 @@ export default async function SearchPage({
     <>
       <PublicHeader />
       <div className="mx-auto max-w-article px-4 py-12 md:px-6">
-        <h1 className="article-title text-4xl text-ink md:text-5xl">
-          Search
-        </h1>
+        <h1 className="article-title text-4xl text-ink md:text-5xl">Search</h1>
         <form action="/search" method="get" className="mt-6 flex gap-2">
           <input
             type="search"
