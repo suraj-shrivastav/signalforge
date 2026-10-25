@@ -152,3 +152,56 @@ def test_script_avoids_python_310_only_calls() -> None:
     """Hermes runs the script with the system python3, which is 3.9 on macOS."""
     source = (ROOT / "scripts" / "articleimg.py").read_text()
     assert "strict=" not in source  # zip(strict=True) needs 3.10
+
+
+def architecture(boxes: list[str]) -> dict[str, Any]:
+    spec = example("example-architecture-figure.json")
+    spec["values"] = {"boxes": boxes}
+    return spec
+
+
+def test_architecture_validates_box_count_length_and_fields() -> None:
+    assert img.validate(architecture(["a", "b", "c"]), None) == []
+    assert any("3 to 5" in e for e in img.validate(architecture(["a", "b"]), None))
+    assert any("3 to 5" in e for e in img.validate(architecture(list("abcdef")), None))
+    assert any("1 to 14" in e for e in img.validate(architecture(["a", "b", "x" * 15]), None))
+    assert any(
+        "no figure" in e for e in img.validate({**architecture(list("abc")), "figure": "5"}, None)
+    )
+    spec = architecture(["Stage 9", "b", "c"])
+    assert any("number '9'" in e for e in img.validate(spec, ARTICLE))
+
+
+@pytest.mark.parametrize("count", [3, 4, 5])
+def test_architecture_draws_every_box_and_one_arrow_between_each_pair(count: int) -> None:
+    names = ["Query", "Retriever", "Reranker", "Language model", "Answer"][:count]
+    svg = img.render(architecture(names), "some-slug")
+    assert all(f">{name}</text>" in svg for name in names)
+    assert svg.count("<polygon") == count - 1
+    assert svg == img.render(architecture(names), "some-slug")  # same slug, same image
+
+
+@pytest.mark.parametrize("slug", ["a", "b", "c", "d", "e", "f"])
+def test_architecture_boxes_stay_inside_the_canvas_and_do_not_overlap(slug: str) -> None:
+    for count in (3, 4, 5):
+        svg = img.render(architecture(list("abcde")[:count]), slug)
+        rects = [
+            tuple(int(v) for v in m)
+            for m in re.findall(
+                r'<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)" rx="44"', svg
+            )
+        ]
+        assert len(rects) == count
+        for x, y, w, h in rects:
+            assert x >= 80
+            assert x + w <= 1120
+            assert y + h <= 820
+        for i, (x1, y1, w1, h1) in enumerate(rects):
+            for x2, y2, w2, h2 in rects[i + 1 :]:
+                assert x1 + w1 <= x2 or x2 + w2 <= x1 or y1 + h1 <= y2 or y2 + h2 <= y1
+
+
+def test_architecture_cover_and_figure_pair_with_the_ripples_cover() -> None:
+    cover = example("example-architecture-cover.json")
+    figure = example("example-architecture-figure.json")
+    assert img.check_pair(cover, figure) == []
