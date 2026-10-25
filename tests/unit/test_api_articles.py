@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -95,6 +95,7 @@ class StubRepo:
 class StubPublished:
     def __init__(self) -> None:
         self.rows: dict[UUID, Any] = {}
+        self.recent: list[datetime] = []  # publish times the pace check sees
 
     def slug_exists(self, slug: str) -> bool:
         return any(r.slug == slug for r in self.rows.values())
@@ -111,6 +112,9 @@ class StubPublished:
 
     def list_public(self, limit: int) -> list[Any]:
         return [r for r in self.rows.values() if r.status == "published"][:limit]
+
+    def published_times_since(self, since: datetime) -> list[datetime]:
+        return sorted(t for t in self.recent if t >= since)
 
     def publish(self, card_id: UUID, fields: dict[str, Any]) -> Any:
         now = datetime(2026, 10, 21, tzinfo=UTC)
@@ -672,3 +676,103 @@ def test_auto_review_sends_a_thin_draft_back_with_the_reasons(
     assert "words" in out["reasons"][0]
     assert repo.rows[card_id].review_status == "revise"
     assert "words" in repo.rows[card_id].review_note
+
+
+def _approve_without_publishing(client: TestClient, repo: StubRepo) -> UUID:
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{card_id}/auto-review", headers=HA).json()
+    assert out["action"] == "approve"
+    return card_id
+
+
+def test_auto_review_holds_a_publish_that_is_too_soon_after_the_last(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    repo.published.recent = [datetime.now(UTC) - timedelta(minutes=30)]  # type: ignore[attr-defined]
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{card_id}/auto-review?publish=true", headers=HA).json()
+    assert out["action"] == "approve"
+    assert out["published"] is None
+    assert out["queued"] is True
+    assert out["next_publish_at"] is not None
+    assert repo.rows[card_id].review_status == "approved"  # saved, waiting for a slot
+
+
+def test_auto_review_holds_a_publish_over_the_daily_cap(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    now = datetime.now(UTC)
+    repo.published.recent = [now - timedelta(hours=h) for h in (20, 14, 8)]  # type: ignore[attr-defined]
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{card_id}/auto-review?publish=true", headers=HA).json()
+    assert (out["queued"], out["published"]) == (True, None)
+
+
+def _waiting(monkeypatch: pytest.MonkeyPatch, *card_ids: UUID) -> None:
+    from apps.api.routes import agent as agent_routes
+
+    cards = [
+        agent_routes.PipelineCardOut(
+            card_id=c, title="t", stage="approved", next_action="publish", slug=None
+        )
+        for c in card_ids  # newest first, like the real list
+    ]
+    monkeypatch.setattr(agent_routes, "_cards", lambda *_a: cards)
+
+
+def test_publish_next_publishes_the_longest_waiting_draft(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = actx
+    older = _approve_without_publishing(client, repo)
+    newer = _approve_without_publishing(client, repo)
+    _waiting(monkeypatch, newer, older)
+    out = client.post("/agent/publish-next", headers=HA).json()
+    assert out["published"]["status"] == "published"
+    assert out["waiting"] == 1
+    assert repo.published.get_by_card(older) is not None  # type: ignore[attr-defined]
+    assert repo.published.get_by_card(newer) is None  # type: ignore[attr-defined]
+
+
+def test_publish_next_waits_for_the_pace_and_says_when(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    _waiting(monkeypatch, card_id)
+    repo.published.recent = [datetime.now(UTC) - timedelta(minutes=10)]  # type: ignore[attr-defined]
+    out = client.post("/agent/publish-next", headers=HA).json()
+    assert out["published"] is None
+    assert out["waiting"] == 1
+    assert out["next_publish_at"] is not None
+
+
+def test_publish_next_with_nothing_waiting_does_nothing(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _ = actx
+    _waiting(monkeypatch)
+    out = client.post("/agent/publish-next", headers=HA).json()
+    assert out == {"published": None, "waiting": 0, "next_publish_at": None}
+    assert client.post("/agent/publish-next").status_code == 401
+
+
+def test_research_runs_one_card_by_default_and_other_stages_ten(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api import agent_runs
+
+    seen: list[tuple[str, int]] = []
+
+    def fake_start(stage: str, _settings: object, limit: int, _retry: bool) -> bool:
+        seen.append((stage, limit))
+        return True
+
+    monkeypatch.setattr(agent_runs, "start", fake_start)
+    client, _ = actx
+    for stage in ("research", "draft"):
+        assert client.post(f"/agent/run/{stage}", headers=HA).status_code == 202
+    assert client.post("/agent/run/research?limit=4", headers=HA).status_code == 202
+    assert seen == [("research", 1), ("draft", 10), ("research", 4)]

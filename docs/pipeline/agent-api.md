@@ -17,11 +17,11 @@ endpoints below).
 
 | next_action | Call |
 |---|---|
-| `run_research` / `retry_research` | `POST /agent/run/research?retry_failed=true` |
+| `run_research` / `retry_research` | `POST /agent/run/research?retry_failed=true` (one card, the best-scoring one; do not repeat per card) |
 | `run_draft` / `retry_draft` | `POST /agent/run/draft?retry_failed=true` |
 | `auto_review` | `POST /agent/drafts/{card_id}/auto-review?publish=true` |
 | `run_revise` | `POST /agent/run/revise` |
-| `publish` | `POST /editor/drafts/{card_id}/publish` |
+| `publish` | `POST /agent/publish-next` (one call for all waiting drafts; it follows the publish pace) |
 | `attach_images` | follow `skills/article-images/SKILL.md` |
 | `human_review` | needs a person (draft had no usable claims); skip or reject |
 | `wait`, `none` | nothing to do |
@@ -42,6 +42,31 @@ checks the SVG (no scripts, embedded content or event handlers, at most 300 KB),
 the `article-images` bucket with its own Supabase key and attaches it. Set `SUPABASE_URL` and
 `SUPABASE_SECRET_KEY` on the **API** only; the endpoint answers 503 without them. The script
 runs on Python 3.9 or newer.
+
+## One at a time, best first
+
+Research costs money, so it never fans out:
+
+- Research takes the best waiting accepted card first (highest `score`, oldest on a tie). The
+  default for `POST /agent/run/research` is 1 card; pass `?limit=N` to take more. `tick` takes
+  1 as well (`--research-limit`).
+- Only one pipeline run happens at a time. The pass that starts after an accept and any run an
+  agent starts share one slot, so a manual run returns 409 while an accept pass is going and
+  the other way round. `GET /agent/runs` shows it as stage `auto`.
+- Each accept starts a pass that takes one card. Accepting three cards gives three passes in
+  a row, best first, never in parallel.
+
+## Publish pace
+
+An approved draft does not have to go live at once. `POST /agent/drafts/{id}/auto-review?publish=true`
+approves it and publishes only if the pace allows: at least `PUBLISH_MIN_GAP_MINUTES` (default
+240) since the last publish and at most `PUBLISH_DAILY_CAP` (default 3) in 24 hours. Otherwise
+the response has `queued: true` and `next_publish_at`, and the draft stays approved.
+
+`POST /agent/publish-next` publishes the longest-waiting approved draft when a slot is open and
+returns `{published, waiting, next_publish_at}`. Call it every 15 to 30 minutes from the agent's
+schedule or a cron service. An editor's own publish (`/editor/drafts/{id}/publish`) ignores
+the pace.
 
 ## Automatic review
 

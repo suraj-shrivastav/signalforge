@@ -1,11 +1,11 @@
 """Research and draft the accepted cards right after an accept, in a background task."""
 
 import logging
-import threading
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
+from apps.api import agent_runs
 from apps.worker import draft, research
 from signalforge.core.config import Settings
 from signalforge.db.models.research import ResearchPackageRow
@@ -13,14 +13,14 @@ from signalforge.db.session import ConnectionMode, create_db_engine, create_sess
 
 log = logging.getLogger(__name__)
 
-# One pass at a time: a second accept waits, then finds nothing left to do.
-_LOCK = threading.Lock()
-_PASS_LIMIT = 3
+# One card per pass, best first. A second accept waits for the pipeline slot (shared with the
+# agent's runs, so nothing runs in parallel) and then takes the next best card.
+_PASS_LIMIT = 1
 
 
 def run_after_accept(settings: Settings) -> None:
-    """Research the oldest accepted cards, then draft them. Never raises."""
-    with _LOCK:
+    """Research the best waiting accepted card, then draft it. Never raises."""
+    with agent_runs.hold("auto"):
         engine = create_db_engine(settings, ConnectionMode.SESSION)
         try:
             since = datetime.now(UTC) - timedelta(hours=24)

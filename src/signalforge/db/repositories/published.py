@@ -38,6 +38,17 @@ class PublishedArticleRepository:
             select(PublishedArticleRow).where(PublishedArticleRow.slug == slug)
         ).one_or_none()
 
+    def published_times_since(self, since: datetime) -> list[datetime]:
+        """Publish times of live articles since ``since``, oldest first."""
+        query = (
+            select(PublishedArticleRow.published_at)
+            .where(
+                PublishedArticleRow.status == "published", PublishedArticleRow.published_at >= since
+            )
+            .order_by(PublishedArticleRow.published_at.asc())
+        )
+        return list(self._session.scalars(query))
+
     def list_public(self, limit: int) -> list[PublishedArticleRow]:
         """Newest published articles first."""
         query = (

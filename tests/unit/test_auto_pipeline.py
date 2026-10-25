@@ -52,7 +52,7 @@ def _settings(cap: int) -> Settings:
 def test_runs_research_then_draft_within_the_cap(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = _wire(monkeypatch, used=8)
     auto_pipeline.run_after_accept(_settings(10))
-    assert calls == [("research", 2), ("draft", 3), ("dispose", 0)]
+    assert calls == [("research", 1), ("draft", 1), ("dispose", 0)]
 
 
 def test_skips_when_the_daily_cap_is_reached(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -70,3 +70,28 @@ def test_a_failing_stage_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(research, "run", boom)
     auto_pipeline.run_after_accept(_settings(10))
     assert calls == [("dispose", 0)]
+
+
+def test_a_pass_waits_for_a_run_the_agent_started(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Research never runs in parallel with an agent run: both share one slot."""
+    import threading
+
+    from apps.api import agent_runs
+
+    calls = _wire(monkeypatch, used=0)
+    entered = threading.Event()
+    done = threading.Event()
+
+    def worker() -> None:
+        entered.set()
+        auto_pipeline.run_after_accept(_settings(10))
+        done.set()
+
+    with agent_runs.hold("tick"):
+        assert agent_runs.start("research", _settings(10), 1, False) is False
+        threading.Thread(target=worker, daemon=True).start()
+        assert entered.wait(2)
+        assert not done.wait(0.3)  # blocked behind the agent's run
+        assert ("research", 1) not in calls
+    assert done.wait(5)
+    assert ("research", 1) in calls
