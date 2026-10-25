@@ -78,11 +78,11 @@ def test_flagged_dek_is_replaced_by_the_first_unflagged_body_sentence() -> None:
 
 
 def test_flagged_dek_without_a_usable_lead_is_revised() -> None:
-    lead = "A lead."
+    too_long = "A lead that never ends " + "and on " * 60 + "stops."
     b = body(
-        paragraphs=(lead, f"{GOOD} {GOOD}"),
+        paragraphs=(too_long,),
         dek="A bad dek.",
-        flags=(flag(-1, -1, "A bad dek."), flag(0, 0, lead)),
+        flags=(flag(-1, -1, "A bad dek."),),
     )
     loose = ReviewPolicy(min_words=20, min_claims=2, max_flagged_share=0.9, max_redrafts=1)
     result = decide(b, ArticleTemplate.EXPLAINER, 0, loose)
@@ -107,3 +107,32 @@ def test_after_the_last_redraft_a_failing_draft_is_rejected() -> None:
     thin = body(paragraphs=("Short.",))
     assert run(thin, redrafts=0)[0] == "revise"
     assert run(thin, redrafts=1)[0] == "reject"
+
+
+def test_a_section_left_empty_by_deletions_is_dropped() -> None:
+    bad = "A made up claim."
+    b = body(flags=(flag(1, 0, bad),)).model_copy(
+        update={
+            "sections": (
+                ArticleSection(heading="H", paragraphs=(f"{GOOD} {GOOD} {GOOD}", f"{GOOD} {GOOD}")),
+                ArticleSection(heading="Only a bad claim", paragraphs=(bad,)),
+            )
+        }
+    )
+    result = decide(b, ArticleTemplate.EXPLAINER, 0, POLICY)
+    assert result.action == "approve"
+    assert [s.heading for s in result.body.sections] == ["H"]
+    assert result.body.flags == ()
+
+
+def test_flags_in_several_paragraphs_are_all_deleted() -> None:
+    first, second = "First bad claim.", "Second bad claim."
+    b = body(
+        paragraphs=(first, f"{GOOD} {GOOD} {GOOD}", second, f"{GOOD} {GOOD}"),
+        flags=(flag(0, 0, first), flag(0, 2, second)),
+    )
+    result = decide(b, ArticleTemplate.EXPLAINER, 0, POLICY)
+    assert result.action == "approve"
+    text = " ".join(result.body.sections[0].paragraphs)
+    assert first not in text
+    assert second not in text

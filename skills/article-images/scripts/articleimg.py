@@ -11,6 +11,8 @@ script checks it against the article, draws it, and publishes it.
 Environment for publish: API_BASE_URL, EDITOR_API_KEY, SUPABASE_URL, SUPABASE_SECRET_KEY.
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
