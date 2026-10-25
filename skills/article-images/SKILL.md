@@ -16,7 +16,7 @@ image. Different articles give different images because the look is derived from
 2. Two different templates: the cover and the figure must not use the same template.
 3. No faces, logos, brand marks, photos, emoji or invented statistics.
 4. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
-5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14.
+5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14, bar name 14, bar text 8.
 6. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
 
 ## Steps
@@ -39,6 +39,7 @@ Use `--dry-run DIR` first to render into a folder without uploading. Needs only 
 
 | If the article is mainly about | Template | Fields to fill |
 |---|---|---|
+| Three to six named things with a number of the same kind (scores, latency, price, size), one of them the article's subject | `bar-chart` | `values.bars` (3 to 6), optional `caption` |
 | Two named things compared, each with a number of the same kind (parameters, price, score, size) | `compare-blocks` | `values.a`, `values.b` |
 | An amount of money, users, data or time raised, trained or spent | `figure-ripples` | `figure`, `caption` |
 | A rate, score, speed or accuracy of something audio, speech, time series or signal | `waveform` | `figure`, `caption` |
@@ -54,18 +55,20 @@ For the inline figure, prefer a template that shows structure or comparison if t
 ```
 {
   "role": "cover" | "figure",
-  "template": "<one of the seven>",
+  "template": "<one of the eight>",
   "label": "TOPIC IN FEW WORDS",         // at most 28 characters, shown in capitals
-  "figure": "5.06%",                     // hero text, at most 8 characters (not for compare-blocks, layers, architecture)
-  "caption": "word error rate",          // at most 34 characters (not for compare-blocks, layers, architecture)
+  "figure": "5.06%",                     // hero text, at most 8 characters (not for compare-blocks, layers, architecture, bar-chart)
+  "caption": "word error rate",          // at most 34 characters (not for compare-blocks, layers, architecture, bar-chart)
   "alt": "One sentence describing the image and its fact",
-  "values": { }                          // only for compare-blocks, constellation, layers, architecture
+  "values": { }                          // only for compare-blocks, constellation, layers, architecture, bar-chart
 }
 ```
 
 `compare-blocks` values: `{"a": {"value": 2000, "text": "2B", "name": "parameters"}, "b": {"value": 470, "text": "470M", "name": "TurboCTC"}}`. `value` sets the block size, so use comparable plain numbers (2000 and 470 in millions). Both blocks must measure the same thing.
 
 `constellation` values: `{"count": 7}`. `layers` values: `{"items": ["step one", "step two", "step three"]}`.
+
+`bar-chart` values: `{"bars": [{"name": "Granite", "value": 5.06, "text": "5.06%"}, ...]}`: 3 to 6 bars, `name` 14 characters at most, `text` 8 at most. `value` must equal the first number in `text`: it sets the bar length on one scale from zero, so every bar must measure the same thing in the same unit. List the article's own subject first; its bar is the dark one. Use the caption for the direction (`lower is better`). It takes an optional `caption` and no `figure`.
 
 `architecture` values: `{"boxes": ["Audio in", "Encoder", "Decoder", "Text out"]}`: 3 to 5 component names, 14 characters at most each, in the order the data flows. The script draws one arrow from each box to the next. It takes an optional `caption` and no `figure`. Use names the article itself uses; do not add a component the article does not describe.
 
