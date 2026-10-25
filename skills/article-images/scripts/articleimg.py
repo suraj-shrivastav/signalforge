@@ -40,6 +40,7 @@ TEMPLATES = (
     "constellation",
     "spectrogram",
     "layers",
+    "architecture",
 )
 ROLES = ("cover", "figure")
 LIMITS = {
@@ -129,6 +130,19 @@ def validate(spec: dict[str, Any], article: dict[str, Any] | None) -> list[str]:
             texts += [_text(block, "text", errors), _text(block, "name", errors)]
         if "figure" in spec or "caption" in spec:
             errors.append("compare-blocks takes no figure or caption; use values.a and values.b")
+    elif template == "architecture":
+        texts.append(_text(spec, "caption", errors, required=False))
+        boxes = values.get("boxes")
+        if not isinstance(boxes, list) or not 3 <= len(boxes) <= 5:
+            errors.append("values.boxes: 3 to 5 strings, in the order the data flows")
+        else:
+            for box in boxes:
+                if not isinstance(box, str) or not box or len(box) > LIMITS["name"]:
+                    errors.append(f"values.boxes: each 1 to {LIMITS['name']} characters")
+                else:
+                    texts.append(box)
+        if "figure" in spec:
+            errors.append("architecture takes no figure; use values.boxes")
     elif template == "layers":
         items = values.get("items")
         if not isinstance(items, list) or len(items) != 3:
@@ -381,6 +395,62 @@ def draw_layers(spec: dict[str, Any], seed: Seed) -> str:
     return "".join(parts)
 
 
+def _arrow(x1: float, y1: float, x2: float, y2: float) -> str:
+    """A line with a solid head, pointing from (x1, y1) to (x2, y2)."""
+    length = math.hypot(x2 - x1, y2 - y1)
+    ux, uy = (x2 - x1) / length, (y2 - y1) / length
+    head, half = 28, 15
+    bx, by = x2 - ux * head, y2 - uy * head
+    return (
+        f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{bx:.0f}" y2="{by:.0f}" stroke="{INK}" '
+        f'stroke-width="6" stroke-linecap="round"/>'
+        f'<polygon points="{x2:.0f},{y2:.0f} {bx - uy * half:.0f},{by + ux * half:.0f} '
+        f'{bx + uy * half:.0f},{by - ux * half:.0f}" fill="{INK}"/>'
+    )
+
+
+def draw_architecture(spec: dict[str, Any], seed: Seed) -> str:
+    """Boxes in the order data flows, joined by arrows. Rows snake so every arrow is short."""
+    boxes = spec["values"]["boxes"]
+    n = len(boxes)
+    cols = 2 if n == 4 else 3
+    rows = -(-n // cols)
+    gap_x = 200 if cols == 2 else 90
+    box_w = (1040 - (cols - 1) * gap_x) // cols
+    box_h, gap_y = 170, 120
+    start = seed.rng.randrange(3)  # which fill the first box takes
+    accent = PALETTE[(seed.palette + 1) % len(PALETTE)]
+    fills = [(INK, PALETTE[seed.palette]), (WHITE, INK), (accent, INK)]
+    top = 200 + (600 - (rows * box_h + (rows - 1) * gap_y)) // 2
+    spots = []
+    for i in range(n):
+        row, col = divmod(i, cols)
+        if row % 2:
+            col = cols - 1 - col  # odd rows run the other way
+        spots.append((80 + col * (box_w + gap_x), top + row * (box_h + gap_y)))
+    parts = [label(spec["label"])]
+    size = min(fit(name, box_w - 40, 40, 0.58) for name in boxes)  # one size for every box
+    for i, (x, y) in enumerate(spots):
+        name = boxes[i]
+        fill, ink = fills[(i + start) % 3]
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{box_w}" height="{box_h}" rx="44" fill="{fill}"/>'
+        )
+        parts.append(
+            txt(x + box_w / 2, y + box_h / 2 + size * 0.35, name, size, fill=ink, anchor="middle")
+        )
+    for i in range(n - 1):
+        (x1, y1), (x2, y2) = spots[i], spots[i + 1]
+        if y1 == y2:  # same row: from one side edge to the facing edge
+            right = x2 > x1
+            start_x = x1 + box_w + 14 if right else x1 - 14
+            end_x = x2 - 14 if right else x2 + box_w + 14
+            parts.append(_arrow(start_x, y1 + box_h / 2, end_x, y2 + box_h / 2))
+        else:  # next row: straight down from the bottom edge to the top edge
+            parts.append(_arrow(x1 + box_w / 2, y1 + box_h + 14, x2 + box_w / 2, y2 - 14))
+    return "".join(parts) + caption(spec, 80, 860, 40)
+
+
 DRAW = {
     "waveform": draw_waveform,
     "figure-ripples": draw_ripples,
@@ -388,6 +458,7 @@ DRAW = {
     "constellation": draw_constellation,
     "spectrogram": draw_spectrogram,
     "layers": draw_layers,
+    "architecture": draw_architecture,
 }
 
 

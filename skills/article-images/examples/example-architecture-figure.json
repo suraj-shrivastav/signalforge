@@ -1,0 +1,10 @@
+{
+  "role": "figure",
+  "template": "architecture",
+  "label": "How it works",
+  "caption": "a question answered in five steps",
+  "values": {
+    "boxes": ["Query", "Retriever", "Reranker", "Language model", "Answer"]
+  },
+  "alt": "Five boxes joined by arrows: query, retriever, reranker, language model, answer"
+}

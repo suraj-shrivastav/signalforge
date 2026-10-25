@@ -16,7 +16,7 @@ image. Different articles give different images because the look is derived from
 2. Two different templates: the cover and the figure must not use the same template.
 3. No faces, logos, brand marks, photos, emoji or invented statistics.
 4. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
-5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8.
+5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14.
 6. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
 
 ## Steps
@@ -45,6 +45,7 @@ Use `--dry-run DIR` first to render into a folder without uploading. Needs only 
 | A count of things that connect: languages, partners, backers, integrations, regions (3 to 9) | `constellation` | `figure`, `caption`, `values.count` |
 | A benchmark, dataset, test set or evaluation with a size | `spectrogram` | `figure` (a short word or number), `caption` |
 | How something works or is built, as exactly three steps or components | `layers` | `values.items` (3) |
+| How data moves through a system: 3 to 5 named components in order (pipeline, model stages, request path) | `architecture` | `values.boxes` (3 to 5), optional `caption` |
 
 For the inline figure, prefer a template that shows structure or comparison if the cover shows a single number, and the reverse.
 
@@ -53,18 +54,20 @@ For the inline figure, prefer a template that shows structure or comparison if t
 ```
 {
   "role": "cover" | "figure",
-  "template": "<one of the six>",
+  "template": "<one of the seven>",
   "label": "TOPIC IN FEW WORDS",         // at most 28 characters, shown in capitals
-  "figure": "5.06%",                     // hero text, at most 8 characters (not for compare-blocks, layers)
-  "caption": "word error rate",          // at most 34 characters (not for compare-blocks, layers)
+  "figure": "5.06%",                     // hero text, at most 8 characters (not for compare-blocks, layers, architecture)
+  "caption": "word error rate",          // at most 34 characters (not for compare-blocks, layers, architecture)
   "alt": "One sentence describing the image and its fact",
-  "values": { }                          // only for compare-blocks, constellation, layers
+  "values": { }                          // only for compare-blocks, constellation, layers, architecture
 }
 ```
 
 `compare-blocks` values: `{"a": {"value": 2000, "text": "2B", "name": "parameters"}, "b": {"value": 470, "text": "470M", "name": "TurboCTC"}}`. `value` sets the block size, so use comparable plain numbers (2000 and 470 in millions). Both blocks must measure the same thing.
 
 `constellation` values: `{"count": 7}`. `layers` values: `{"items": ["step one", "step two", "step three"]}`.
+
+`architecture` values: `{"boxes": ["Audio in", "Encoder", "Decoder", "Text out"]}`: 3 to 5 component names, 14 characters at most each, in the order the data flows. The script draws one arrow from each box to the next. It takes an optional `caption` and no `figure`. Use names the article itself uses; do not add a component the article does not describe.
 
 ## Check before publishing
 
