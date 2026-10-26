@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from apps.api.deps import get_session
 from signalforge.plugins.sources import SOURCE_NAMES, USER_AGENT, build_source
 from signalforge.stages.ingest import IngestResult, run_ingest
+from signalforge.verticals.config import load_vertical
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ def get_ingest_runner(session: Annotated[Session, Depends(get_session)]) -> Inge
     def run(source: str, hours: int) -> IngestResult:
         with httpx.Client(headers={"User-Agent": USER_AGENT}) as client:
             return run_ingest(
-                build_source(source, client),
+                build_source(source, client, cfg=load_vertical()),
                 session,
                 since=datetime.now(UTC) - timedelta(hours=hours),
             )

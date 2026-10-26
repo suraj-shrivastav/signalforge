@@ -5,6 +5,7 @@ import re
 import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import Any
 
 import httpx
 from pydantic import ValidationError
@@ -18,6 +19,9 @@ log = logging.getLogger(__name__)
 API_URL = "https://export.arxiv.org/api/query"
 _VERSION_SUFFIX = re.compile(r"v\d+$")
 
+DEFAULT_CATEGORIES: tuple[str, ...] = ("cs.AI", "cs.CL", "cs.LG")
+DEFAULT_MAX_RESULTS = 100
+
 
 class ArxivSource:
     name = "arxiv"
@@ -27,14 +31,30 @@ class ArxivSource:
         self,
         client: httpx.Client,
         *,
-        categories: Sequence[str] = ("cs.AI", "cs.CL", "cs.LG"),
-        max_results: int = 100,
+        categories: Sequence[str] = DEFAULT_CATEGORIES,
+        max_results: int = DEFAULT_MAX_RESULTS,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
         self._categories = tuple(categories)
         self._max_results = max_results
         self._sleep = sleep
+
+    @classmethod
+    def from_config(
+        cls,
+        client: httpx.Client,
+        cfg: dict[str, Any],
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> "ArxivSource":
+        arxiv = cfg.get("arxiv", {}) or {}
+        return cls(
+            client,
+            categories=tuple(arxiv.get("categories", DEFAULT_CATEGORIES)),
+            max_results=int(arxiv.get("max_results", DEFAULT_MAX_RESULTS)),
+            sleep=sleep,
+        )
 
     def fetch(self, since: datetime) -> list[RawSignal]:
         # One request per run, so arXiv's 3s throttle does not apply.

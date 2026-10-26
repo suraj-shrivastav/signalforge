@@ -1,0 +1,55 @@
+name: ai_engineering
+description: Signals worth writing about for AI builders — models, releases, tools, techniques.
+version: 1
+
+# Sources are ingested every tick. Lookback is shared by the worker (--hours).
+lookback_hours: 24
+
+sources:
+  # Community discussion — Algolia HN. The trending endpoint captures what is
+  # spiking right now; keyword queries catch evergreen relevance.
+  hackernews:
+    enabled: true
+    source_type: community
+    min_points: 20
+    per_query: 50
+    # Queries that keep the vertical covered even when nothing is trending.
+    queries:
+      - "LLM"
+      - "AI agent"
+      - "RAG"
+      - "fine-tuning"
+      - "inference"
+    # Trending story fetch (front page) — what people are upvoting right now.
+    trending:
+      enabled: true
+      endpoint: front_page  # algolia 'front_page' tag = current front page
+      min_points: 40
+      limit: 100
+
+  # Lab and framework blogs — newest-first RSS/Atom.
+  rss:
+    enabled: true
+    source_type: blog
+    feeds:
+      - https://openai.com/news/rss.xml
+      - https://deepmind.google/blog/rss.xml
+      - https://huggingface.co/blog/feed.xml
+      - https://github.com/ollama/ollama/releases.atom
+      - https://github.com/vllm-project/vllm/releases.atom
+      - https://github.com/langchain-ai/langchain/releases.atom
+
+  # Newest papers in AI categories — recency only, no popularity signal.
+  arxiv:
+    enabled: true
+    source_type: paper
+    categories:
+      - cs.AI
+      - cs.CL
+      - cs.LG
+    max_results: 100
+
+  # Hugging Face daily papers — the only source with a popularity signal (upvotes).
+  huggingface:
+    enabled: true
+    source_type: paper

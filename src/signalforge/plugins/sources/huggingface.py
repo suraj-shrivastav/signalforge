@@ -4,6 +4,7 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -51,6 +52,16 @@ class HuggingFacePapersSource:
     ) -> None:
         self._client = client
         self._sleep = sleep
+
+    @classmethod
+    def from_config(
+        cls,
+        client: httpx.Client,
+        cfg: dict[str, Any],  # noqa: ARG003  (no settings yet; keeps the factory shape)
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> "HuggingFacePapersSource":
+        return cls(client, sleep=sleep)
 
     def fetch(self, since: datetime) -> list[RawSignal]:
         body = fetch_bytes(self._client, API_URL, label="Hugging Face", sleep=self._sleep)

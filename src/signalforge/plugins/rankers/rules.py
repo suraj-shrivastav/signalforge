@@ -4,10 +4,10 @@ from signalforge.core.artifacts.topic_card import RiskFlag, TopicCard
 
 # ponytail: weights are a first guess; tune from editor decision data after week one.
 WEIGHTS: dict[str, float] = {
-    "relevance": 0.35,
-    "novelty": 0.30,
-    "signal_strength": 0.20,
-    "confidence": 0.15,
+    "relevance": 0.25,
+    "novelty": 0.20,
+    "signal_strength": 0.35,
+    "confidence": 0.20,
 }
 RISK_PENALTY = 0.1
 _PENALISED = frozenset({RiskFlag.UNVERIFIED_CLAIM, RiskFlag.HYPE})

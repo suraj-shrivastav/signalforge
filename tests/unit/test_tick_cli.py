@@ -56,7 +56,7 @@ def _setup(
         ),
     )
     monkeypatch.setattr(tick, "create_session_factory", lambda _e: lambda: _Ctx(calls))
-    monkeypatch.setattr(tick, "build_source", lambda name, _c: name)
+    monkeypatch.setattr(tick, "build_source", lambda name, _c, **_kw: name)
 
     def fake_ingest(source: str, _s: object, *, since: object) -> SimpleNamespace:  # noqa: ARG001
         calls["ingest"].append(source)

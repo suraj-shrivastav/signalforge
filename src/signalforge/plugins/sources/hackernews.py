@@ -2,12 +2,19 @@
 
 The only module that knows this API's shape; the rest of the system sees
 ``RawSignal`` and the ``Source`` Protocol.
+
+Supports two fetches:
+  * keyword search via ``search_by_date`` (config-driven queries) — evergreen
+    relevance for the vertical,
+  * trending via ``search`` with the ``front_page`` tag — what is spiking right
+    now, ranked by points/discussion velocity (PRD FR-01 signal strength).
 """
 
 import logging
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -26,9 +33,12 @@ from signalforge.plugins.sources._http import USER_AGENT
 log = logging.getLogger(__name__)
 
 SEARCH_URL = "https://hn.algolia.com/api/v1/search_by_date"
+FRONT_PAGE_URL = "https://hn.algolia.com/api/v1/search"
 REQUEST_TIMEOUT_S = 10.0
-# ponytail: hard-coded until the vertical config (ai_engineering.yaml) exists.
+# Defaults used when no vertical config is supplied (backward compatible).
 DEFAULT_QUERIES: tuple[str, ...] = ("LLM", "AI agent", "RAG", "fine-tuning", "inference")
+DEFAULT_MIN_POINTS = 20
+DEFAULT_PER_QUERY = 50
 
 
 class _Hit(BaseModel):
@@ -59,20 +69,52 @@ class HackerNewsSource:
         client: httpx.Client,
         *,
         queries: Sequence[str] = DEFAULT_QUERIES,
-        min_points: int = 20,
-        per_query: int = 50,
+        min_points: int = DEFAULT_MIN_POINTS,
+        per_query: int = DEFAULT_PER_QUERY,
+        trending_enabled: bool = False,
+        trending_min_points: int = 40,
+        trending_limit: int = 100,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._client = client
         self._queries = tuple(queries)
         self._min_points = min_points
         self._per_query = per_query
+        self._trending_enabled = trending_enabled
+        self._trending_min_points = trending_min_points
+        self._trending_limit = trending_limit
         self._sleep = sleep
+
+    @classmethod
+    def from_config(
+        cls,
+        client: httpx.Client,
+        cfg: dict[str, Any],
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> "HackerNewsSource":
+        hn = cfg.get("hackernews", {}) or {}
+        trending = hn.get("trending", {}) or {}
+        return cls(
+            client,
+            queries=tuple(hn.get("queries", DEFAULT_QUERIES)),
+            min_points=int(hn.get("min_points", DEFAULT_MIN_POINTS)),
+            per_query=int(hn.get("per_query", DEFAULT_PER_QUERY)),
+            trending_enabled=bool(trending.get("enabled", False)),
+            trending_min_points=int(trending.get("min_points", 40)),
+            trending_limit=int(trending.get("limit", 100)),
+            sleep=sleep,
+        )
 
     def fetch(self, since: datetime) -> list[RawSignal]:
         signals: dict[str, RawSignal] = {}
         for query in self._queries:
             for hit in self._search(query, since):
+                signal = self._to_signal(hit)
+                if signal is not None:
+                    signals.setdefault(signal.canonical_url, signal)
+        if self._trending_enabled:
+            for hit in self._front_page(since):
                 signal = self._to_signal(hit)
                 if signal is not None:
                     signals.setdefault(signal.canonical_url, signal)
@@ -85,12 +127,21 @@ class HackerNewsSource:
             "numericFilters": f"created_at_i>{int(since.timestamp())},points>={self._min_points}",
             "hitsPerPage": self._per_query,
         }
-        return call_with_retry(lambda: self._get(params), sleep=self._sleep)
+        return call_with_retry(lambda: self._get(SEARCH_URL, params), sleep=self._sleep)
 
-    def _get(self, params: dict[str, str | int]) -> list[_Hit]:
+    def _front_page(self, since: datetime) -> list[_Hit]:
+        numeric = f"created_at_i>{int(since.timestamp())},points>={self._trending_min_points}"
+        params: dict[str, str | int] = {
+            "tags": "front_page",
+            "numericFilters": numeric,
+            "hitsPerPage": self._trending_limit,
+        }
+        return call_with_retry(lambda: self._get(FRONT_PAGE_URL, params), sleep=self._sleep)
+
+    def _get(self, url: str, params: dict[str, str | int]) -> list[_Hit]:
         try:
             response = self._client.get(
-                SEARCH_URL,
+                url,
                 params=params,
                 headers={"User-Agent": USER_AGENT},
                 timeout=REQUEST_TIMEOUT_S,
