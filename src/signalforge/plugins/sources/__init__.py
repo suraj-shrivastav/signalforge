@@ -1,6 +1,7 @@
 """Source plugins and the registry that builds them by name."""
 
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 
@@ -11,15 +12,20 @@ from signalforge.plugins.sources.hackernews import HackerNewsSource
 from signalforge.plugins.sources.huggingface import HuggingFacePapersSource
 from signalforge.plugins.sources.rss import RssSource
 
-_FACTORIES: dict[str, Callable[[httpx.Client], Source]] = {
-    HackerNewsSource.name: HackerNewsSource,
-    RssSource.name: RssSource,
-    ArxivSource.name: ArxivSource,
-    HuggingFacePapersSource.name: HuggingFacePapersSource,
+_SOURCE_FACTORIES: dict[str, Callable[[httpx.Client, dict[str, Any]], Source]] = {
+    HackerNewsSource.name: HackerNewsSource.from_config,
+    RssSource.name: RssSource.from_config,
+    ArxivSource.name: ArxivSource.from_config,
+    HuggingFacePapersSource.name: HuggingFacePapersSource.from_config,
 }
-SOURCE_NAMES: tuple[str, ...] = tuple(_FACTORIES)
+SOURCE_NAMES: tuple[str, ...] = tuple(_SOURCE_FACTORIES)
 
 
-def build_source(name: str, client: httpx.Client) -> Source:
-    """Build a source by name. Raises ``KeyError`` for an unknown name."""
-    return _FACTORIES[name](client)
+def build_source(name: str, client: httpx.Client, cfg: dict[str, Any] | None = None) -> Source:
+    """Build a source by name, configured from the vertical config dict.
+
+    Raises ``KeyError`` for an unknown name.
+    """
+    # The vertical config keeps per-source settings under ``sources``.
+    sources = (cfg or {}).get("sources") or {}
+    return _SOURCE_FACTORIES[name](client, sources)

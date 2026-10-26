@@ -4,6 +4,7 @@ import logging
 import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import Any
 
 import httpx
 from pydantic import ValidationError
@@ -40,6 +41,21 @@ class RssSource:
         self._client = client
         self._feeds = tuple(feeds)
         self._sleep = sleep
+
+    @classmethod
+    def from_config(
+        cls,
+        client: httpx.Client,
+        cfg: dict[str, Any],
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> "RssSource":
+        rss = cfg.get("rss", {}) or {}
+        return cls(
+            client,
+            feeds=tuple(rss.get("feeds", DEFAULT_FEEDS)),
+            sleep=sleep,
+        )
 
     def fetch(self, since: datetime) -> list[RawSignal]:
         signals: dict[str, RawSignal] = {}

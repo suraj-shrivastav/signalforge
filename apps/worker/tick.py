@@ -24,6 +24,7 @@ from signalforge.core.logging import configure_logging
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
 from signalforge.plugins.sources import SOURCE_NAMES, USER_AGENT, build_source
 from signalforge.stages.ingest import run_ingest
+from signalforge.verticals.config import load_vertical, source_enabled
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     engine = create_db_engine(settings, ConnectionMode.SESSION)
+    vertical_cfg = load_vertical()
     succeeded = 0
     stage_failed = False
     since = datetime.now(UTC) - timedelta(hours=args.hours)
@@ -101,9 +103,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         with httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
             for name in SOURCE_NAMES:
+                if not source_enabled(vertical_cfg, name):
+                    print(f"{name}: disabled in vertical config")
+                    continue
                 try:
                     with session_factory() as session:
-                        result = run_ingest(build_source(name, client), session, since=since)
+                        source = build_source(name, client, cfg=vertical_cfg)
+                        result = run_ingest(source, session, since=since)
                 except Exception as exc:
                     log.exception("ingest failed for source %s", name)
                     print(f"{name}: FAILED ({type(exc).__name__})")

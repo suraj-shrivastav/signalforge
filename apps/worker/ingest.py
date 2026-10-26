@@ -16,6 +16,7 @@ from signalforge.core.logging import configure_logging
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
 from signalforge.plugins.sources import SOURCE_NAMES, USER_AGENT, build_source
 from signalforge.stages.ingest import run_ingest
+from signalforge.verticals.config import load_vertical
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             create_session_factory(engine)() as session,
         ):
             run_ingest(
-                build_source(args.source, client),
+                build_source(args.source, client, cfg=load_vertical()),
                 session,
                 since=datetime.now(UTC) - timedelta(hours=args.hours),
             )
