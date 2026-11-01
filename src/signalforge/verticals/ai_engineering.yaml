@@ -38,6 +38,13 @@ sources:
       - https://github.com/ollama/ollama/releases.atom
       - https://github.com/vllm-project/vllm/releases.atom
       - https://github.com/langchain-ai/langchain/releases.atom
+      - https://github.com/huggingface/transformers/releases.atom
+      - https://github.com/ggml-org/llama.cpp/releases.atom
+      - https://simonwillison.net/atom/everything/
+      - https://www.latent.space/feed
+      - https://research.google/blog/rss/
+      - https://blogs.nvidia.com/feed/
+      - https://aws.amazon.com/blogs/machine-learning/feed/
 
   # Newest papers in AI categories — recency only, no popularity signal.
   arxiv:
@@ -53,3 +60,30 @@ sources:
   huggingface:
     enabled: true
     source_type: paper
+
+  # Trending open models on the Hugging Face Hub: adoption velocity (trendingScore).
+  huggingface_models:
+    enabled: true
+    limit: 50
+    min_trending: 50
+
+  # New repositories gaining stars fast. Unauthenticated search allows about 10
+  # requests a minute, so keep the topic list short.
+  github:
+    enabled: true
+    topics: [llm, ai-agents, rag]
+    created_within_days: 7
+    min_stars: 50
+
+  # Community-curated links, scored by votes and discussion.
+  lobsters:
+    enabled: true
+    tags: [ai, ml]
+    min_score: 5
+
+  # Practitioner articles, scored by reactions.
+  devto:
+    enabled: true
+    tags: [ai, llm, machinelearning]
+    top_days: 1
+    min_reactions: 20

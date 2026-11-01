@@ -41,7 +41,58 @@ HF_BODY = [
 ]
 
 
+LOBSTERS_BODY = [
+    {
+        "short_id": "abc",
+        "created_at": "2026-09-26T10:00:00.000-05:00",
+        "title": "Story",
+        "url": "https://example.com/lobsters",
+        "score": 20,
+        "comment_count": 3,
+        "comments_url": "https://lobste.rs/s/abc",
+        "tags": ["ai"],
+    }
+]
+
+DEVTO_BODY = [
+    {
+        "id": 1,
+        "title": "Post",
+        "url": "https://dev.to/a/post",
+        "description": "d",
+        "published_timestamp": "2026-09-26T10:00:00Z",
+        "positive_reactions_count": 40,
+        "comments_count": 2,
+    }
+]
+
+GITHUB_BODY = {
+    "items": [
+        {
+            "id": 1,
+            "full_name": "a/b",
+            "html_url": "https://github.com/a/b",
+            "description": "d",
+            "created_at": "2026-09-26T10:00:00Z",
+            "stargazers_count": 300,
+        }
+    ]
+}
+
+HF_MODELS_BODY = [
+    {"id": "org/model", "createdAt": "2026-09-26T10:00:00.000Z", "trendingScore": 200}
+]
+
+
 def _respond(request: httpx.Request) -> httpx.Response:
+    if request.url.host == "lobste.rs":
+        return httpx.Response(200, json=LOBSTERS_BODY)
+    if request.url.host == "dev.to":
+        return httpx.Response(200, json=DEVTO_BODY)
+    if request.url.host == "api.github.com":
+        return httpx.Response(200, json=GITHUB_BODY)
+    if request.url.host == "huggingface.co" and request.url.path == "/api/models":
+        return httpx.Response(200, json=HF_MODELS_BODY)
     if "hn.algolia.com" in request.url.host:
         return httpx.Response(200, json=HN_BODY)
     if request.url.host == "export.arxiv.org":

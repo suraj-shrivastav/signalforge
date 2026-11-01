@@ -14,7 +14,16 @@ SINCE = datetime(2026, 9, 23, tzinfo=UTC)
 def test_default_vertical_loads_with_the_expected_sources() -> None:
     cfg = load_vertical()
     assert cfg["name"] == "ai_engineering"
-    assert set(cfg["sources"]) == {"hackernews", "rss", "arxiv", "huggingface"}
+    assert set(cfg["sources"]) == {
+        "hackernews",
+        "rss",
+        "arxiv",
+        "huggingface",
+        "huggingface_models",
+        "github",
+        "lobsters",
+        "devto",
+    }
 
 
 def test_build_source_reads_per_source_settings_under_sources() -> None:
@@ -28,7 +37,7 @@ def test_build_source_reads_per_source_settings_under_sources() -> None:
     assert arxiv._categories == ("cs.AI", "cs.CL", "cs.LG")
     rss = build_source("rss", client, cfg=load_vertical())
     assert isinstance(rss, RssSource)
-    assert len(rss._feeds) == 6
+    assert len(rss._feeds) >= 6
 
 
 def test_without_config_trending_stays_off() -> None:

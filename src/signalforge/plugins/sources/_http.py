@@ -2,10 +2,13 @@
 
 import time
 from collections.abc import Callable
+from typing import TypeVar
 
 import httpx
+from pydantic import TypeAdapter, ValidationError
 
 from signalforge.core.errors import (
+    ArtifactValidationError,
     OperationTimeoutError,
     ProviderRejectedError,
     ProviderUnavailableError,
@@ -16,6 +19,8 @@ from signalforge.core.retry import call_with_retry
 USER_AGENT = "signalforge/0.1 (+https://github.com/suraj-shrivastav/signalforge)"
 REQUEST_TIMEOUT_S = 10.0
 MAX_BYTES = 5_000_000
+
+T = TypeVar("T")
 
 
 def fetch_bytes(
@@ -55,3 +60,20 @@ def fetch_bytes(
         return response.content
 
     return call_with_retry(once, sleep=sleep)
+
+
+def fetch_json_list(
+    client: httpx.Client,
+    url: str,
+    adapter: "TypeAdapter[list[T]]",
+    *,
+    label: str,
+    params: dict[str, str | int] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[T]:
+    """GET a JSON list and validate its shape. A wrong shape fails loud (schema drift)."""
+    body = fetch_bytes(client, url, label=label, params=params, sleep=sleep)
+    try:
+        return adapter.validate_json(body)
+    except ValidationError as exc:
+        raise ArtifactValidationError(f"{label} response has an unexpected shape: {exc}") from exc
