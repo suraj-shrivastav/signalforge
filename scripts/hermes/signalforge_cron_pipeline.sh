@@ -17,13 +17,30 @@ fi
 
 log() { echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >> "$HOME/signalforge-cron.log"; }
 
+# Expire the website's cached article list after a publish. No-op unless SITE_URL and
+# REVALIDATE_SECRET are set. Never fails the run.
+revalidate_site() {
+  [ -n "${SITE_URL:-}" ] && [ -n "${REVALIDATE_SECRET:-}" ] || return 0
+  curl -sS --max-time 30 -o /dev/null -X POST "${SITE_URL%/}/api/revalidate" \
+    -H "x-revalidate-secret: $REVALIDATE_SECRET" 2>/dev/null || log "site revalidate failed"
+  return 0
+}
+
 # Wait for a stage to finish. Returns 0 when idle, 1 after 30 min.
 wait_stage() {
   local name="$1"
   for i in $(seq 1 30); do
     local run running
-    run=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 "$API/agent/runs" -H "X-Editor-Key: $EDITOR_KEY")
-    running=$(echo "$run" | jq -r '.running.stage // empty')
+    # A failed request or a non-JSON body (DNS drop, 5xx page) means "unknown", never "finished".
+    if run=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 "$API/agent/runs" -H "X-Editor-Key: $EDITOR_KEY") \
+      && echo "$run" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      running=$(echo "$run" | jq -r '.running.stage // empty')
+    else
+      log "$name: status check failed, retrying"
+      [ "$i" -eq 30 ] && { log "$name status unknown after 30 checks, giving up"; return 1; }
+      sleep 60
+      continue
+    fi
     if [ -z "$running" ]; then
       log "$name finished"
       return 0
@@ -95,6 +112,7 @@ review_and_publish() {
       log "auto-review $card_id (try $n)"
       resp=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 -X POST "$API/agent/drafts/$card_id/auto-review?publish=true" -H "X-Editor-Key: $KEY")
       log "auto-review $card_id: $resp"
+      [ "$(echo "$resp" | jq -r '.published // empty | type' 2>/dev/null)" = "object" ] && revalidate_site
       action=$(echo "$resp" | jq -r '.action // empty')
       [ "$action" = "revise" ] || break
       [ "$n" -lt 3 ] || break
@@ -134,5 +152,6 @@ review_and_publish
 log "POST /agent/publish-next"
 resp=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 -X POST "$API/agent/publish-next" -H "X-Editor-Key: $KEY")
 log "publish-next: $resp"
+[ "$(echo "$resp" | jq -r '.published // empty | type' 2>/dev/null)" = "object" ] && revalidate_site
 
 log "cron pipeline complete"
