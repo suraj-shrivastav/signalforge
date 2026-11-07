@@ -11,6 +11,29 @@ log() { echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >> "$LOG"; }
 [ -f "$HOME/.signalforge.env" ] && { set -a; . "$HOME/.signalforge.env"; set +a; }
 [ -n "${SIGNALFORGE_KEY:-}" ] || { log "ERROR: SIGNALFORGE_KEY not set"; exit 1; }
 
+# Expire the website's cached article list after a publish. No-op unless SITE_URL and
+# REVALIDATE_SECRET are set. Never fails the run.
+revalidate_site() {
+  [ -n "${SITE_URL:-}" ] && [ -n "${REVALIDATE_SECRET:-}" ] || return 0
+  curl -sS --max-time 30 -o /dev/null -X POST "${SITE_URL%/}/api/revalidate" \
+    -H "x-revalidate-secret: $REVALIDATE_SECRET" 2>/dev/null || log "site revalidate failed"
+  return 0
+}
+
+# Publish tick: the API enforces the pace (4 h gap, 3 per 24 h), so this is safe every 15 min.
+# It runs even when the slot is done, so an approved draft goes live as soon as a pacing slot
+# opens instead of waiting for the next 6 h pipeline run.
+publish_tick() {
+  local resp
+  resp=$(curl -sS --max-time 60 -X POST "$API_BASE_URL/agent/publish-next" \
+    -H "X-Editor-Key: $SIGNALFORGE_KEY" 2>/dev/null) || return 0
+  if [ "$(echo "$resp" | jq -r '.published // empty | type' 2>/dev/null)" = "object" ]; then
+    log "publish tick: $(echo "$resp" | jq -c '{slug: .published.slug, waiting}' 2>/dev/null)"
+    revalidate_site
+  fi
+}
+[ -d "$LOCK" ] || publish_tick
+
 slot="$(date '+%Y-%m-%d')-$(printf '%02d' $(( 10#$(date +%H) / 6 * 6 )))"
 done_slot=$(sed -n 1p "$STATE" 2>/dev/null || true)
 fail_slot=$(sed -n 2p "$STATE" 2>/dev/null || true)

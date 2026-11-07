@@ -47,6 +47,8 @@ export type PublicArticle = PublicSummary & {
 };
 
 const REVALIDATE_S = 300;
+// POST /api/revalidate expires this tag right after a publish, so readers see new articles at once.
+export const ARTICLES_TAG = "articles";
 const TIMEOUT_MS = 10_000;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -162,7 +164,7 @@ export async function fetchPublicArticle(
   const response = await fetch(
     `${apiBase()}/articles/${encodeURIComponent(slug)}`,
     {
-      next: { revalidate: REVALIDATE_S },
+      next: { revalidate: REVALIDATE_S, tags: [ARTICLES_TAG] },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     },
   );
@@ -175,7 +177,7 @@ export async function fetchPublicArticles(
   limit = 50,
 ): Promise<PublicSummary[]> {
   const response = await fetch(`${apiBase()}/articles?limit=${limit}`, {
-    next: { revalidate: REVALIDATE_S },
+    next: { revalidate: REVALIDATE_S, tags: [ARTICLES_TAG] },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`API returned ${response.status}`);
