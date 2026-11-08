@@ -51,13 +51,21 @@ from signalforge.stages.research_extraction import (
     span_exists,
 )
 from signalforge.stages.research_failure import FailureClass, reason
+from signalforge.stages.research_gate import (
+    EXTRA_ROUND_RESULTS,
+    MAX_DOCUMENTS,
+    MAX_EXTRA_DOCUMENTS,
+    gap_queries,
+    has_numeric_claim,
+    is_sufficient,
+)
 
 log = logging.getLogger(__name__)
 
 RESEARCH_STAGE = "research"
 ROLE = "research_extraction"
 EMBEDDING_ROLE = "claim_embedding"
-PROMPT_VERSION = "research-v4"
+PROMPT_VERSION = "research-v5"
 # Large enough for a paper's method and results sections, not just its abstract.
 MAX_DOCUMENT_CHARS = 30_000
 SECONDARY_RESULT_CAP = 4
@@ -375,26 +383,47 @@ def _finish(
     merged_claims: tuple[ResearchClaim, ...],
     gaps: str,
 ) -> tuple[ResearchPackage, str | None]:
-    status = ResearchStatus.RESEARCHED if merged_claims else ResearchStatus.NEEDS_MORE_INFO
-    why = (
-        None
-        if merged_claims
-        else reason(
-            FailureClass.NO_CLAIMS,
-            "no claim survived extraction and the span check across "
-            f"{len(collector.documents)} documents",
-        )
-    )
+    sufficient = is_sufficient(merged_claims, len(collector.documents), collector.primary_full_text)
+    why: str | None = None
+    if not sufficient:
+        if not merged_claims:
+            why = reason(
+                FailureClass.NO_CLAIMS,
+                "no claim survived extraction and the span check across "
+                f"{len(collector.documents)} documents",
+            )
+        else:
+            facts = (
+                f"{len(merged_claims)} claims, {len(collector.documents)} documents, "
+                f"numeric claim: {'yes' if has_numeric_claim(merged_claims) else 'no'}, "
+                f"full text: {'yes' if collector.primary_full_text else 'no'}"
+            )
+            notes = "; ".join(collector.notes)
+            why = reason(FailureClass.THIN, f"{facts}. {notes}" if notes else facts)
     package = ResearchPackage(
         card_id=card.id,
         produced_by=run_id,
         parent_ids=(card.id,),
-        status=status,
+        status=ResearchStatus.RESEARCHED if sufficient else ResearchStatus.NEEDS_MORE_INFO,
         documents=tuple(collector.documents),
         claims=merged_claims,
         gaps_and_disagreements=gaps,
     )
     return package, why
+
+
+def _extra_round(
+    fetcher: PageFetcher, search: SearchProvider, title: str, collector: _Collector
+) -> None:
+    """Two fixed gap queries, bounded by the extra-document and total-document caps."""
+    added = 0
+    for query in gap_queries(title):
+        room = min(MAX_EXTRA_DOCUMENTS - added, MAX_DOCUMENTS - len(collector.documents))
+        if room <= 0:
+            break
+        added += _search_round(
+            fetcher, search, query, collector, max_results=min(EXTRA_ROUND_RESULTS, room)
+        )
 
 
 def _process_card(
@@ -429,6 +458,9 @@ def _process_card(
     candidates: list[tuple[int, ResearchClaim]] = []
     try:
         merged_claims, gaps = _extract_and_merge(gateway, run_id, card, collector, candidates)
+        if not is_sufficient(merged_claims, len(collector.documents), collector.primary_full_text):
+            _extra_round(fetcher, search, signal.title, collector)
+            merged_claims, gaps = _extract_and_merge(gateway, run_id, card, collector, candidates)
     except BudgetExceededError as exc:
         return _failed_package(card, run_id), reason(
             FailureClass.BUDGET, f"BudgetExceededError during extraction: {exc}"
