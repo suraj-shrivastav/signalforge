@@ -1,7 +1,7 @@
 """ArticleDraft: a templated draft with per-claim status for one researched card (FR-07/FR-08)."""
 
 from enum import StrEnum
-from typing import Annotated, ClassVar, Self
+from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -121,6 +121,22 @@ class ArticleFigure(BaseModel):
     caption: str = ""
 
 
+class ArticleHeadline(BaseModel):
+    """One verified number shown on the cover. Validated against the claim text by code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    value: str = Field(min_length=1, max_length=8)
+    unit: str = Field(max_length=34)
+    direction: Literal["up", "down", "none"] = "none"
+    takeaway: str = Field(max_length=80)
+    # Index into ``ArticleBody.claims``; server-side only, never in the public API.
+    claim_index: int = Field(ge=0)
+
+
+ArticleKind = Literal["paper", "benchmark", "model", "tool", "release", "discussion", "news"]
+
+
 class ArticleBody(BaseModel):
     """The structured shape every template outputs."""
 
@@ -135,6 +151,10 @@ class ArticleBody(BaseModel):
     figure: ArticleFigure | None = None
     # Sentences the checks could not ground. Empty on drafts written before flagging.
     flags: tuple[ArticleFlag, ...] = ()
+    # Cover facts. Absent on articles drafted before they existed.
+    kind: ArticleKind | None = None
+    source_label: str = Field(default="", max_length=24)
+    headline: ArticleHeadline | None = None
 
 
 class ArticleDraft(Artifact):

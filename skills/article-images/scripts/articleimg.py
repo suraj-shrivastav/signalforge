@@ -43,6 +43,7 @@ TEMPLATES = (
     "architecture",
     "bar-chart",
     "title-card",
+    "signal-card",
 )
 ROLES = ("cover", "figure")
 LIMITS = {
@@ -54,9 +55,16 @@ LIMITS = {
     "text": 8,
     "item": 30,
     "word": 6,
+    "value": 8,
+    "unit": 34,
+    "takeaway": 80,
+    "subject": 28,
     "title": 84,
     "sub": 70,
 }
+# Soft pastels of the site theme plus two quiet neutrals; the slug picks one per article.
+COVER_COLOURS = [*PALETTE, "#e8eee4", "#f1e4d3"]
+DIRECTIONS = ("up", "down", "none")
 NUMBER = re.compile(r"\d[\d.,]*")
 AUDIO = re.compile(r"audio|speech|voice|sound|acoustic|waveform|time[- ]series|signal", re.I)
 
@@ -175,6 +183,18 @@ def validate(spec: dict[str, Any], article: dict[str, Any] | None) -> list[str]:
                     )
         if "figure" in spec:
             errors.append("bar-chart takes no figure; use values.bars")
+    elif template == "signal-card":
+        if values.get("direction", "none") not in DIRECTIONS:
+            errors.append(f"values.direction: one of {list(DIRECTIONS)}")
+        has_value = bool(values.get("value"))
+        texts += [
+            _text(values, "value", errors, required=False),
+            _text(values, "unit", errors, required=has_value),
+            _text(values, "takeaway", errors),
+            _text(values, "subject", errors, required=not has_value),
+        ]
+        if "figure" in spec or "caption" in spec:
+            errors.append("signal-card takes no figure or caption; use values")
     elif template == "title-card":
         texts.append(_text(values, "title", errors))
         texts.append(_text(values, "sub", errors, required=False))
@@ -220,6 +240,7 @@ class Seed:
     """Deterministic variation from the slug: same article, same images; other articles differ."""
 
     def __init__(self, slug: str, role: str) -> None:
+        self.slug = slug
         digest = hashlib.sha256(f"{slug}|{role}".encode()).digest()
         self.n = int.from_bytes(digest[:8], "big")
         self.rng = random.Random(self.n)
@@ -434,6 +455,110 @@ def draw_layers(spec: dict[str, Any], seed: Seed) -> str:
     return "".join(parts)
 
 
+def _mix(ink: str, base: str, amount: float) -> str:
+    """`ink` blended into `base` by `amount` (0 to 1)."""
+    a = [int(ink[i : i + 2], 16) for i in (1, 3, 5)]
+    b = [int(base[i : i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(y + (x - y) * amount):02x}" for x, y in zip(a, b))  # noqa: B905
+
+
+def _rnd(sd: str, i: int) -> float:
+    return int(hashlib.sha256(f"{sd}:{i}".encode()).hexdigest()[:6], 16) / 0xFFFFFF
+
+
+_GLYPH = {".": 0.30, ",": 0.30, "%": 0.88, "+": 0.60, "\u00d7": 0.62}
+
+
+def _value_size(text: str) -> int:
+    return int(min(270, 620 / max(sum(_GLYPH.get(c, 0.62) for c in text), 1)))
+
+
+def _balanced_wrap(text: str, limit: int) -> list[str]:
+    """Greedy wrap at `limit`, then the smallest limit that keeps the line count (no orphans)."""
+
+    def greedy(width: int) -> list[str]:
+        lines = [""]
+        for word in text.split():
+            if lines[-1] and len(lines[-1]) + 1 + len(word) > width:
+                lines.append(word)
+            else:
+                lines[-1] = (lines[-1] + " " + word).strip()
+        return lines
+
+    count = len(greedy(limit))
+    best = limit
+    for width in range(limit, 5, -1):
+        if len(greedy(width)) != count:
+            break
+        best = width
+    return greedy(best)
+
+
+def step_heights(direction: str, sd: str, columns: int = 6) -> list[int]:
+    """Column heights (in tiles) of the stair: falls for down, rises for up, a dome otherwise."""
+    last = columns - 1
+    if direction == "none":
+        peak = 4 + int(sd, 16) % 3
+        return [
+            1 + int((peak - 1) * math.sin(math.pi * (i + 0.5) / columns) + 0.5)
+            for i in range(columns)
+        ]
+    heights = [columns - i for i in range(columns)]
+    for i in range(1, last):
+        v = min(columns, max(1, heights[i] + int(3 * _rnd(sd, i)) - 1))
+        heights[i] = max(heights[last], min(v, heights[i - 1]))
+    return heights[::-1] if direction == "up" else heights
+
+
+def draw_signalcard(spec: dict[str, Any], seed: Seed) -> str:
+    v = spec["values"]
+    sd = hashlib.sha256(seed.slug.encode()).hexdigest()
+    bg = COVER_COLOURS[int(sd[:8], 16) % len(COVER_COLOURS)]
+    direction = v.get("direction", "none")
+    parts = [
+        f'<clipPath id="card"><rect width="{W}" height="{H}" rx="56"/></clipPath>',
+        f'<rect width="{W}" height="{H}" rx="56" fill="{bg}"/>',
+        txt(72, 102, spec["label"].upper(), 30, weight=700, spacing=0.2),
+        txt(1128, 102, "SignalForge", 26, weight=600, fill=_mix(INK, bg, 0.5), anchor="end"),
+    ]
+    heights = step_heights(direction, sd)
+    parts.append('<g clip-path="url(#card)">')
+    x0 = 650 if direction == "up" else 710
+    for i, count in enumerate(heights):
+        fill = _mix(INK, bg, 0.09 + 0.04 * _rnd(sd, 50 + i))
+        for k in range(count):
+            opacity = max(0.4, 1 - 0.13 * k)
+            parts.append(
+                f'<rect x="{x0 + 90 * i}" y="{840 - 90 * k}" width="80" height="80" rx="18" '
+                f'fill="{fill}" opacity="{opacity:.2f}"/>'
+            )
+    parts.append("</g>")
+    if v.get("value"):
+        value = v["value"].replace("x", "\u00d7")
+        size = _value_size(value)
+        parts.append(
+            f'<text x="{72 - round(0.02 * size)}" y="410" font-family="{FONT}" font-size="{size}" '
+            f'font-weight="700" letter-spacing="-8" fill="{INK}">{esc(value)}</text>'
+        )
+        for n, line in enumerate(_balanced_wrap(v["unit"], 26)[:2]):
+            parts.append(txt(72, 474 + 52 * n, line, 44, weight=600, spacing=-0.01))
+    else:
+        name = v["subject"]
+        size = max(80, min(140, int(620 / (0.58 * max(len(name), 1)))))
+        lines = _balanced_wrap(name, max(6, int(620 / (0.58 * size))))[:2]
+        for n, line in enumerate(reversed(lines)):
+            y = 410 - n * round(size * 1.05)
+            parts.append(
+                f'<text x="72" y="{y}" font-family="{FONT}" font-size="{size}" font-weight="700" '
+                f'letter-spacing="-4" fill="{INK}">{esc(line)}</text>'
+            )
+    take = v["takeaway"]
+    size = 44 if len(take) <= 44 else 38 if len(take) <= 60 else 34
+    for n, line in enumerate(_balanced_wrap(take, int(620 / (0.54 * size)))[:3]):
+        parts.append(txt(72, 700 + round(size * 1.2) * n, line, size, weight=600, spacing=-0.01))
+    return "".join(parts)
+
+
 def draw_titlecard(spec: dict[str, Any], _seed: Seed) -> str:
     title = spec["values"]["title"]
     sub = spec["values"].get("sub", "")
@@ -557,6 +682,7 @@ DRAW = {
     "architecture": draw_architecture,
     "bar-chart": draw_barchart,
     "title-card": draw_titlecard,
+    "signal-card": draw_signalcard,
 }
 
 
@@ -733,6 +859,33 @@ def _step_items(article: dict[str, Any], generic: bool) -> list[str]:
     return items
 
 
+def cover_spec(article: dict[str, Any]) -> dict[str, Any]:
+    """The signal-card cover: kind label, headline value and unit (or the subject), takeaway."""
+    kind = article.get("kind")
+    head = article.get("headline") or None
+    dek = _trim(article.get("dek", ""), LIMITS["takeaway"])
+    label = kind.upper() if kind else "LATEST"
+    name = subject(article.get("title", ""))
+    if head:
+        values = {
+            "value": head["value"],
+            "unit": head["unit"],
+            "direction": head.get("direction", "none"),
+            "takeaway": head.get("takeaway") or dek,
+        }
+        alt = f"{label}: {head['value']} {head['unit']}. {values['takeaway']}"
+    else:
+        values = {"subject": name, "direction": "none", "takeaway": dek}
+        alt = f"{label}: {name}. {dek}"
+    return {
+        "role": "cover",
+        "template": "signal-card",
+        "label": label,
+        "values": values,
+        "alt": _cut(alt, LIMITS["alt"]),
+    }
+
+
 def plan_specs(
     article: dict[str, Any], *, generic_steps: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -741,19 +894,7 @@ def plan_specs(
     Cover: the title on a colour block. Figure: the article's first three section headings as
     a stack. Both are always accurate; a model can later replace them with a fact image.
     """
-    full = article.get("title", "")
-    head, _, rest = full.partition(":")
-    if rest and 2 <= len(head.strip()) <= 24:
-        title, sub = _trim(head, LIMITS["title"]), _trim(rest, LIMITS["sub"])
-    else:
-        title, sub = _trim(full, LIMITS["title"]), ""
-    cover: dict[str, Any] = {
-        "role": "cover",
-        "template": "title-card",
-        "label": "SignalForge",
-        "values": {"title": title, **({"sub": sub} if sub else {})},
-        "alt": _cut(f"Title card: {title}. {sub}".strip(), LIMITS["alt"]),
-    }
+    cover = cover_spec(article)
     items = _step_items(article, generic_steps)
     fig = {
         "role": "figure",

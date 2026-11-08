@@ -268,8 +268,8 @@ def test_auto_plan_is_valid_and_uses_no_invented_facts() -> None:
     planned = img.plan_valid(AUTO_ARTICLE)
     assert isinstance(planned, tuple)
     cover, figure = planned
-    assert cover["template"] == "title-card"
-    assert cover["values"]["title"] == "NEOPIC"
+    assert cover["template"] == "signal-card"
+    assert cover["values"]["subject"] == "NEOPIC"
     assert figure["values"]["items"][0].startswith("grid-based solvers")
     for spec_ in planned:
         assert "NaN" not in img.render(spec_, "neopic")
@@ -282,10 +282,86 @@ def test_auto_plan_falls_back_to_generic_steps_when_headings_break_the_rules() -
     assert planned[1]["values"]["items"] == ["The problem", "The approach", "The results"]
 
 
-def test_auto_plan_never_ends_a_title_mid_phrase() -> None:
-    article = {**AUTO_ARTICLE, "title": "How " + "Very " * 20 + "Long Titles Break in"}
-    cover, _ = img.plan_specs(article)
-    assert cover["values"]["title"].split()[-1].lower() not in img._DANGLING
+HEADLINE_ARTICLE: dict[str, Any] = {
+    "title": "Visual Token Routing: Learning to keep tokens that matter",
+    "dek": "Dynamic token routing cuts vision AI compute by up to 3.3x at the edge.",
+    "claims": [],
+    "kind": "paper",
+    "headline": {
+        "value": "3.3x",
+        "unit": "vision compute reduction",
+        "direction": "down",
+        "takeaway": "Dynamic token routing cuts vision AI compute at the edge",
+    },
+    "sections": [{"heading": "a"}, {"heading": "b"}, {"heading": "c"}],
+}
+
+
+def test_signal_card_renders_value_unit_takeaway_and_kind() -> None:
+    planned = img.plan_valid(HEADLINE_ARTICLE)
+    assert isinstance(planned, tuple)
+    cover, figure = planned
+    svg = img.render(cover, "visual-token-routing")
+    assert cover["template"] == "signal-card"
+    assert figure["template"] == "layers"
+    assert "3.3\u00d7" in svg
+    assert "PAPER" in svg
+    assert "vision compute reduction" in svg
+    assert "NaN" not in svg
+    assert img.render(cover, "visual-token-routing") == svg
+
+
+def test_signal_card_subject_variant_has_no_value() -> None:
+    cover = img.cover_spec({**HEADLINE_ARTICLE, "headline": None, "kind": None})
+    assert cover["label"] == "LATEST"
+    assert "value" not in cover["values"]
+    assert img.validate(cover, HEADLINE_ARTICLE) == []
+    assert "Visual Token Routing" in img.render(cover, "x")
+
+
+def test_signal_card_colour_and_steps_vary_by_slug() -> None:
+    cover = img.cover_spec(HEADLINE_ARTICLE)
+    colours = {
+        re.search(
+            r'<rect width="1200" height="900" rx="56" fill="(#\w+)"', img.render(cover, f"s{i}")
+        )[1]  # type: ignore[index]
+        for i in range(40)
+    }
+    assert len(colours) >= 5
+    shapes = {tuple(img.step_heights("down", f"{i:064x}")) for i in range(40)}
+    assert len(shapes) >= 4
+
+
+def test_step_heights_follow_direction_and_stay_in_range() -> None:
+    for i in range(30):
+        sd = f"{i * 7919:064x}"
+        down, up, none = (img.step_heights(d, sd) for d in ("down", "up", "none"))
+        assert down[0] == 6
+        assert down[-1] == 1
+        assert up == down[::-1]
+        assert all(down[j] >= down[j + 1] for j in range(5))
+        assert all(1 <= h <= 6 for h in none)
+        assert none[0] == none[-1]
+
+
+def test_wrap_leaves_no_single_word_last_line() -> None:
+    lines = img._balanced_wrap("Dynamic token routing cuts vision AI compute at the edge", 34)
+    assert len(lines[-1].split()) >= 2
+
+
+def test_signal_card_validation_rejects_bad_input() -> None:
+    cover = img.cover_spec(HEADLINE_ARTICLE)
+    bad = {**cover, "values": {**cover["values"], "value": "9.9x"}}
+    assert any("9.9" in e for e in img.validate(bad, HEADLINE_ARTICLE))
+    bad = {**cover, "values": {**cover["values"], "direction": "sideways"}}
+    assert any("direction" in e for e in img.validate(bad, HEADLINE_ARTICLE))
+    long_value = {**cover, "values": {**cover["values"], "value": "123456789"}}
+    assert any("value" in e for e in img.validate(long_value, HEADLINE_ARTICLE))
+
+
+def test_long_value_scales_down_to_fit() -> None:
+    assert img._value_size("12,400") < img._value_size("3.3\u00d7") <= 270
+    assert img._value_size("12,400") * (5 * 0.62 + 0.3) <= 620
 
 
 def test_waveform_is_rejected_for_non_audio_articles() -> None:
