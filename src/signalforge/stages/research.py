@@ -9,7 +9,7 @@ import logging
 import urllib.parse
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html import escape, unescape
 
@@ -44,6 +44,7 @@ from signalforge.stages.research_extraction import (
     reference_links,
     span_exists,
 )
+from signalforge.stages.research_failure import FailureClass, reason
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +56,6 @@ PROMPT_VERSION = "research-v4"
 MAX_DOCUMENT_CHARS = 30_000
 SECONDARY_RESULT_CAP = 4
 REFERENCE_LINK_CAP = 3
-_MAX_REASON_CHARS = 500
 
 _SYSTEM = """You extract factual claims from one document for a research package.
 
@@ -166,49 +166,36 @@ def _failed_package(card: TopicCardRow, run_id: uuid.UUID) -> ResearchPackage:
     )
 
 
-def _process_card(
-    gateway: LLMGateway,
-    fetcher: PageFetcher,
-    search: SearchProvider,
-    card: TopicCardRow,
-    signal: Signal,
-    run_id: uuid.UUID,
-) -> tuple[ResearchPackage, str | None]:
-    """The package, plus why it is not 'researched' (None when it is)."""
-    # Step 3: primary fetch.
-    try:
-        html = fetcher.fetch_html(signal.canonical_url)
-        primary_text = extract_clean_text(html)
-    except SignalForgeError:
-        primary_text = None
-    if primary_text is None:
-        return (
-            ResearchPackage(
-                card_id=card.id,
-                produced_by=run_id,
-                parent_ids=(card.id,),
-                status=ResearchStatus.NEEDS_MORE_INFO,
-            ),
-            "primary source could not be fetched or had no extractable text",
-        )
+@dataclass
+class _Collector:
+    """Documents and texts gathered for one card, with de-duplication state."""
 
-    documents: list[ResearchDocument] = []
-    texts: list[str] = []
-    documents.append(
-        _build_document(
-            url=signal.canonical_url,
-            title=signal.title,
-            source_label=signal.source,
+    documents: list[ResearchDocument] = field(default_factory=list)
+    texts: list[str] = field(default_factory=list)
+    seen_urls: set[str] = field(default_factory=set)
+    seen_texts: set[str] = field(default_factory=set)
+    notes: list[str] = field(default_factory=list)
+    primary_full_text: bool = False
+    primary_failure: FailureClass | None = None
+    extracted_upto: int = 0
+
+    def add_primary(
+        self, url: str, title: str, source_label: str, clean_text: str, html: str
+    ) -> None:
+        document = _build_document(
+            url=url,
+            title=title,
+            source_label=source_label,
             is_primary=True,
-            clean_text=primary_text,
+            clean_text=clean_text,
             html=html,
         )
-    )
-    texts.append(primary_text)
-    seen_urls = {signal.canonical_url}
-    seen_texts = {documents[0].raw_text_ref}
+        self.documents.append(document)
+        self.texts.append(clean_text)
+        self.seen_urls.add(url)
+        self.seen_texts.add(document.raw_text_ref)
 
-    def add_secondary(url: str, title: str, clean_text: str, html: str) -> None:
+    def add_secondary(self, url: str, title: str, clean_text: str, html: str) -> bool:
         document = _build_document(
             url=url,
             title=title,
@@ -218,33 +205,69 @@ def _process_card(
             html=html,
         )
         # A mirror of a page already held is not independent evidence.
-        if document.raw_text_ref in seen_texts:
-            return
-        seen_texts.add(document.raw_text_ref)
-        documents.append(document)
-        texts.append(clean_text)
+        if document.raw_text_ref in self.seen_texts:
+            return False
+        self.seen_texts.add(document.raw_text_ref)
+        self.documents.append(document)
+        self.texts.append(clean_text)
+        return True
 
-    # Step 4: papers, model cards and repos the primary source itself cites.
-    for link in reference_links(html, signal.canonical_url, limit=REFERENCE_LINK_CAP):
-        seen_urls.add(link.url)
+    def note(self, url: str, why: str) -> None:
+        self.notes.append(f"{url}: {why}")
+        log.info("research source skipped", extra={"url": url, "why": why})
+
+
+def _collect_primary(fetcher: PageFetcher, signal: Signal, collector: _Collector) -> str | None:
+    """Fetch the primary source. Returns its HTML, or None (with a note) when it failed."""
+    try:
+        html = fetcher.fetch_html(signal.canonical_url)
+        primary_text = extract_clean_text(html)
+    except SignalForgeError as exc:
+        collector.primary_failure = FailureClass.BLOCKED
+        collector.note(signal.canonical_url, f"primary fetch failed: {type(exc).__name__}")
+        return None
+    if primary_text is None:
+        collector.primary_failure = FailureClass.EMPTY
+        collector.note(signal.canonical_url, "primary had no extractable text")
+        return None
+    collector.add_primary(signal.canonical_url, signal.title, signal.source, primary_text, html)
+    return html
+
+
+def _collect_references(
+    fetcher: PageFetcher, primary_html: str, signal: Signal, collector: _Collector
+) -> None:
+    """Papers, model cards and repos the primary source itself cites."""
+    for link in reference_links(primary_html, signal.canonical_url, limit=REFERENCE_LINK_CAP):
+        collector.seen_urls.add(link.url)
         fetched = _fetch_reference(fetcher, link.fetch_urls)
         if fetched is not None:
             reference_html, reference_text = fetched
             hostname = urllib.parse.urlsplit(link.url).hostname or link.url
-            add_secondary(
+            collector.add_secondary(
                 link.url, page_title(reference_html) or hostname, reference_text, reference_html
             )
 
-    # Step 5-6: secondary search and documents.
+
+def _search_round(
+    fetcher: PageFetcher,
+    search: SearchProvider,
+    query: str,
+    collector: _Collector,
+    *,
+    max_results: int,
+) -> int:
+    """One search query and its fetched results. Returns how many documents were added."""
+    added = 0
     try:
-        results = search.search(card.what_happened, max_results=SECONDARY_RESULT_CAP)
+        results = search.search(query, max_results=max_results)
     except SignalForgeError:
-        log.warning("secondary search failed", extra={"card_id": str(card.id)})
+        log.warning("secondary search failed", extra={"query": query})
         results = []
     for result in results:
-        if result.url in seen_urls:
+        if result.url in collector.seen_urls:
             continue
-        seen_urls.add(result.url)
+        collector.seen_urls.add(result.url)
         try:
             secondary_html = fetcher.fetch_html(result.url)
             secondary_text = extract_clean_text(secondary_html)
@@ -253,51 +276,114 @@ def _process_card(
         if secondary_text is None:
             continue
         hostname = urllib.parse.urlsplit(result.url).hostname or result.url
-        add_secondary(result.url, result.title.strip() or hostname, secondary_text, secondary_html)
+        if collector.add_secondary(
+            result.url, result.title.strip() or hostname, secondary_text, secondary_html
+        ):
+            added += 1
+    return added
 
-    # Step 7-8: per-document extraction, span check, merge.
-    candidates: list[tuple[int, ResearchClaim]] = []
-    for doc_index, clean_text in enumerate(texts):
+
+def _extract_and_merge(
+    gateway: LLMGateway,
+    run_id: uuid.UUID,
+    card: TopicCardRow,
+    collector: _Collector,
+    candidates: list[tuple[int, ResearchClaim]],
+) -> tuple[tuple[ResearchClaim, ...], str]:
+    """Extract claims from documents not yet processed, then embed and merge all candidates.
+
+    May raise ``BudgetExceededError``.
+    """
+    start = collector.extracted_upto
+    collector.extracted_upto = len(collector.texts)
+    for doc_index in range(start, len(collector.texts)):
         try:
             candidates.extend(
-                _extract_document_claims(gateway, run_id, card, doc_index, clean_text)
+                _extract_document_claims(
+                    gateway, run_id, card, doc_index, collector.texts[doc_index]
+                )
             )
-        except BudgetExceededError as exc:
-            return _failed_package(card, run_id), f"BudgetExceededError during extraction: {exc}"
         except ArtifactValidationError:
             log.warning(
                 "research extraction invalid, document skipped", extra={"card_id": str(card.id)}
             )
             continue
+    if not candidates:
+        return (), ""
+    embeddings = gateway.embed(
+        role=EMBEDDING_ROLE,
+        texts=[claim.text for _, claim in candidates],
+        stage_run_id=run_id,
+    )
+    return merge_claims(candidates, embeddings)
 
-    if candidates:
-        try:
-            embeddings = gateway.embed(
-                role=EMBEDDING_ROLE,
-                texts=[claim.text for _, claim in candidates],
-                stage_run_id=run_id,
-            )
-        except BudgetExceededError as exc:
-            return _failed_package(card, run_id), f"BudgetExceededError during embedding: {exc}"
-        merged_claims, gaps_and_disagreements = merge_claims(candidates, embeddings)
-    else:
-        merged_claims, gaps_and_disagreements = (), ""
+
+def _finish(
+    card: TopicCardRow,
+    run_id: uuid.UUID,
+    collector: _Collector,
+    merged_claims: tuple[ResearchClaim, ...],
+    gaps: str,
+) -> tuple[ResearchPackage, str | None]:
     status = ResearchStatus.RESEARCHED if merged_claims else ResearchStatus.NEEDS_MORE_INFO
-    reason = (
+    why = (
         None
         if merged_claims
-        else f"no claim survived extraction and the span check across {len(documents)} documents"
+        else reason(
+            FailureClass.NO_CLAIMS,
+            "no claim survived extraction and the span check across "
+            f"{len(collector.documents)} documents",
+        )
     )
     package = ResearchPackage(
         card_id=card.id,
         produced_by=run_id,
         parent_ids=(card.id,),
         status=status,
-        documents=tuple(documents),
+        documents=tuple(collector.documents),
         claims=merged_claims,
-        gaps_and_disagreements=gaps_and_disagreements,
+        gaps_and_disagreements=gaps,
     )
-    return package, reason
+    return package, why
+
+
+def _process_card(
+    gateway: LLMGateway,
+    fetcher: PageFetcher,
+    search: SearchProvider,
+    card: TopicCardRow,
+    signal: Signal,
+    run_id: uuid.UUID,
+) -> tuple[ResearchPackage, str | None]:
+    """The package, plus why it is not 'researched' (None when it is)."""
+    collector = _Collector()
+    primary_html = _collect_primary(fetcher, signal, collector)
+    if primary_html is None:
+        kind = collector.primary_failure or FailureClass.BLOCKED
+        text = (
+            "primary source could not be fetched"
+            if kind is FailureClass.BLOCKED
+            else "primary source had no extractable text"
+        )
+        return (
+            ResearchPackage(
+                card_id=card.id,
+                produced_by=run_id,
+                parent_ids=(card.id,),
+                status=ResearchStatus.NEEDS_MORE_INFO,
+            ),
+            reason(kind, text),
+        )
+    _collect_references(fetcher, primary_html, signal, collector)
+    _search_round(fetcher, search, card.what_happened, collector, max_results=SECONDARY_RESULT_CAP)
+    candidates: list[tuple[int, ResearchClaim]] = []
+    try:
+        merged_claims, gaps = _extract_and_merge(gateway, run_id, card, collector, candidates)
+    except BudgetExceededError as exc:
+        return _failed_package(card, run_id), reason(
+            FailureClass.BUDGET, f"BudgetExceededError during extraction: {exc}"
+        )
+    return _finish(card, run_id, collector, merged_claims, gaps)
 
 
 def run_research(
@@ -338,12 +424,15 @@ def run_research(
                 budget = Budget(BudgetScope.TOPIC, budget_limits)
                 gateway = gateway_factory(session, budget)
                 try:
-                    package, reason = _process_card(gateway, fetcher, search, card, signal, run_id)
+                    package, reason_text = _process_card(
+                        gateway, fetcher, search, card, signal, run_id
+                    )
                 except SignalForgeError as exc:
                     # Typed error text, same as the failed llm_calls row; no secrets in it.
-                    reason = f"{type(exc).__name__}: {exc}"[:_MAX_REASON_CHARS]
+                    reason_text = reason(FailureClass.ERROR, f"{type(exc).__name__}: {exc}")
                     log.warning(
-                        "research card failed", extra={"card_id": str(card.id), "error": reason}
+                        "research card failed",
+                        extra={"card_id": str(card.id), "error": reason_text},
                     )
                     package = _failed_package(card, run_id)
                 if package.status == ResearchStatus.RESEARCHED:
@@ -357,7 +446,7 @@ def run_research(
                     cost_usd=budget.spent_usd,
                     calls=budget.calls,
                     tokens=budget.tokens,
-                    failure_reason=reason,
+                    failure_reason=reason_text,
                 )
                 session.commit()
             run.status = StageRunStatus.SUCCEEDED
