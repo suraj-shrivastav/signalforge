@@ -62,8 +62,22 @@ LIMITS = {
     "title": 84,
     "sub": 70,
 }
-# Soft pastels of the site theme plus two quiet neutrals; the slug picks one per article.
-COVER_COLOURS = [*PALETTE, "#e8eee4", "#f1e4d3"]
+# Soft pastels (all read well under the site ink): the slug picks one per article.
+COVER_COLOURS = [
+    "#f4c9cc",  # rose
+    "#f7d7dd",  # blush
+    "#f8d9c4",  # peach
+    "#f6e0a4",  # butter
+    "#f1ecb8",  # lemon
+    "#bfe0d2",  # mint
+    "#d3e3c4",  # sage
+    "#c3d5ef",  # sky
+    "#cdd2f3",  # periwinkle
+    "#dccdef",  # lilac
+    "#ecd0ea",  # orchid
+    "#f1e4d3",  # sand
+    "#e8eee4",  # mist
+]
 DIRECTIONS = ("up", "down", "none")
 NUMBER = re.compile(r"\d[\d.,]*")
 AUDIO = re.compile(r"audio|speech|voice|sound|acoustic|waveform|time[- ]series|signal", re.I)
@@ -863,9 +877,11 @@ def cover_spec(article: dict[str, Any]) -> dict[str, Any]:
     """The signal-card cover: kind label, headline value and unit (or the subject), takeaway."""
     kind = article.get("kind")
     head = article.get("headline") or None
-    dek = _trim(article.get("dek", ""), LIMITS["takeaway"])
+    first = re.split(r"(?<=[.!?])\s", article.get("dek", "").strip())[0]
+    fits = 12 <= len(first) <= LIMITS["takeaway"]
+    dek = _trim(first if fits else article.get("title", ""), LIMITS["takeaway"])
     label = kind.upper() if kind else "LATEST"
-    name = subject(article.get("title", ""))
+    name = article.get("subject") or subject(article.get("title", ""))
     if head:
         values = {
             "value": head["value"],
