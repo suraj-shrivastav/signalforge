@@ -34,6 +34,8 @@ class ResearchPackageRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersi
     gaps_and_disagreements: Mapped[str] = mapped_column(Text, default="", server_default="")
     # Why the card did not reach 'researched' (typed text, no secrets); NULL otherwise.
     failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    # Research runs on this card so far; at MAX_RESEARCH_ATTEMPTS a failed card is parked.
+    attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal("0"), server_default=text("0")
     )

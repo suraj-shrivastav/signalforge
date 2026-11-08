@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     llm_extra_body: dict[str, Any] = Field(default_factory=dict)
     # Extra fields for embedding requests, e.g. NVIDIA's {"input_type": "passage"}.
     llm_embed_extra_body: dict[str, Any] = Field(default_factory=dict)
+    # Texts per embeddings request; 0 means all in one request. Set 1 for hosted models that
+    # fail on batches (NVIDIA nemotron embed answers HTTP 500 above one text).
+    llm_embed_batch_size: int = Field(default=0, ge=0)
     # Output cap sent as max_tokens on every chat call. Reasoning models spend part of it
     # thinking before the reply, so it leaves room for that plus a 1000-word draft as JSON.
     llm_max_output_tokens: int = Field(default=16_384, ge=1)

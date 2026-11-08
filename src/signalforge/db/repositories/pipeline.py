@@ -45,6 +45,7 @@ class PipelineRepository:
                 Signal.title,
                 TopicCardRow.created_at,
                 ResearchPackageRow.status,
+                ResearchPackageRow.attempts,
                 ArticleDraftRow.status,
                 ArticleDraftRow.review_status,
                 PublishedArticleRow.status,
@@ -66,6 +67,7 @@ class PipelineRepository:
             title,
             created,
             research,
+            attempts,
             draft,
             review,
             pub,
@@ -75,6 +77,7 @@ class PipelineRepository:
             body = body or {}
             state = classify(
                 research=research,
+                research_attempts=attempts or 0,
                 draft=draft,
                 review=review,
                 published=pub,

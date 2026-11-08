@@ -61,19 +61,26 @@ class DirectFetcher:
         self._resolve = resolve
         self._robots: dict[str, RobotFileParser] = {}
 
-    def fetch_html(self, url: str) -> str:
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:
+        """Fetch ``url``; ``max_attempts=1`` makes every request a single try (no retries)."""
         try:
             parsed = httpx.URL(url)
         except httpx.InvalidURL as exc:
             raise _refuse("invalid url") from exc
-        return self._follow(parsed, check_robots=True).text
+        return self._follow(parsed, check_robots=True, max_attempts=max_attempts).text
 
-    def _follow(self, url: httpx.URL, *, check_robots: bool) -> httpx.Response:
+    def _follow(
+        self, url: httpx.URL, *, check_robots: bool, max_attempts: int | None = None
+    ) -> httpx.Response:
         for _ in range(MAX_REDIRECTS + 1):
             self._guard(url)
-            if check_robots and not self._robots_allows(url):
+            if check_robots and not self._robots_allows(url, max_attempts):
                 raise ProviderRejectedError("disallowed by robots.txt", context={"host": url.host})
-            response = call_with_retry(functools.partial(self._get_once, url), sleep=self._sleep)
+            response = call_with_retry(
+                functools.partial(self._get_once, url),
+                sleep=self._sleep,
+                **({} if max_attempts is None else {"attempts": max_attempts}),
+            )
             if response.status_code not in _REDIRECT_CODES:
                 return response
             try:
@@ -106,18 +113,22 @@ class DirectFetcher:
         if not addresses or not all(_is_public(a) for a in addresses):
             raise _refuse("resolves to non-public address")
 
-    def _robots_allows(self, url: httpx.URL) -> bool:
+    def _robots_allows(self, url: httpx.URL, max_attempts: int | None = None) -> bool:
         origin = f"{url.scheme}://{url.netloc.decode('ascii')}"
         parser = self._robots.get(origin)
         if parser is None:
-            parser = self._load_robots(httpx.URL(origin + "/robots.txt"))
+            parser = self._load_robots(httpx.URL(origin + "/robots.txt"), max_attempts)
             self._robots[origin] = parser
         return parser.can_fetch(USER_AGENT, str(url))
 
-    def _load_robots(self, robots_url: httpx.URL) -> RobotFileParser:
+    def _load_robots(
+        self, robots_url: httpx.URL, max_attempts: int | None = None
+    ) -> RobotFileParser:
         parser = RobotFileParser()
         try:
-            lines = self._follow(robots_url, check_robots=False).text.splitlines()
+            lines = self._follow(
+                robots_url, check_robots=False, max_attempts=max_attempts
+            ).text.splitlines()
         except ProviderRejectedError as exc:
             status = exc.context.get("status")
             is_4xx = isinstance(status, int) and httpx.codes.is_client_error(status)

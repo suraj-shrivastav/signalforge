@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from signalforge.core.artifacts.research import ResearchPackage, ResearchStatus
 from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
+from signalforge.pipeline_state import MAX_RESEARCH_ATTEMPTS
 
 _RETRYABLE = (ResearchStatus.FAILED.value, ResearchStatus.NEEDS_MORE_INFO.value)
 
@@ -22,7 +23,8 @@ class ResearchRepository:
         """Cards whose LATEST decision is 'accepted' and that have no research_packages row.
 
         With ``retry_failed``, a 'failed' or 'needs_more_info' package does not count as
-        researched, and ``insert`` replaces it.
+        researched, and ``insert`` replaces it, until it has used MAX_RESEARCH_ATTEMPTS
+        attempts (then the card is parked and not returned).
 
         Best card first (the score set when the card was made), then oldest, then id.
         """
@@ -38,7 +40,12 @@ class ResearchRepository:
         )
         researched = select(ResearchPackageRow.card_id)
         if retry_failed:
-            researched = researched.where(ResearchPackageRow.status.not_in(_RETRYABLE))
+            researched = researched.where(
+                or_(
+                    ResearchPackageRow.status.not_in(_RETRYABLE),
+                    ResearchPackageRow.attempts >= MAX_RESEARCH_ATTEMPTS,
+                )
+            )
         query = (
             select(TopicCardRow, Signal)
             .join(Signal, Signal.id == TopicCardRow.signal_id)
@@ -82,10 +89,14 @@ class ResearchRepository:
         }
         statement = (
             insert(ResearchPackageRow)
-            .values(id=package.id, card_id=package.card_id, **values)
+            .values(id=package.id, card_id=package.card_id, attempts=1, **values)
             .on_conflict_do_update(
                 index_elements=["card_id"],
-                set_={**values, "updated_at": func.now()},
+                set_={
+                    **values,
+                    "attempts": ResearchPackageRow.__table__.c.attempts + 1,
+                    "updated_at": func.now(),
+                },
                 where=ResearchPackageRow.status.in_(_RETRYABLE),
             )
             .returning(ResearchPackageRow.id)

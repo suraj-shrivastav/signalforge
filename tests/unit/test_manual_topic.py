@@ -27,7 +27,7 @@ class Fetcher:
         self.pages = pages
         self.asked: list[str] = []
 
-    def fetch_html(self, url: str) -> str:
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:  # noqa: ARG002
         self.asked.append(url)
         if url not in self.pages:
             raise ProviderUnavailableError("down")

@@ -41,6 +41,7 @@ def _openai_compatible(settings: Settings) -> LLMProvider:
         httpx.Client(),
         extra_body=settings.llm_extra_body,
         embed_extra_body=settings.llm_embed_extra_body,
+        embed_batch_size=settings.llm_embed_batch_size,
         max_output_tokens=settings.llm_max_output_tokens,
     )
 

@@ -24,6 +24,7 @@ endpoints below).
 | `publish` | `POST /agent/publish-next` (one call for all waiting drafts; it follows the publish pace) |
 | `attach_images` | follow `skills/article-images/SKILL.md` |
 | `human_review` | needs a person (draft had no usable claims); skip or reject |
+| `parked` | research failed twice (`research_packages.attempts` reached 2); report it to the owner, never retry |
 | `wait`, `none` | nothing to do |
 
 ## Decisions and reason tags

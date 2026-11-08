@@ -50,7 +50,7 @@ class FakeFetcher:
     def __init__(self, pages: dict[str, str | Exception]) -> None:
         self._pages = pages
 
-    def fetch_html(self, url: str) -> str:
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:
         page = self._pages.get(url, "<html></html>")
         if isinstance(page, Exception):
             raise page

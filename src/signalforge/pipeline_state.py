@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass
 
+# A card whose research failed or came back thin this many times is parked, not retried.
+MAX_RESEARCH_ATTEMPTS: int = 2
+
 
 @dataclass(frozen=True)
 class CardState:
@@ -17,12 +20,16 @@ def classify(
     published: str | None,
     has_cover: bool,
     has_figure: bool,
+    research_attempts: int = 0,
 ) -> CardState:
     """Pure mapping from stored statuses to a stage and the next action for the agent."""
     if research is None:
         return CardState("accepted", "run_research")
     if research == "researching":
         return CardState("researching", "wait")
+    if research in ("failed", "needs_more_info") and research_attempts >= MAX_RESEARCH_ATTEMPTS:
+        # For agents: report to the owner, never retry.
+        return CardState("research_parked", "parked")
     if research in ("failed", "needs_more_info"):
         return CardState(f"research_{research}", "retry_research")
     if draft is None:

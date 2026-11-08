@@ -113,6 +113,7 @@ class OpenAICompatibleProvider:
         extra_body: dict[str, Any] | None = None,
         max_output_tokens: int | None = None,
         embed_extra_body: dict[str, Any] | None = None,
+        embed_batch_size: int = 0,
     ) -> None:
         # Without a cap, routers such as OpenRouter reserve credit for the model's full
         # output window and reject the call, and one runaway reply can blow a budget.
@@ -124,6 +125,9 @@ class OpenAICompatibleProvider:
         self._extra_headers = extra_headers or {}
         self._extra_body = extra_body or {}
         self._embed_extra_body = embed_extra_body or {}
+        # 0 sends every text in one request. Some hosted embedding models answer HTTP 500 to
+        # any batch above 1 text (seen with NVIDIA's nemotron embed), so 1 is a valid setting.
+        self._embed_batch_size = embed_batch_size
 
     def chat(
         self,
@@ -173,6 +177,20 @@ class OpenAICompatibleProvider:
         return self._parse(response, latency_ms)
 
     def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
+        size = self._embed_batch_size
+        if size <= 0 or len(texts) <= size:
+            return self._embed_batch(model, texts, timeout_s=timeout_s)
+        replies = [
+            self._embed_batch(model, texts[i : i + size], timeout_s=timeout_s)
+            for i in range(0, len(texts), size)
+        ]
+        return EmbeddingReply(
+            vectors=[v for reply in replies for v in reply.vectors],
+            input_tokens=sum(r.input_tokens for r in replies),
+            latency_ms=sum(r.latency_ms for r in replies),
+        )
+
+    def _embed_batch(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
         headers = dict(self._extra_headers)
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
