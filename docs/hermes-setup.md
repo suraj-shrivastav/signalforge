@@ -99,6 +99,10 @@ hermes cron run <job-id>                   # fire the evening job now
 
 A healthy run logs `tick finished`, `accept ...: HTTP 201`, `research finished`, `draft finished`, `auto-review ...`, `publish-next`, `cron pipeline complete`.
 
+## Models
+
+The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; see `src/signalforge/llm/roles.py`) and works with any OpenAI-compatible endpoint. Hermes' own model (currently Nemotron) is separate: it only schedules and reports, so changing either never affects the other. The article writer and the claim judge must stay in different model families.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |

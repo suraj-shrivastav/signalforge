@@ -42,7 +42,7 @@ For each `topic_cards` row with an editor decision of `accept` and no existing `
 
 1. Create a `Budget(scope=TOPIC, limits=...)` for this card (limits from settings, matching PRD's ~$0.50/topic starting budget).
 2. Fetch the card's primary source URL via `httpx` (existing client pattern) → `trafilatura.extract()` → clean text. Fetch failure → package `status = needs_more_info`, stop here, editor sees it via the existing `need-more-info` reason tag (FR-05, already built).
-3. Call Tavily with the card's title/summary as query → top 3 secondary results (fixed cap, cost control) → fetch + extract each the same way. A secondary fetch failure is skipped, not fatal (primary source alone is enough to proceed).
+3. Call Tavily with the card's title/summary as query → top 4 secondary results (fixed cap, cost control; code constant `SECONDARY_RESULT_CAP`) → fetch + extract each the same way. A secondary fetch failure is skipped, not fatal (primary source alone is enough to proceed).
 4. For each successfully extracted document, call the `research_extraction` role once: input is that document's clean text plus the card's topic summary; output is a list of candidate claims, each with a verbatim quoted span.
 5. For each candidate claim, check the span exists verbatim in that document's clean text. Fails → drop, do not surface.
 6. Merge surviving claims across documents: identical or near-identical claims from 2+ documents get both document indices recorded (feeds the "primary, or 2 independent sources" language in PRD §11, though FR-08 assigns the actual status later).
@@ -62,3 +62,11 @@ Budget exhaustion (`BudgetExceededError`) at any point → package `status = fai
 ## Out of scope
 
 Claim status assignment (`verified`/`supported`/`uncertain`/`conflicting`/`unverified` beyond the mechanical span check) — FR-08. Writer/drafting — FR-07, consumes this stage's output unchanged. SEO, publishing — untouched. Additional search providers, PDF extraction, non-English sources, retry/backoff tuning beyond try-once — deferred; try-once failures route to `needs_more_info` or `failed` rather than retrying.
+
+## Update 2026-11-08 (research depth, prompt research-v5)
+
+- **Sufficiency gate.** A package is `researched` only with at least 3 claims, at least 1 claim containing a digit, and at least 2 documents or a full-text paper as primary (`stages/research_gate.py`). When the gate fails, one extra round runs two fixed queries (`<title> benchmark results`, `<title> limitations criticism`) with at most 4 extra documents and at most 8 documents in total. If it still fails the package is `needs_more_info` with failure class `thin`.
+- **arXiv papers.** The primary and reference papers are read by section (abstract, intro, results, experiments, evaluation, ablation, limitation, discussion, conclusion, analysis) from `arxiv.org/html/<id>`, then `ar5iv`, then the abs page, one request per URL (`stages/research_arxiv.py`). No PDF parsing.
+- **Retry cap.** `research_packages.attempts` counts runs. After 2 failed attempts the card is `parked` (`next_action = parked`) and is not picked again. `failure_reason` starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget` or `error`.
+- **Assessor.** The relevance prompt (`assess-v2`) includes the first 800 characters of the signal summary.
+- **Eval.** `scripts/eval_research.py` replays stored cards without writing to the database; see `docs/pipeline/eval-research.md`.
