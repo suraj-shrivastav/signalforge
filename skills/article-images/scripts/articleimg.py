@@ -42,6 +42,7 @@ TEMPLATES = (
     "layers",
     "architecture",
     "bar-chart",
+    "title-card",
 )
 ROLES = ("cover", "figure")
 LIMITS = {
@@ -53,8 +54,11 @@ LIMITS = {
     "text": 8,
     "item": 30,
     "word": 6,
+    "title": 84,
+    "sub": 70,
 }
 NUMBER = re.compile(r"\d[\d.,]*")
+AUDIO = re.compile(r"audio|speech|voice|sound|acoustic|waveform|time[- ]series|signal", re.I)
 
 
 class SpecError(Exception):
@@ -171,6 +175,11 @@ def validate(spec: dict[str, Any], article: dict[str, Any] | None) -> list[str]:
                     )
         if "figure" in spec:
             errors.append("bar-chart takes no figure; use values.bars")
+    elif template == "title-card":
+        texts.append(_text(values, "title", errors))
+        texts.append(_text(values, "sub", errors, required=False))
+        if "figure" in spec or "caption" in spec:
+            errors.append("title-card takes no figure or caption; use values.title")
     elif template == "layers":
         items = values.get("items")
         if not isinstance(items, list) or len(items) != 3:
@@ -183,6 +192,8 @@ def validate(spec: dict[str, Any], article: dict[str, Any] | None) -> list[str]:
                     texts.append(item)
         if "figure" in spec or "caption" in spec:
             errors.append("layers takes no figure or caption; use values.items")
+    if article is not None and template == "waveform" and not AUDIO.search(article_text(article)):
+        errors.append("waveform is for audio, speech or signal articles; choose another template")
     if article is not None:
         source = _num_tokens(article_text(article))
         for token in sorted(set().union(*(_num_tokens(t) for t in texts if t))):
@@ -423,6 +434,28 @@ def draw_layers(spec: dict[str, Any], seed: Seed) -> str:
     return "".join(parts)
 
 
+def draw_titlecard(spec: dict[str, Any], _seed: Seed) -> str:
+    title = spec["values"]["title"]
+    sub = spec["values"].get("sub", "")
+    size = 150 if len(title) <= 10 else 104 if len(title) <= 28 else 78 if len(title) <= 60 else 66
+    per_line = max(6, int(1040 / (0.58 * size)))
+    lines: list[str] = []
+    for word in title.split():
+        if lines and len(lines[-1]) + 1 + len(word) <= per_line:
+            lines[-1] += " " + word
+        else:
+            lines.append(word)
+    lines = lines[:4]
+    parts = [label(spec["label"])]
+    y = 330
+    for line in lines:
+        parts.append(txt(80, y, line, size, spacing=-0.03))
+        y += size * 1.05
+    if sub:
+        parts.append(txt(80, y + 50, sub, fit(sub, 1040, 52, 0.56), weight=600, opacity=0.75))
+    return "".join(parts)
+
+
 def _arrow(x1: float, y1: float, x2: float, y2: float) -> str:
     """A line with a solid head, pointing from (x1, y1) to (x2, y2)."""
     length = math.hypot(x2 - x1, y2 - y1)
@@ -523,6 +556,7 @@ DRAW = {
     "layers": draw_layers,
     "architecture": draw_architecture,
     "bar-chart": draw_barchart,
+    "title-card": draw_titlecard,
 }
 
 
@@ -632,6 +666,147 @@ def upload_via_api(
         raise SpecError(f"upload failed (HTTP {status}): {reply[:200].decode(errors='replace')}")
 
 
+# ---------------------------------------------------------------- auto planner
+# Deterministic specs for the unattended path: no model chooses a template. The rules only
+# use text that is in the article, and the normal validator still checks every number.
+
+_DANGLING = {
+    "in",
+    "of",
+    "for",
+    "to",
+    "the",
+    "a",
+    "an",
+    "and",
+    "on",
+    "at",
+    "with",
+    "that",
+    "by",
+    "than",
+    "from",
+    "as",
+    "is",
+}
+_STOP_LEAD = {"how", "why", "what", "when", "a", "an", "the", "can", "does", "do", "is", "are"}
+
+
+def _clean(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip(" .,:;-")
+
+
+def _cut(text: str, limit: int) -> str:
+    """Longest whole-word prefix of text within limit characters."""
+    text = _clean(text)
+    if len(text) <= limit:
+        return text
+    return _clean(text[:limit].rsplit(" ", 1)[0])
+
+
+def _trim(text: str, limit: int) -> str:
+    """Cut at a word boundary and drop dangling joiners so the text does not end mid-phrase."""
+    words = _cut(text, limit).split()
+    while len(words) > 1 and words[-1].lower() in _DANGLING:
+        words.pop()
+    return " ".join(words)
+
+
+def subject(title: str) -> str:
+    """The named thing the article is about: the part before a colon, else the first words."""
+    head = title.split(":", 1)[0] if ":" in title else title
+    words = [w for w in head.split() if w]
+    while len(words) > 1 and words[0].lower() in _STOP_LEAD:
+        words.pop(0)
+    return _cut(" ".join(words[:3]), LIMITS["label"])
+
+
+def _step_items(article: dict[str, Any], generic: bool) -> list[str]:
+    names = ["The problem", "The approach", "The results"]
+    heads = [s.get("heading", "") for s in article.get("sections", [])][:3]
+    if generic or len(heads) < 3:
+        return names
+    items = []
+    for head in heads:
+        tail = head.split(":", 1)[1] if ":" in head else head
+        items.append(_cut(tail, LIMITS["item"]) or head[: LIMITS["item"]])
+    return items
+
+
+def plan_specs(
+    article: dict[str, Any], *, generic_steps: bool = False
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build (cover, figure) from the article's own words. Invents no fact and picks no figure.
+
+    Cover: the title on a colour block. Figure: the article's first three section headings as
+    a stack. Both are always accurate; a model can later replace them with a fact image.
+    """
+    full = article.get("title", "")
+    head, _, rest = full.partition(":")
+    if rest and 2 <= len(head.strip()) <= 24:
+        title, sub = _trim(head, LIMITS["title"]), _trim(rest, LIMITS["sub"])
+    else:
+        title, sub = _trim(full, LIMITS["title"]), ""
+    cover: dict[str, Any] = {
+        "role": "cover",
+        "template": "title-card",
+        "label": "SignalForge",
+        "values": {"title": title, **({"sub": sub} if sub else {})},
+        "alt": _cut(f"Title card: {title}. {sub}".strip(), LIMITS["alt"]),
+    }
+    items = _step_items(article, generic_steps)
+    fig = {
+        "role": "figure",
+        "template": "layers",
+        "label": "How it works",
+        "values": {"items": items},
+        "alt": _cut("Three steps: " + "; ".join(items) + ".", LIMITS["alt"]),
+    }
+    return cover, fig
+
+
+def plan_valid(article: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | list[str]:
+    """Planned specs that pass the validator, or the list of problems."""
+    errors: list[str] = []
+    for generic in (False, True):
+        cover, fig = plan_specs(article, generic_steps=generic)
+        errors = validate(cover, article) + validate(fig, article) + check_pair(cover, fig)
+        if not errors:
+            return cover, fig
+    return errors
+
+
+def run_auto(api: str, read_key: str, write_key: str, limit: int, dry_run: Path | None) -> int:
+    """Attach images to every published article that has none. Returns the number attached."""
+    status, body = _request(f"{api.rstrip('/')}/agent/work", headers={"X-Editor-Key": read_key})
+    if status != 200:
+        raise SpecError(f"GET /agent/work failed (HTTP {status})")
+    cards = [
+        c for c in json.loads(body).get("cards", []) if c.get("next_action") == "attach_images"
+    ]
+    done = 0
+    for card in cards[:limit]:
+        slug = card.get("slug")
+        if not slug:
+            continue
+        article = fetch_article(slug, api)
+        planned = plan_valid(article)
+        if isinstance(planned, list):
+            print(f"SKIP {slug}: " + "; ".join(planned))
+            continue
+        cover, fig = planned
+        svgs = (render(cover, slug), render(fig, slug))
+        if dry_run:
+            dry_run.mkdir(parents=True, exist_ok=True)
+            (dry_run / f"{slug[:40]}-cover.svg").write_text(svgs[0])
+            (dry_run / f"{slug[:40]}-figure.svg").write_text(svgs[1])
+        else:
+            upload_via_api(slug, (svgs[0], cover), (svgs[1], fig), api, write_key)
+        print(f"OK {slug}: cover={cover['template']} figure={fig['template']}")
+        done += 1
+    return done
+
+
 def _load(path: str) -> dict[str, Any]:
     return json.loads(Path(path).read_text())
 
@@ -657,8 +832,21 @@ def main(argv: list[str] | None = None) -> int:
     pub.add_argument("--cover", required=True)
     pub.add_argument("--figure", required=True)
     pub.add_argument("--dry-run", metavar="DIR", help="render into DIR, upload nothing")
+    auto = sub.add_parser("auto", help="attach images to every published article without any")
+    auto.add_argument("--limit", type=int, default=20)
+    auto.add_argument("--dry-run", metavar="DIR", help="render into DIR, upload nothing")
     args = parser.parse_args(argv)
     try:
+        if args.cmd == "auto":
+            editor = _env("EDITOR_API_KEY")
+            run_auto(
+                _env("API_BASE_URL"),
+                editor,
+                os.environ.get("SIGNALFORGE_KEY") or editor,
+                args.limit,
+                Path(args.dry_run) if args.dry_run else None,
+            )
+            return 0
         api = os.environ.get("API_BASE_URL", "")
         article = fetch_article(args.slug, api) if api else None
         if args.cmd in ("validate", "render"):
