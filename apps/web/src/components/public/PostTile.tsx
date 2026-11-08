@@ -1,10 +1,13 @@
 import Image from "next/image";
 import { cx } from "@/lib/cx";
 import type { PublicSummary } from "@/lib/public";
-import { tileClass, tileLabel } from "@/lib/tile";
+import { heroText, kindPalette } from "@/lib/kindPalette";
 
 type Props = {
-  article: Pick<PublicSummary, "slug" | "title" | "dek" | "cover">;
+  article: Pick<
+    PublicSummary,
+    "slug" | "title" | "dek" | "cover" | "kind" | "headline"
+  >;
   className?: string;
   size?: "lg" | "md";
 };
@@ -44,20 +47,33 @@ export function PostTile({ article, className, size = "md" }: Props) {
       </div>
     );
   }
+  const { bg, fg } = kindPalette(article.kind);
   return (
     <div
       role="img"
       aria-label={article.cover.alt}
-      className={cx(box, tileClass(article.slug), "flex items-end p-6 md:p-8")}
+      className={cx(box, "flex flex-col justify-between p-6 md:p-8")}
+      style={{ backgroundColor: bg, color: fg }}
     >
+      {article.kind ? (
+        <span
+          aria-hidden="true"
+          className="self-start rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
+          style={{ backgroundColor: fg, color: bg }}
+        >
+          {article.kind}
+        </span>
+      ) : (
+        <span />
+      )}
       <span
         aria-hidden="true"
         className={cx(
-          "font-display font-extrabold leading-none tracking-tight text-ink",
+          "font-display font-extrabold leading-none tracking-tight",
           size === "lg" ? "text-6xl md:text-8xl" : "text-4xl md:text-5xl",
         )}
       >
-        {tileLabel(article.title, article.dek)}
+        {heroText(article.title, article.headline)}
       </span>
     </div>
   );
