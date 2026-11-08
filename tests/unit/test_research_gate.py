@@ -44,7 +44,7 @@ def _page(tag: str) -> str:
 
 
 class _Fetcher:
-    def fetch_html(self, url: str) -> str:
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:  # noqa: ARG002
         return _page(url.rsplit("/", 1)[-1])
 
 
