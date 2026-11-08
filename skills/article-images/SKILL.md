@@ -26,10 +26,10 @@ It is no longer required for an article to have images.
 1. Use only numbers, names and facts that appear in the article's title, dek or verified claims. The script rejects any number it cannot find there.
 2. The `waveform` template is only for audio, speech or signal articles; the validator rejects it elsewhere.
 3. Two different templates: the cover and the figure must not use the same template.
-3. No faces, logos, brand marks, photos, emoji or invented statistics.
-4. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
-5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14, bar name 14, bar text 8.
-6. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
+4. No faces, logos, brand marks, photos, emoji or invented statistics.
+5. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
+6. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14, bar name 14, bar text 8.
+7. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
 
 ## Steps
 
