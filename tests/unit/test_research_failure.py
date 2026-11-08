@@ -94,3 +94,33 @@ def test_budget_error_is_budget() -> None:
     _, why = _run(_Fetcher(_PAGE), _Gateway(BudgetExceededError("over")))
     assert why is not None
     assert why.startswith("budget: ")
+
+
+def test_embedding_failure_keeps_claims_unmerged() -> None:
+    from signalforge.core.artifacts.research import ResearchClaim
+    from signalforge.core.errors import ProviderUnavailableError
+    from signalforge.stages.research import _Collector, _extract_and_merge
+
+    claim = ResearchClaim.model_validate(
+        {
+            "text": "The model scores 91 percent on the test set.",
+            "evidence_span": "The model scores 91 percent on the test set.",
+            "document_indices": [0],
+        }
+    )
+
+    class _Failing:
+        def embed(self, **kwargs: Any) -> Any:  # noqa: ARG002
+            raise ProviderUnavailableError("embed 500")
+
+    card = SimpleNamespace(id=uuid.uuid4())
+    claims, summary = _extract_and_merge(
+        _Failing(),  # type: ignore[arg-type]
+        uuid.uuid4(),
+        card,  # type: ignore[arg-type]
+        _Collector(),
+        [(0, claim), (1, claim)],
+    )
+    assert len(claims) == 2
+    assert [c.document_indices for c in claims] == [(0,), (1,)]
+    assert summary == ""

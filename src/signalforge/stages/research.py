@@ -26,6 +26,7 @@ from signalforge.core.budget import Budget, BudgetLimits, BudgetScope
 from signalforge.core.errors import (
     ArtifactValidationError,
     BudgetExceededError,
+    RetryableError,
     SignalForgeError,
 )
 from signalforge.core.logging import correlation_id
@@ -368,11 +369,22 @@ def _extract_and_merge(
             continue
     if not candidates:
         return (), ""
-    embeddings = gateway.embed(
-        role=EMBEDDING_ROLE,
-        texts=[claim.text for _, claim in candidates],
-        stage_run_id=run_id,
-    )
+    try:
+        embeddings = gateway.embed(
+            role=EMBEDDING_ROLE,
+            texts=[claim.text for _, claim in candidates],
+            stage_run_id=run_id,
+        )
+    except RetryableError:
+        # Merging is optional. Without embeddings keep every claim unmerged, no conflict note.
+        log.warning("claim embedding failed, claims kept unmerged", extra={"card_id": str(card.id)})
+        return (
+            tuple(
+                ResearchClaim.model_validate({**claim.model_dump(), "document_indices": (doc,)})
+                for doc, claim in candidates
+            ),
+            "",
+        )
     return merge_claims(candidates, embeddings)
 
 
