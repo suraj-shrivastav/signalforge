@@ -31,7 +31,7 @@ class _Fetcher:
     def __init__(self, html: str | Exception) -> None:
         self.html = html
 
-    def fetch_html(self, url: str) -> str:  # noqa: ARG002
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:  # noqa: ARG002
         if isinstance(self.html, Exception):
             raise self.html
         return self.html
