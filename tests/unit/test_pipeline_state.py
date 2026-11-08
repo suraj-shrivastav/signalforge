@@ -50,3 +50,22 @@ def test_each_state_has_one_next_action(
     overrides: dict[str, object], expected: tuple[str, str]
 ) -> None:
     assert state(**overrides) == expected
+
+
+@pytest.mark.parametrize("status", ["failed", "needs_more_info"])
+@pytest.mark.parametrize(
+    ("attempts", "expected"),
+    [(0, "retry_research"), (1, "retry_research"), (2, "parked"), (3, "parked")],
+)
+def test_research_is_parked_after_the_attempt_cap(
+    status: str, attempts: int, expected: str
+) -> None:
+    result = state(research=status, draft=None, research_attempts=attempts)
+    assert result == (
+        f"research_{status}" if expected == "retry_research" else "research_parked",
+        expected,
+    )
+
+
+def test_attempts_do_not_affect_a_researched_card() -> None:
+    assert state(draft=None, review=None, research_attempts=5) == ("researched", "run_draft")

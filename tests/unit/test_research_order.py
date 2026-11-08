@@ -17,3 +17,17 @@ def test_the_research_queue_takes_the_best_scoring_card_first() -> None:
     columns = [part.strip() for part in order.split(",")]
     assert columns[0] == "topic_cards.score DESC"
     assert columns[1] == "topic_cards.created_at ASC"
+
+
+def test_parked_cards_are_not_returned_when_retrying() -> None:
+    seen: list[Any] = []
+
+    def execute(query: Any) -> SimpleNamespace:
+        seen.append(query)
+        return SimpleNamespace(all=lambda: [])
+
+    ResearchRepository(SimpleNamespace(execute=execute)).list_accepted_unresearched(  # type: ignore[arg-type]
+        1, retry_failed=True
+    )
+    sql = str(seen[0].compile())
+    assert "research_packages.attempts >=" in sql
