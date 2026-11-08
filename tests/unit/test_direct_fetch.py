@@ -222,3 +222,10 @@ def test_default_resolve_returns_unique_addresses(monkeypatch: pytest.MonkeyPatc
     info = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_: [info, info])
     assert direct_fetch._default_resolve("example.com") == ["93.184.216.34"]
+
+
+def test_max_attempts_one_makes_a_single_request_on_a_503() -> None:
+    fetch, seen = fetcher(serve(lambda _: httpx.Response(503)))
+    with pytest.raises(ProviderUnavailableError):
+        fetch.fetch_html("https://example.com/post", max_attempts=1)
+    assert pages(seen) == ["https://example.com/post"]

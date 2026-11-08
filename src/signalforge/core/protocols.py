@@ -50,8 +50,10 @@ class SearchProvider(Protocol):
 class PageFetcher(Protocol):
     """Fetches one web page's HTML (PRD §24 search layer)."""
 
-    def fetch_html(self, url: str) -> str:
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:
         """Return the decoded HTML body of ``url``.
+
+        ``max_attempts=1`` asks for a single request with no retries (None keeps the default).
 
         Raises a :class:`signalforge.core.errors.SignalForgeError` on any failure,
         including a refused (unsafe or robots-disallowed) URL.

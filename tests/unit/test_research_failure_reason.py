@@ -10,7 +10,7 @@ from signalforge.stages.research import _process_card
 
 
 class DownFetcher:
-    def fetch_html(self, url: str) -> str:  # noqa: ARG002
+    def fetch_html(self, url: str, *, max_attempts: int | None = None) -> str:  # noqa: ARG002
         raise ProviderRejectedError("blocked", context={"status": 403})
 
 

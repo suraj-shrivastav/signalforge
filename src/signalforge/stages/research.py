@@ -36,6 +36,12 @@ from signalforge.db.models.signals import Signal
 from signalforge.db.repositories.research import ResearchRepository
 from signalforge.llm.gateway import LLMGateway
 from signalforge.stages.ingest import _ENTITY_NAMESPACE, _MAX_ERROR_CHARS, _sha
+from signalforge.stages.research_arxiv import (
+    arxiv_id,
+    candidate_urls,
+    is_arxiv_host,
+    select_sections,
+)
 from signalforge.stages.research_extraction import (
     extract_clean_text,
     extract_tables,
@@ -111,11 +117,47 @@ def _build_document(
     )
 
 
+def _fetch_page(fetcher: PageFetcher, url: str) -> str:
+    """Fetch ``url``; arXiv hosts get exactly one request (no retries)."""
+    if is_arxiv_host(url):
+        return fetcher.fetch_html(url, max_attempts=1)
+    return fetcher.fetch_html(url)
+
+
+def _read_arxiv_paper(
+    fetcher: PageFetcher, paper_id: str, note: Callable[[str, str], None] | None = None
+) -> tuple[str, str, bool] | None:
+    """First arXiv full-text render that yields sections, as (html, text, has_results)."""
+    for url in candidate_urls(paper_id):
+        try:
+            html = _fetch_page(fetcher, url)
+        except SignalForgeError as exc:
+            if note is not None:
+                note(url, f"arxiv fetch failed: {type(exc).__name__}")
+            continue
+        paper = select_sections(html)
+        if paper is None:
+            if note is not None:
+                note(url, "arxiv page had no usable sections")
+            continue
+        return html, paper.text, paper.has_results
+    return None
+
+
 def _fetch_reference(fetcher: PageFetcher, urls: tuple[str, ...]) -> tuple[str, str] | None:
     """First of ``urls`` that yields clean text, as (html, text). Failures are skipped."""
+    paper_id = next((found for url in urls if (found := arxiv_id(url))), None)
+    skip: tuple[str, ...] = ()
+    if paper_id is not None:
+        paper = _read_arxiv_paper(fetcher, paper_id)
+        if paper is not None:
+            return paper[0], paper[1]
+        skip = candidate_urls(paper_id)
     for url in urls:
+        if url in skip:
+            continue
         try:
-            html = fetcher.fetch_html(url)
+            html = _fetch_page(fetcher, url)
         except SignalForgeError:
             continue
         text = extract_clean_text(html)
@@ -219,8 +261,16 @@ class _Collector:
 
 def _collect_primary(fetcher: PageFetcher, signal: Signal, collector: _Collector) -> str | None:
     """Fetch the primary source. Returns its HTML, or None (with a note) when it failed."""
+    paper_id = arxiv_id(signal.canonical_url)
+    if paper_id is not None:
+        paper = _read_arxiv_paper(fetcher, paper_id, collector.note)
+        if paper is not None:
+            html, text, has_results = paper
+            collector.add_primary(signal.canonical_url, signal.title, signal.source, text, html)
+            collector.primary_full_text = has_results
+            return html
     try:
-        html = fetcher.fetch_html(signal.canonical_url)
+        html = _fetch_page(fetcher, signal.canonical_url)
         primary_text = extract_clean_text(html)
     except SignalForgeError as exc:
         collector.primary_failure = FailureClass.BLOCKED
