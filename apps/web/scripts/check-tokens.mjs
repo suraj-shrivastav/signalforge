@@ -19,7 +19,9 @@ function walk(dir, out) {
     else if (
       EXT.test(name) &&
       name !== "globals.css" &&
-      !name.startsWith("opengraph-image")
+      !name.startsWith("opengraph-image") &&
+      // kindPalette holds the cover pastel palette (literal colours by design).
+      !name.startsWith("kindPalette")
     )
       out.push(full);
   }
@@ -38,6 +40,8 @@ export function checkTokens(rootDir) {
     readFileSync(file, "utf8")
       .split("\n")
       .forEach((text, i) => {
+        // A line ending in "token-ok" is a reviewed exception (colours chosen at runtime).
+        if (/token-ok\s*(\*\/\s*\}?)?$/.test(text)) return;
         for (const { rule, re } of RULES) {
           if (re.test(text)) found.push({ file, line: i + 1, rule });
         }
