@@ -39,10 +39,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    S["Signals<br/>arXiv · Hacker News · Hugging Face · RSS"] --> AS["Assess<br/>score, summarize"]
+    S["Signals<br/>arXiv · Hacker News · Hugging Face · GitHub · RSS · Lobsters · dev.to"] --> AS["Assess<br/>score, summarize"]
     AS --> C["Topic cards<br/>angle, novelty, risk flags"]
     C --> P{{"Agent picks topics<br/>accept, or reject with a reason tag"}}
-    P --> R["Research<br/>primary source first, evidence spans stored"]
+    P --> R["Research<br/>primary source first, evidence spans stored,<br/>sufficiency gate, max 2 attempts"]
     R --> W["Writer model<br/>drafts and declares claims"]
     W --> J["Judge model, different family<br/>checks every claim and number"]
     J --> AR{{"Auto-review<br/>rules in code"}}
@@ -50,7 +50,7 @@ flowchart TD
     AR -->|fixable| RV["Revise with the reasons as the brief"]
     RV --> W
     AR -->|still failing after N redrafts| RJ(["Reject"])
-    PUB --> IM["Image skill<br/>cover and figure from verified facts"]
+    PUB --> IM["Images<br/>deterministic cover and figure from verified facts"]
 ```
 
 ## Agentic engineering, in practice
@@ -59,7 +59,7 @@ flowchart TD
 The writer and the claim judge are different roles, and the system **refuses to run them on the same model family**. A model never marks its own homework. This is checked before any card is touched.
 
 ### 2. Evidence before prose
-Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first.
+Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first. Research has to earn its place too: it needs at least three claims (one extra search round if short), arXiv papers are read by their results and limitations sections, and a card that fails research twice is parked instead of retried forever.
 
 ### 3. Flag, do not block
 My first design failed closed: any unsupported sentence killed the whole draft. I built an evaluation harness with a golden set and measured it. Across the same four fixtures:
@@ -91,7 +91,7 @@ Everything the agent reads from the web is wrapped, escaped, and declared as dat
 Hermes holds one **revocable** key. It has no database access and no storage credentials: even image upload goes through the application, which holds the storage key itself. Revoking the key stops the agent immediately.
 
 ### 9. Skills, not scripts
-Capabilities the agent needs are packaged as skills it follows. The `article-images` skill is the example. The agent never draws. It fills in two small JSON specs from the article's verified claims, and a script validates them (any number not in the article is rejected), renders deterministic SVG, and uploads it. The model supplies judgement, and code supplies the guarantees.
+Capabilities the agent needs are packaged as skills. The `article-images` skill is the example. No model draws: a script builds a cover ("Signal Steps", one of 13 soft pastels, with a headline fact grounded in the article's verified claims) and a figure, rejects any number not in the article, renders deterministic SVG, and uploads it. The scheduler runs it every 15 minutes. The model supplies judgement, and code supplies the guarantees.
 
 ## How the autonomy grew
 
@@ -117,9 +117,13 @@ Every published article is built from its verified claims and carries its source
 
 ![A published article](docs/assets/site-article.png)
 
+## Running it
+
+A launchd scheduler on the operator's laptop runs the pipeline in four slots a day (00, 06, 12, 18 local), accepting the two top-scored cards each time. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes sends an evening report and lists parked cards. Setup for a new machine is in [docs/hermes-setup.md](docs/hermes-setup.md).
+
 ## Architecture
 
-A modular monolith in one repository, designed so the agent layer sits on top of boring, testable parts.
+The full picture, with diagrams and the research and publishing details, is in [ARCHITECTURE.md](ARCHITECTURE.md). In short: a modular monolith in one repository, designed so the agent layer sits on top of boring, testable parts.
 
 - **Core** defines protocols only (sources, search, LLM gateway, ranker, publisher, stage) plus budgets, retries and typed errors. It imports nothing from stages or plugins.
 - **Plugins** implement those protocols and are chosen by configuration: sources, search providers, rankers.
@@ -129,4 +133,4 @@ A modular monolith in one repository, designed so the agent layer sits on top of
 
 ## Stack
 
-Python, FastAPI, SQLAlchemy, Alembic, Postgres with pgvector, any OpenAI-compatible LLM API, Tavily, Next.js, Tailwind.
+Python, FastAPI, SQLAlchemy, Alembic, Postgres with pgvector (Supabase), any OpenAI-compatible LLM API, Tavily, Next.js, Tailwind. Backend on Render, site on Vercel.
