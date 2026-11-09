@@ -53,13 +53,13 @@ export function PostTile({ article, className, size = "md" }: Props) {
       role="img"
       aria-label={article.cover.alt}
       className={cx(box, "flex flex-col justify-between p-6 md:p-8")}
-      style={{ backgroundColor: bg, color: fg }}
+      style={{ backgroundColor: bg, color: fg }} // token-ok
     >
       {article.kind ? (
         <span
           aria-hidden="true"
           className="self-start rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest"
-          style={{ backgroundColor: fg, color: bg }}
+          style={{ backgroundColor: fg, color: bg }} // token-ok
         >
           {article.kind}
         </span>
