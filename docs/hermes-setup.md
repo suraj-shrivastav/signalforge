@@ -1,11 +1,23 @@
 # SignalForge on a new device: Hermes + scheduler setup
 
-SignalForge's backend runs on Render. The laptop runs two things:
+SignalForge's backend runs on Render (database on Supabase, website on Vercel). The laptop runs two things:
 
-1. **Pipeline scheduler** (launchd + shell): every 6 hours it ticks the backend, accepts the top-scored card, researches it, drafts it, auto-reviews it and publishes it (or queues it behind the pacing limit).
-2. **Hermes** (agent + Telegram gateway): one evening job attaches images to published articles and sends a report to Telegram.
+1. **Pipeline scheduler** (launchd + shell): four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the top-scored card, researches it, drafts it, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
+2. **Hermes** (agent + Telegram gateway): one evening job (6 pm) reports the day to Telegram and attaches images when needed.
 
 The pipeline does not depend on an LLM agent, so a Hermes failure never blocks drafting or publishing.
+
+## Publishing limits
+
+- At least 4 hours between articles, at most 3 per rolling 24 hours. The API enforces this; the scripts cannot go over it.
+- One card is accepted per slot. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts it becomes `parked` and is never retried (the evening report lists parked cards).
+- A late slot (laptop off) runs as soon as the Mac is awake, so the number of articles per day can drop below 3 on days the Mac was off.
+
+## Backend setup (one time, any new Render or database)
+
+1. Run database migrations against the database: `alembic upgrade head` (uses `DATABASE_URL`; head is `0012`, which adds `research_packages.attempts`). Run it before the backend deploys new code.
+2. Render environment: set `LLM_EMBED_BATCH_SIZE=1` when the embedding provider cannot embed more than one text per request (NVIDIA `nemotron-3.5-embed-1b` returns HTTP 500 for batches). Leave it unset (0) for providers that batch normally. If embeddings still fail, research keeps the claims unmerged instead of failing.
+3. Vercel: set `REVALIDATE_SECRET` (same value as in `~/.signalforge.env`) so the scheduler can expire the article cache after a publish.
 
 ## Prerequisites
 
@@ -13,6 +25,7 @@ The pipeline does not depend on an LLM agent, so a Hermes failure never blocks d
 - Hermes CLI installed (`hermes --version`)
 - A Telegram bot token and your chat id (bot created with @BotFather)
 - Backend keys: the agent key (`SIGNALFORGE_KEY`) and the editor key (`EDITOR_API_KEY`). Ask the owner; never commit them.
+- Optional for the website cache refresh: `SITE_URL` (the Vercel URL) and `REVALIDATE_SECRET`.
 - Repo cloned, project venv created for the image skill (`uv sync` in the repo root)
 
 ## 1. Clone the repo
@@ -42,7 +55,7 @@ What it installs:
 | Log | `~/signalforge-cron.log` |
 | Slot state | `~/.signalforge-state` |
 
-How scheduling works: launchd runs the wrapper at login and every 15 minutes. The wrapper runs the pipeline once per slot (00, 06, 12, 18 local time). If the laptop was off or asleep, the missed slot runs as soon as the Mac is back. A failed slot retries up to 3 times. A lock prevents overlapping runs.
+How scheduling works: launchd runs the wrapper at login and every 15 minutes. Each run first tries `publish-next` (cheap; the API applies the pacing limit). Then it runs the full pipeline once per slot (00, 06, 12, 18 local time). If the laptop was off or asleep, the missed slot runs as soon as the Mac is back. A failed slot retries up to 3 times. A lock prevents overlapping runs. Re-run `install.sh` after pulling script changes: it copies the scripts to `~/bin`.
 
 Do not also add a crontab entry for the pipeline. It would double-run it.
 
@@ -51,7 +64,7 @@ Do not also add a crontab entry for the pipeline. It would double-run it.
 1. Install Hermes and run `hermes setup`. Choose a model provider.
 2. Run `hermes gateway setup` and choose Telegram. Enter the bot token and your chat id when asked.
 3. In `~/.hermes/config.yaml` make sure `catch_up_missed: true` is set under the cron section, so missed Hermes jobs run after wake.
-4. Add the backend key for the image step to `~/.hermes/.env` as `AGENT_API_KEY=<editor key>`.
+4. Add the backend key to `~/.hermes/.env` as `AGENT_API_KEY=<editor key>`.
 5. Start the gateway as a service and confirm Telegram is connected:
 
 ```bash
@@ -76,6 +89,19 @@ hermes cron list
 ```
 
 `--grace-minutes 720` lets the job still fire up to 12 hours late after a sleep or shutdown.
+
+**Only this job should be enabled for SignalForge in Hermes.** Do not create or unpause the old morning, midday or night tick jobs: they run the same pipeline as the launchd scheduler and would double every run. Other Hermes jobs (job search and so on) are independent and need no change.
+
+The prompt tells Hermes to list `parked` cards by title and never retry them. To refresh an existing job after the prompt changes, edit its `prompt` in `~/.hermes/cron/jobs.json` (back the file up first) or recreate the job with the command above.
+
+### Hermes memory
+
+Add these facts to `~/.hermes/memories/MEMORY.md` (one entry per fact, separated by `§`) so Hermes can answer questions about the pipeline:
+
+- API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. Reads of run state (`/agent/runs`, `/cards/queue`, `/agent/work`) need `EDITOR_API_KEY`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
+- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `parked`. Never retry or accept a parked card; list it by title for the owner. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
+- The launchd scheduler runs the pipeline. Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
+- The article-images skill lives in the repo at `skills/article-images/`. Use the project venv (`.venv/bin/python`), because system python 3.9 is too old.
 
 ## 5. Keep the machine awake (recommended)
 
@@ -113,6 +139,10 @@ The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; 
 | `backend unreachable, will retry next interval` | Render cold start or no wifi. Retries automatically. |
 | Hermes job `agent reported failure` | The agent was cut off (often by sleep) or the model call failed. Check `hermes cron runs`, `~/.hermes/logs/errors.log`. |
 | Telegram `nodename nor servname provided` or `Sticky Telegram path ... failed` | Network dropped across sleep. The gateway retries; reports may arrive late. |
+| A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 5). |
+| Cards stuck with `parked` | Research failed twice. Read the failure reason, fix the source problem if any, or ignore. They do not block other cards. |
+| Research fails with `LLM provider unavailable (status=500)` on embeddings | Set `LLM_EMBED_BATCH_SIZE=1` on the backend. Claim merging is skipped if the embedding call still fails. |
+| `column research_packages.attempts does not exist` | Migration `0012` was not applied. Run `alembic upgrade head`. |
 | Runs happen at odd times | Check for a leftover crontab (`crontab -l`) or old Hermes tick jobs; remove or `hermes cron pause <id>` them. |
 
 ## Uninstall
