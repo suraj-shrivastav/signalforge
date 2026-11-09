@@ -32,7 +32,23 @@ publish_tick() {
     revalidate_site
   fi
 }
-[ -d "$LOCK" ] || publish_tick
+# Image tick: give every published article without images a cover and a figure. Deterministic
+# (no model), so it never skips an article and never waits for the evening Hermes job.
+images_tick() {
+  local repo py out
+  repo="${SIGNALFORGE_REPO:-$HOME/personal/signalforge}"
+  py="$repo/.venv/bin/python"
+  [ -x "$py" ] || { log "images tick: $py missing, run uv sync"; return 0; }
+  out=$(API_BASE_URL="$API_BASE_URL" EDITOR_API_KEY="${EDITOR_API_KEY:-$SIGNALFORGE_KEY}" \
+    SIGNALFORGE_KEY="$SIGNALFORGE_KEY" "$py" "$repo/skills/article-images/scripts/articleimg.py" auto 2>&1) || {
+    log "images tick failed: $(echo "$out" | tail -2 | tr '\n' ' ')"; return 0; }
+  [ -n "$out" ] || return 0
+  echo "$out" | while IFS= read -r line; do log "images tick: $line"; done
+  echo "$out" | grep -q '^OK ' && revalidate_site
+  return 0
+}
+
+if [ ! -d "$LOCK" ]; then publish_tick; images_tick; fi
 
 slot="$(date '+%Y-%m-%d')-$(printf '%02d' $(( 10#$(date +%H) / 6 * 6 )))"
 done_slot=$(sed -n 1p "$STATE" 2>/dev/null || true)

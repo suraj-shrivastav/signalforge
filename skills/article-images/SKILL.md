@@ -10,14 +10,26 @@ You never draw. You fill in two small JSON specs. The script checks them against
 article, draws the SVG, uploads it and attaches it. The same spec always gives the same
 image. Different articles give different images because the look is derived from the slug.
 
+## Unattended default: `auto`
+
+The scheduler runs `articleimg.py auto` every 15 minutes. It gives every published article
+without images a **title-card** cover (the title, nothing else) and a **layers** figure built
+from the article's first three section headings. It uses no model, picks no number and so
+never skips an article, including articles with no numbers. Run it by hand with
+`python scripts/articleimg.py auto --dry-run DIR` to preview.
+
+The model workflow below is the optional upgrade for a fact-led image (one verified number).
+It is no longer required for an article to have images.
+
 ## Rules that never bend
 
 1. Use only numbers, names and facts that appear in the article's title, dek or verified claims. The script rejects any number it cannot find there.
-2. Two different templates: the cover and the figure must not use the same template.
-3. No faces, logos, brand marks, photos, emoji or invented statistics.
-4. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
-5. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14, bar name 14, bar text 8.
-6. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
+2. The `waveform` template is only for audio, speech or signal articles; the validator rejects it elsewhere.
+3. Two different templates: the cover and the figure must not use the same template.
+4. No faces, logos, brand marks, photos, emoji or invented statistics.
+5. Do not edit the script. Do not write SVG. Do not change colours, fonts or sizes.
+6. Text limits are hard: label 28 characters, figure 8, caption 34, alt 140, layer item 30, block name 14, block text 8, architecture box 14, bar name 14, bar text 8.
+7. If the validator prints `INVALID`, fix the listed problem and run it again. Do not publish around it.
 
 ## Steps
 

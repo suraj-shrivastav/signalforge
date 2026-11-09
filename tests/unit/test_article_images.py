@@ -249,3 +249,54 @@ def test_bar_chart_draws_proportional_bars_inside_the_canvas(count: int) -> None
 def test_bar_chart_pairs_with_another_template() -> None:
     cover = example("example-bar-chart-cover.json")
     assert img.check_pair(cover, example("example-bar-chart-figure.json")) == []
+
+
+AUTO_ARTICLE: dict[str, Any] = {
+    "title": "NEOPIC: A Neural Operator Framework That Replaces Grid-Based Solvers",
+    "dek": "Kinetic plasma simulations matter.",
+    "claims": [],
+    "sections": [
+        {"heading": "The problem: grid-based solvers limit kinetic plasma simulations"},
+        {"heading": "The approach: a nonuniform Fourier neural operator"},
+        {"heading": "What the results show: benchmarks confirm theory"},
+        {"heading": "Limits: data availability"},
+    ],
+}
+
+
+def test_auto_plan_is_valid_and_uses_no_invented_facts() -> None:
+    planned = img.plan_valid(AUTO_ARTICLE)
+    assert isinstance(planned, tuple)
+    cover, figure = planned
+    assert cover["template"] == "title-card"
+    assert cover["values"]["title"] == "NEOPIC"
+    assert figure["values"]["items"][0].startswith("grid-based solvers")
+    for spec_ in planned:
+        assert "NaN" not in img.render(spec_, "neopic")
+
+
+def test_auto_plan_falls_back_to_generic_steps_when_headings_break_the_rules() -> None:
+    article = {**AUTO_ARTICLE, "sections": [{"heading": "The 42 problem"}] * 3}
+    planned = img.plan_valid(article)
+    assert isinstance(planned, tuple)
+    assert planned[1]["values"]["items"] == ["The problem", "The approach", "The results"]
+
+
+def test_auto_plan_never_ends_a_title_mid_phrase() -> None:
+    article = {**AUTO_ARTICLE, "title": "How " + "Very " * 20 + "Long Titles Break in"}
+    cover, _ = img.plan_specs(article)
+    assert cover["values"]["title"].split()[-1].lower() not in img._DANGLING
+
+
+def test_waveform_is_rejected_for_non_audio_articles() -> None:
+    spec_ = {
+        "role": "figure",
+        "template": "waveform",
+        "label": "Throughput",
+        "figure": "5.06%",
+        "caption": "rate",
+        "alt": "x",
+    }
+    text_only = {**ARTICLE, "title": "LoopVQ 5.06% KV cache", "dek": "A cache."}
+    assert any("waveform is for audio" in e for e in img.validate(spec_, text_only))
+    assert not any("waveform" in e for e in img.validate(spec_, ARTICLE))

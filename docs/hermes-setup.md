@@ -57,6 +57,8 @@ What it installs:
 
 How scheduling works: launchd runs the wrapper at login and every 15 minutes. Each run first tries `publish-next` (cheap; the API applies the pacing limit). Then it runs the full pipeline once per slot (00, 06, 12, 18 local time). If the laptop was off or asleep, the missed slot runs as soon as the Mac is back. A failed slot retries up to 3 times. A lock prevents overlapping runs. Re-run `install.sh` after pulling script changes: it copies the scripts to `~/bin`.
 
+Every 15 minutes the wrapper also calls `publish-next` and `articleimg.py auto` (deterministic cover and figure for any published article without images; needs `uv sync` so `.venv/bin/python` exists).
+
 Do not also add a crontab entry for the pipeline. It would double-run it.
 
 ## 3. Set up Hermes and the Telegram gateway
