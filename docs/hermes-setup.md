@@ -2,7 +2,7 @@
 
 SignalForge's backend runs on Render (database on Supabase, website on Vercel). The laptop runs two things:
 
-1. **Pipeline scheduler** (launchd + shell): four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the top-scored card, researches it, drafts it, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
+1. **Pipeline scheduler** (launchd + shell): four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the two top-scored cards, researches them, drafts them, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
 2. **Hermes** (agent + Telegram gateway): one evening job (6 pm) reports the day to Telegram and attaches images when needed.
 
 The pipeline does not depend on an LLM agent, so a Hermes failure never blocks drafting or publishing.
@@ -10,7 +10,7 @@ The pipeline does not depend on an LLM agent, so a Hermes failure never blocks d
 ## Publishing limits
 
 - At least 4 hours between articles, at most 3 per rolling 24 hours. The API enforces this; the scripts cannot go over it.
-- One card is accepted per slot. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts it becomes `parked` and is never retried (the evening report lists parked cards).
+- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts it becomes `parked` and is never retried (the evening report lists parked cards).
 - A late slot (laptop off) runs as soon as the Mac is awake, so the number of articles per day can drop below 3 on days the Mac was off.
 
 ## Backend setup (one time, any new Render or database)

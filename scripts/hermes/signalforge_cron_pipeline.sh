@@ -1,7 +1,7 @@
 #!/bin/bash
 # SignalForge cron pipeline: tick -> accept topmost -> research -> draft -> auto-review -> publish-next
 # Runs on the deployed backend only (no localhost).
-# Owner policy (2026-11-01): no approval needed; one topmost-scored card per run.
+# Owner policy: no approval needed; the two topmost-scored cards per run.
 set -euo pipefail
 
 cd "${SIGNALFORGE_REPO:-$HOME/personal/signalforge}"
@@ -54,14 +54,16 @@ wait_stage() {
   return 1
 }
 
-# Auto-accept the single topmost proposed card (highest score) per run
+# Auto-accept the top proposed cards (highest score) per run. Two per run so that a card that
+# fails research still leaves enough drafts to reach 3 published articles a day.
+ACCEPT_PER_RUN=2
 accept_best_cards() {
-  log "GET /cards/queue (auto-accept topmost)"
+  log "GET /cards/queue (auto-accept top $ACCEPT_PER_RUN)"
   local queue
   queue=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 "$API/cards/queue?limit=50" -H "X-Editor-Key: $EDITOR_KEY")
 
   local ids
-  ids=$(echo "$queue" | jq -r '[.[] | select(.status=="proposed")] | sort_by(.score) | reverse | .[0:1] | .[] | .id')
+  ids=$(echo "$queue" | jq -r --argjson n "$ACCEPT_PER_RUN" '[.[] | select(.status=="proposed")] | sort_by(.score) | reverse | .[0:$n] | .[] | .id')
 
   if [ -z "$ids" ]; then
     log "no proposed cards to accept"
@@ -128,7 +130,7 @@ for attempt in 1 2; do
   waiting=$(echo "$work" | jq '[.cards[] | select(.next_action=="run_research" or .next_action=="retry_research")] | length' 2>/dev/null || echo 1)
   case "$waiting" in ''|*[!0-9]*) waiting=1 ;; esac
   if [ "$waiting" -lt 1 ]; then waiting=1; fi
-  if [ "$waiting" -gt 3 ]; then waiting=3; fi
+  if [ "$waiting" -gt 4 ]; then waiting=4; fi
   log "POST /agent/run/research (limit=$waiting, attempt $attempt)"
   resp=$(curl -sS --retry 4 --retry-delay 20 --retry-all-errors --max-time 180 -X POST "$API/agent/run/research?retry_failed=true&limit=$waiting" -H "X-Editor-Key: $KEY")
   log "research: $resp"
