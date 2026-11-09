@@ -25,6 +25,13 @@ export type PublicSection = {
   table?: PublicTable | null;
 };
 
+export type PublicHeadline = {
+  value: string;
+  unit: string;
+  direction: "up" | "down" | "none";
+  takeaway: string;
+};
+
 export type PublicSummary = {
   slug: string;
   title: string;
@@ -33,6 +40,9 @@ export type PublicSummary = {
   published_at: string;
   modified_at: string;
   cover: PublicCover;
+  kind: string | null;
+  source_label: string;
+  headline: PublicHeadline | null;
 };
 
 export type PublicArticle = PublicSummary & {
@@ -98,6 +108,22 @@ function parseCover(value: unknown): PublicCover {
   };
 }
 
+// Absent on old articles; a malformed headline is dropped rather than failing the article.
+function parseHeadline(value: unknown): PublicHeadline | null {
+  if (!isRecord(value)) return null;
+  try {
+    const d = value.direction;
+    return {
+      value: str(value.value),
+      unit: typeof value.unit === "string" ? value.unit : "",
+      direction: d === "up" || d === "down" ? d : "none",
+      takeaway: typeof value.takeaway === "string" ? value.takeaway : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function parseSummary(value: unknown): PublicSummary {
   const a = rec(value);
   return {
@@ -108,6 +134,9 @@ export function parseSummary(value: unknown): PublicSummary {
     published_at: str(a.published_at),
     modified_at: str(a.modified_at),
     cover: parseCover(a.cover),
+    kind: typeof a.kind === "string" ? a.kind : null,
+    source_label: typeof a.source_label === "string" ? a.source_label : "",
+    headline: parseHeadline(a.headline),
   };
 }
 

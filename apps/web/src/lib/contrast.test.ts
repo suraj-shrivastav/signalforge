@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrastRatio, readTokens } from "./contrast";
+import { KIND_PALETTE } from "./kindPalette";
 
 const css = readFileSync(
   join(process.cwd(), "src", "app", "globals.css"),
@@ -42,5 +43,11 @@ describe.each(["light", "dark"] as const)("%s theme contrast", (theme) => {
     expect(t[fg], `${fg} missing`).toBeDefined();
     expect(t[bg], `${bg} missing`).toBeDefined();
     expect(contrastRatio(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("kind palette contrast", () => {
+  it.each(Object.entries(KIND_PALETTE))("%s is at least 4.5", (_kind, p) => {
+    expect(contrastRatio(p.fg, p.bg)).toBeGreaterThanOrEqual(4.5);
   });
 });

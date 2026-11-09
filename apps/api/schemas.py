@@ -277,6 +277,24 @@ def _public_section(section: Any, body: ArticleBody) -> PublicSectionOut:
     )
 
 
+class PublicHeadlineOut(BaseModel):
+    """The cover's verified number. ``claim_index`` stays server-side."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    unit: str
+    direction: Literal["up", "down", "none"]
+    takeaway: str
+
+
+def _public_headline(body: ArticleBody) -> PublicHeadlineOut | None:
+    h = body.headline
+    if h is None:
+        return None
+    return PublicHeadlineOut(value=h.value, unit=h.unit, direction=h.direction, takeaway=h.takeaway)
+
+
 class PublicArticleOut(BaseModel):
     """Reader-facing shape. An explicit allow-list, so a new editor-only field on the
     artifact never reaches a public response by default (2026-09-27 spec)."""
@@ -298,6 +316,9 @@ class PublicArticleOut(BaseModel):
     sources: list[PublicSourceOut]
     cover: PublicCoverOut
     figure: PublicFigureOut | None = None
+    kind: str | None = None
+    source_label: str = ""
+    headline: PublicHeadlineOut | None = None
 
     @classmethod
     def from_row(cls, row: Any) -> "PublicArticleOut":
@@ -327,6 +348,9 @@ class PublicArticleOut(BaseModel):
             )
             if body.figure
             else None,
+            kind=body.kind,
+            source_label=body.source_label,
+            headline=_public_headline(body),
         )
 
 
@@ -340,6 +364,9 @@ class PublicArticleSummaryOut(BaseModel):
     published_at: datetime
     modified_at: datetime
     cover: PublicCoverOut
+    kind: str | None = None
+    source_label: str = ""
+    headline: PublicHeadlineOut | None = None
 
     @classmethod
     def from_row(cls, row: Any) -> "PublicArticleSummaryOut":
@@ -352,6 +379,9 @@ class PublicArticleSummaryOut(BaseModel):
             published_at=row.published_at,
             modified_at=row.modified_at,
             cover=PublicCoverOut(src=body.cover.src, alt=body.cover.alt, credit=body.cover.credit),
+            kind=body.kind,
+            source_label=body.source_label,
+            headline=_public_headline(body),
         )
 
 

@@ -10,7 +10,7 @@ import pytest
 from apps.api.deps import get_article_repository, get_published_repository
 from apps.api.main import create_app
 from apps.api.routes import articles
-from apps.api.schemas import PublicArticleOut
+from apps.api.schemas import PublicArticleOut, PublicArticleSummaryOut
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -19,6 +19,7 @@ from signalforge.core.artifacts.article import (
     ArticleClaim,
     ArticleCover,
     ArticleFlag,
+    ArticleHeadline,
     ArticleSection,
     ArticleSource,
     FlagKind,
@@ -235,6 +236,52 @@ def test_public_shape_omits_editor_only_fields() -> None:
     schema = json.dumps(PublicArticleOut.model_json_schema())
     assert not [name for name in EDITOR_ONLY if f'"{name}"' in schema]
     assert dumped["claims"] == [{"text": "c", "status": "verified", "source_indices": [0]}]
+
+
+COVERED = BODY.model_copy(
+    update={
+        "kind": "paper",
+        "source_label": "arXiv",
+        "headline": ArticleHeadline(
+            value="81%", unit="on the test", direction="up", takeaway="A clause", claim_index=0
+        ),
+    }
+)
+
+
+def test_public_article_and_summary_expose_cover_facts_but_not_claim_index() -> None:
+    row = published_row(COVERED)
+    for out in (PublicArticleOut.from_row(row), PublicArticleSummaryOut.from_row(row)):
+        dumped = out.model_dump(mode="json")
+        assert dumped["kind"] == "paper"
+        assert dumped["source_label"] == "arXiv"
+        assert dumped["headline"] == {
+            "value": "81%",
+            "unit": "on the test",
+            "direction": "up",
+            "takeaway": "A clause",
+        }
+
+
+def test_old_bodies_give_null_cover_facts() -> None:
+    row = published_row(BODY)
+    old = {k: v for k, v in row.body.items() if k not in ("kind", "source_label", "headline")}
+    row.body = old
+    for out in (PublicArticleOut.from_row(row), PublicArticleSummaryOut.from_row(row)):
+        dumped = out.model_dump(mode="json")
+        assert (dumped["kind"], dumped["source_label"], dumped["headline"]) == (None, "", None)
+
+
+def test_list_and_detail_routes_carry_cover_facts(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    card_id = approve(client, repo)
+    client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    repo.published.rows[card_id].body = COVERED.model_dump(mode="json")  # type: ignore[attr-defined]
+    assert client.get("/articles/title").json()["headline"]["value"] == "81%"
+    listed = client.get("/articles").json()[0]
+    assert listed["kind"] == "paper"
+    assert listed["source_label"] == "arXiv"
+    assert "claim_index" not in listed["headline"]
 
 
 FLAGGED = BODY.model_copy(

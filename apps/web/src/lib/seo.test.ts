@@ -20,6 +20,9 @@ const SITE = "https://example.org";
 const article: PublicArticle = {
   slug: "granite-5",
   figure: null,
+  kind: null,
+  source_label: "",
+  headline: null,
   title: "Granite Speech 5.0 adds keyword biasing",
   seo_title: "Granite Speech 5.0 adds keyword biasing",
   meta_description: "IBM released Granite Speech 5.0.",
