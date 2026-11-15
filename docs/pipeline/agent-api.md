@@ -104,9 +104,10 @@ publishes still count toward the pace, so the next scheduled one waits its turn.
 `auto-review` replaces the editor's read-through with rules (`signalforge/auto_review.py`):
 
 - Before review, the draft stage repairs once: one writer call rewrites or drops each flagged sentence and an overreaching title, then everything is checked again (`stages/draft.py`).
-- A flagged dek: revise, with the reason `the dek is flagged: restate the main finding from the claims`.
-- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (40%) of sentences flagged: revise (`N sentences are flagged (P%), limit 40%`).
-- Otherwise every flagged sentence is deleted, a section left empty is removed, then the draft is revised if any of these hold. Each failing check adds its own reason, and all reasons are the note:
+- A flagged dek is never deleted or replaced, so the draft is always revised. The reason `the dek is flagged: restate the main finding from the claims` comes first, followed by any other reason below, so one redraft hears everything.
+- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (40%) of sentences flagged (the dek counts): revise at once (`N sentences are flagged (P%), limit 40%`), after the dek reason when the dek is flagged.
+- A deletion that cannot be made: revise at once with only `cannot fix a flagged sentence: <message>`.
+- Otherwise every flagged sentence except the dek is deleted, a section left empty is removed, then the draft is revised if any of these hold. Each failing check adds its own reason, and all reasons are the note:
   - fewer words than `ceil(band minimum x AUTO_REVIEW_LENGTH_FLOOR_RATIO)`, never below `AUTO_REVIEW_MIN_WORDS` (250): `<words> words after deletions, minimum <floor> for <template>`. The ratio defaults to 0.8 (baseline: below 100% of the template minimum, 38 of 60 published articles; below 80%, 22 of 60). Raise to 1.0 when Milestone 2b deepens research.
   - fewer than `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims: `<n> verified or supported claims, minimum 3`.
   - the dek opens with a word that points back at nothing: `the dek opens with a word that points back at nothing: '<text>'`.
@@ -114,9 +115,8 @@ publishes still count toward the pace, so the next scheduled one waits its turn.
   - a section under `AUTO_REVIEW_MIN_SECTION_SENTENCES` (2) sentences: `section '<heading>' has <n> sentence(s), minimum 2`.
   - a strong title word no cited claim states: `the title uses '<word>', which no cited claim states`.
   - a dash or banned phrasing: `contains an em dash or an en dash used as a dash`, `contains banned authorship phrasing: '<phrase>'`.
-  - a deletion that cannot be made: `cannot fix a flagged sentence: <message>`.
 - Pass: approved (and published with `publish=true`). Fail: `revise` with the reasons as the
-  note; `POST /agent/run/revise` redrafts with that note. A card gets at most
+  note; `POST /agent/run/revise` redrafts with that note, which the writer receives as a `<revision_reasons>` block of instructions (not as part of the untrusted editor brief). A card gets at most
   `AUTO_REVIEW_MAX_REDRAFTS` (2) redrafts. A redraft that fails (the writer or judge errored)
   keeps the old body and the `revise` status, and its `redraft_failed` event in the review
   log counts as one of them. With the redrafts used up, a failing draft is rejected by

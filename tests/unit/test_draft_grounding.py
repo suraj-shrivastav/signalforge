@@ -5,6 +5,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
+from html import escape
 from typing import Any, ClassVar
 
 import pytest
@@ -16,13 +17,20 @@ from signalforge.core.artifacts.research import (
     ResearchDocument,
     ResearchPackage,
     ResearchStatus,
+    ResearchTable,
 )
 from signalforge.core.budget import Budget, BudgetLimits, BudgetScope
 from signalforge.core.errors import ConfigurationError
 from signalforge.llm.gateway import LLMGateway
 from signalforge.llm.providers import FakeProvider, ProviderReply
 from signalforge.llm.roles import ModelSpec
-from signalforge.stages.draft import JUDGE_ROLE, WRITER_ROLE, _check_families, _process_card
+from signalforge.stages.draft import (
+    JUDGE_ROLE,
+    WRITER_ROLE,
+    _check_families,
+    _process_card,
+    _writer_user,
+)
 from signalforge.stages.draft_extraction import (
     evidence_window,
     sentence_problems,
@@ -329,3 +337,69 @@ def test_an_overreaching_title_without_a_fallback_is_kept_with_a_note() -> None:
     assert draft.draft is not None
     assert draft.draft.title == "Nemotron beats the contest"
     assert "title: uses 'beats'" in draft.review_summary
+
+
+def test_revision_reasons_reach_the_writer_as_an_escaped_block() -> None:
+    reason = "section 'H' has 1 sentence(s)"
+    user = _writer_user(package(), ArticleTemplate.NEWS_BRIEF, "angle", reason)
+    assert f"<revision_reasons>{escape(reason, quote=False)}</revision_reasons>" in user
+    assert "<editor_brief>angle</editor_brief>" in user
+
+
+def test_no_revision_block_without_reasons() -> None:
+    user = _writer_user(package(), ArticleTemplate.NEWS_BRIEF, "angle")
+    assert "<revision_reasons>" not in user
+
+
+def test_process_card_sends_the_revision_to_the_writer() -> None:
+    seen: list[str] = []
+
+    class Spy:
+        name = "spy"
+        replies: ClassVar[list[str]] = [writer(), all_true()]
+
+        def chat(self, model: str, messages: list[dict[str, str]], **k: Any) -> ProviderReply:
+            seen.append(messages[-1]["content"])
+            return ProviderReply(self.replies.pop(0), 1, 1, 1)
+
+    gateway = make_gateway([], Spy())
+    _process_card(
+        gateway,
+        package(),
+        ArticleTemplate.NEWS_BRIEF,
+        RUN,
+        "angle",
+        revision="Fix <it>",
+        repair=False,
+    )
+    assert "<revision_reasons>Fix &lt;it&gt;</revision_reasons>" in seen[0]
+    assert "<editor_brief>angle</editor_brief>" in seen[0]
+
+
+def test_the_table_follows_its_section_when_a_repair_drops_a_section() -> None:
+    table = ResearchTable(
+        caption="Scores", header=("Model", "Score"), rows=(("N", "535.4"), ("O", "500.1"))
+    )
+    pack = package().model_copy(
+        update={
+            "documents": (package().documents[0].model_copy(update={"tables": (table,)}),),
+        }
+    )
+    reply = json.dumps(
+        {
+            "title": "Nemotron scores",
+            "dek": sentence(GOOD, [0]),
+            "sections": [
+                {"heading": "Gone", "paragraphs": [{"sentences": [sentence(UNCITED, [])]}]},
+                {"heading": "Kept", "paragraphs": [{"sentences": BODY}]},
+            ],
+            "cover_alt": "Score chart",
+            "table": {"id": 0, "after_section": 1},
+        }
+    )
+    gateway = make_gateway([reply, all_true(40), repaired((1, "", [])), all_true(40)])
+    result = _process_card(gateway, pack, ArticleTemplate.NEWS_BRIEF, RUN, "", repair=True)
+    assert result.draft is not None
+    assert [s.heading for s in result.draft.sections] == ["Kept"]
+    assert result.draft.sections[0].table is not None
+    assert result.draft.sections[0].table.caption == "Scores"

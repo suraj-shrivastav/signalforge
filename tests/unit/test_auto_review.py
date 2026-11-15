@@ -187,3 +187,43 @@ def test_the_floor_ratio_scales_the_template_minimum() -> None:
     )
     assert decide(long, ArticleTemplate.PAPER_BREAKDOWN, 0, lenient).action == "approve"
     assert decide(long, ArticleTemplate.PAPER_BREAKDOWN, 0, strict).action == "revise"
+
+
+def test_a_flagged_dek_is_reported_with_the_other_reasons() -> None:
+    full = body(dek="A bad dek.", flags=(flag(-1, -1, "A bad dek."),))
+    thin = full.model_copy(
+        update={
+            "sections": (
+                ArticleSection(heading="H", paragraphs=(GOOD,)),
+                ArticleSection(heading="Full", paragraphs=(f"{GOOD} {GOOD} {GOOD}",)),
+            )
+        }
+    )
+    action, reasons = run(thin)
+    assert action == "revise"
+    assert "the dek is flagged" in reasons[0]
+    assert any("section 'H' has 1 sentence(s)" in r for r in reasons)
+
+
+def test_a_flagged_dek_alone_is_still_a_revision() -> None:
+    action, reasons = run(body(dek="A bad dek.", flags=(flag(-1, -1, "A bad dek."),)))
+    assert action == "revise"
+    assert len(reasons) == 1
+    assert "the dek is flagged" in reasons[0]
+
+
+def test_a_flagged_dek_with_too_many_flags_lists_the_dek_first() -> None:
+    texts = [f"Bad {i}." for i in range(3)]
+    b = body(
+        paragraphs=(f"{GOOD} " + " ".join(texts),),
+        dek="A bad dek.",
+        flags=(flag(-1, -1, "A bad dek."), *(flag(0, 0, t) for t in texts)),
+    )
+    action, reasons = run(b)
+    assert action == "revise"
+    assert "the dek is flagged" in reasons[0]
+    assert "flagged (" in reasons[1]
+
+
+def test_the_default_length_floor_ratio_matches_settings() -> None:
+    assert ReviewPolicy().length_floor_ratio == 0.8

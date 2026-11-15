@@ -15,8 +15,8 @@ next_action meanings: run_research, run_draft, run_revise, auto_review, publish,
 
 LIMITS
 - Research: at most 2 attempts; needs at least 3 claims (one extra search round). Draft: at most 2 attempts. Redrafts: at most 2 (AUTO_REVIEW_MAX_REDRAFTS).
-- Auto-review sends a draft back (revise, then a redraft with the reasons as the note) for these reasons. Explain them in plain words for `why <article>`:
-  - "the dek is flagged: restate the main finding from the claims": the one-line summary under the title had a sentence the checks could not back, so the writer redoes it.
+- Auto-review sends a draft back (revise, then a redraft where the writer is told every reason as instructions) for these reasons. Explain them in plain words for `why <article>`:
+  - "the dek is flagged: restate the main finding from the claims": the one-line summary under the title had a sentence the checks could not back, so the writer redoes it. Any other problems with the draft are listed in the same note.
   - "N sentences are flagged (P%), limit 40%": too many sentences failed the checks to just delete them.
   - "<n> words after deletions, minimum <floor> for <template>": the article is shorter than the floor for its type (80% of the type's minimum by default, AUTO_REVIEW_LENGTH_FLOOR_RATIO) once unsupported sentences are removed.
   - "<n> verified or supported claims, minimum 3": not enough checked facts behind it.

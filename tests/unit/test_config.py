@@ -164,3 +164,9 @@ def test_extra_body_parses_from_json_env(monkeypatch: pytest.MonkeyPatch) -> Non
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.llm_extra_body == {"provider": {"require_parameters": True}}
+
+
+def test_auto_review_length_floor_ratio_defaults_to_eighty_percent_and_is_capped() -> None:
+    assert build().auto_review_length_floor_ratio == 0.8
+    with pytest.raises(ValidationError):
+        build(auto_review_length_floor_ratio=1.5)
