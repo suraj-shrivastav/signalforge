@@ -69,13 +69,14 @@ My first design failed closed: any unsupported sentence killed the whole draft. 
 | Block on any unsupported sentence | 0 of 4 | 56% |
 | **Flag the sentence, keep the draft** | **4 of 4** | **88%** |
 
-Flagged sentences are then deleted by the review rules rather than shipped. The judge is not perfect either, so I measured it too: on deliberately corrupted sentences it wrongly accepted 20%, and **0%** when a number had been changed, because numbers are checked mechanically rather than by the model. That is the point of the design: **put each check where it is strongest.**
+The draft stage then gets one repair call that rewrites or drops each flagged sentence (and a title that claims more than the research), and everything is checked again. Whatever is still flagged is deleted by the review rules rather than shipped. The judge is not perfect either, so I measured it too: on deliberately corrupted sentences it wrongly accepted 20%, and **0%** when a number had been changed, because numbers are checked mechanically rather than by the model. That is the point of the design: **put each check where it is strongest.**
 
 ### 4. Judgement as code
 Automatic review is the editor's read-through written as pure, testable functions with no model and no database:
 
-- Too many flagged sentences, too short, or too few verified claims: **revise**, and the reasons become the brief for the next draft.
-- Otherwise flagged sentences are deleted, a flagged headline summary is replaced, and a section left empty is removed.
+- Too many flagged sentences, a flagged headline summary, too few verified claims, fewer words than 80% of the template's minimum, a section or paragraph that opens with a word pointing at nothing, a section under 2 sentences, or a title word ("only", "beats", "solves") no cited claim uses: **revise**, and the reasons go to the writer as instructions for the next draft.
+- Otherwise flagged sentences are deleted and a section left empty is removed.
+- The published page says automated checks, not an editor, approved it when the rules did.
 - After a fixed number of failed redrafts: **reject**. The loop is bounded by design.
 
 ### 5. Budgets, cost and an audit trail

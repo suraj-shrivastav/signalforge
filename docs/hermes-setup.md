@@ -129,27 +129,29 @@ The prompt reads `GET /agent/controls`, `/agent/work` and `/agent/runs` (the cro
 
 ### Hermes memory
 
-See "Install or update the Hermes memory entries" below. Do not hand-copy facts into memory: the reference entry holds them.
+See "Install or update the Hermes skill" below. Do not hand-copy facts into memory: the skill holds them, and memory keeps only a one-line pointer to it.
 
 ## 5. Telegram control
 
-The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). To install it: open that file, copy everything after its first four lines (`sed 1,4d scripts/hermes/telegram-control.md`) and add it to `~/.hermes/memories/MEMORY.md` as one entry, separated from the others by `§`. It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>`, `cards`, `why <title or slug>`, `topic <url or query>` and `queue` to the bot, and maps each to an API call with the agent key. Free-form questions are answered from the read-only endpoints only. It never unpublishes or deletes, and acts only on messages from the owner's chat. `topic` is normal research that waits its turn; `hot` jumps the queue.
+The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). It is installed into the Hermes skill with the reference (see "Install or update the Hermes skill" below). It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>`, `cards`, `why <title or slug>`, `topic <url or query>` and `queue` to the bot, and maps each to an API call with the agent key. Free-form questions are answered from the read-only endpoints only. It never unpublishes or deletes, and acts only on messages from the owner's chat. `topic` is normal research that waits its turn; `hot` jumps the queue.
 
 Make sure `API_BASE_URL` is set in `~/.hermes/.env` next to `AGENT_API_KEY`. Restart the gateway (`hermes gateway status`), then send `status` to the bot to check it answers.
 
 The control works only while the gateway host is on. The pipeline does not depend on it: pause also works with `curl` (see [deploy-cron.md](deploy-cron.md)).
 
-## Install or update the Hermes memory entries
+## Install or update the Hermes skill
 
-Two entries in `~/.hermes/memories/MEMORY.md` tell Hermes what SignalForge is and what it may call. Entries are separated by a line with `§`. Replace the old SignalForge entries (the earlier API, limits and "Telegram control" entries) with these two; do not append next to them, or Hermes reads two versions of the same facts.
+The SignalForge facts and the owner's commands live in one Hermes skill, `~/.hermes/skills/signalforge-pipeline/SKILL.md`, not in memory: together they are about 10,000 characters, and Hermes memory holds at most 2,200 (`memory_char_limit`). The skill is built from three repo files:
 
-1. Back up: `cp ~/.hermes/memories/MEMORY.md ~/.hermes/memories/MEMORY.md.bak`.
-2. Open the file, delete the old SignalForge entries, and keep the unrelated ones.
-3. Add the reference entry: `sed 1,4d scripts/hermes/signalforge-reference.md` (what SignalForge is, who runs what, card states, limits, endpoint table, rules).
-4. Add the control entry: `sed 1,4d scripts/hermes/telegram-control.md` (the owner's commands).
-5. Put `§` on its own line between entries, make sure `API_BASE_URL` and `AGENT_API_KEY` are in `~/.hermes/.env`, restart the gateway (`hermes gateway restart`) and send `why <a title>` and `queue` to the bot.
+- [scripts/hermes/skill-header.md](../scripts/hermes/skill-header.md): the skill's frontmatter and its role (remote control and explainer; it never runs the pipeline);
+- [scripts/hermes/signalforge-reference.md](../scripts/hermes/signalforge-reference.md): what SignalForge is, who runs what, card states, limits, revise reasons, endpoints, rules;
+- [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md): the owner's commands.
 
-Re-do this after the two files change in the repo. Hermes must never write these entries itself.
+1. Run `scripts/hermes/install-skill.sh`. It backs up the old skill to `SKILL.md.bak` and writes the new one.
+2. Keep exactly one SignalForge entry in `~/.hermes/memories/MEMORY.md` (entries are separated by a line with `§`), a pointer such as: "SignalForge: Hermes is the owner's Telegram remote control and explainer, never the scheduler. The autopilot cron runs the pipeline. For any SignalForge question or command (status, why, queue, topic, hot, pause, resume, publish now, cards) load skill signalforge-pipeline. Never tick, accept, research, draft or publish on your own; never unpublish or delete; never print the key." Delete any older SignalForge entries.
+3. Make sure `API_BASE_URL` and `AGENT_API_KEY` are in `~/.hermes/.env`, restart the gateway (`hermes gateway restart`) and send `why <a title>` and `queue` to the bot.
+
+Re-run step 1 after any of the three files changes in the repo. Hermes must never write the skill or the pointer itself.
 
 ## Optional: run the Hermes gateway on a cloud host
 
@@ -163,7 +165,7 @@ hermes gateway install && hermes gateway start   # systemd service
 hermes gateway status
 ```
 
-Copy `~/.hermes/.env` values (`AGENT_API_KEY`, `API_BASE_URL`) and the two memory entries to the host. Run the gateway in one place only: stop the laptop's service first (`hermes gateway stop`), because two gateways polling one Telegram bot fight over messages. The evening job runs where the gateway scheduler runs, so recreate it on the host (section 4) and remove it from the laptop. `hermes gateway --help` lists the other options (`enroll`, `migrate`).
+Copy `~/.hermes/.env` values (`AGENT_API_KEY`, `API_BASE_URL`) and the SignalForge skill (run `scripts/hermes/install-skill.sh` there) plus the memory pointer entry to the host. Run the gateway in one place only: stop the laptop's service first (`hermes gateway stop`), because two gateways polling one Telegram bot fight over messages. The evening job runs where the gateway scheduler runs, so recreate it on the host (section 4) and remove it from the laptop. `hermes gateway --help` lists the other options (`enroll`, `migrate`).
 
 ## 6. Keep the machine awake (recommended)
 

@@ -1,6 +1,6 @@
 # SignalForge reference (Hermes memory entry)
 
-Install as one entry in `~/.hermes/memories/MEMORY.md` (entries are separated by `§`): copy everything after the first four lines (`sed 1,4d scripts/hermes/signalforge-reference.md`). Replace the old SignalForge entries, do not append duplicates. See "Install or update the Hermes memory entries" in docs/hermes-setup.md.
+Installed into the Hermes skill `signalforge-pipeline` by `scripts/hermes/install-skill.sh`, which copies everything after these first four lines. See "Install or update the Hermes skill" in docs/hermes-setup.md.
 
 SignalForge is an automated news pipeline. It reads signals (RSS, Hacker News, arXiv, Hugging Face), scores them into topic cards, accepts the best, researches each (claims checked against sources), drafts an article, reviews it by rules, and publishes it to the website. API: $API_BASE_URL (https://signalforge-wmtl.onrender.com). Auth: header X-Editor-Key with $AGENT_API_KEY. Never print the key.
 
