@@ -140,6 +140,7 @@ There is no R4 in the ruling list.
 - The accept target ignores cards mid-stage (`wait`).
 - A redraft that raises a non-typed error logs no `redraft_failed` event (pre-existing).
 - A claim call that fails after the server took the lease leaves the slot held for the 360-minute lease.
+- The agent key can republish an owner-unpublished article via POST /editor/drafts/{id}/publish when not paused: publish_approved (apps/api/routes/articles.py:184-205) only rejects status == 'published', and the route (articles.py:247-256) only gates the agent key on pause. Fix: reject the agent actor when the existing published row is 'unpublished' (editor key keeps manual republish). The autopilot and Hermes do not call this route.
 - Hermes Telegram control works only while its gateway host (the laptop) is on. Moving the gateway to the cloud is a follow-up.
 
 ## 7. Owner steps before the soak, and soak pass criteria
