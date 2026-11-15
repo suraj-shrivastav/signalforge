@@ -57,6 +57,8 @@ class ArticleDraftRow(Base, UUIDPrimaryKeyMixin, TimestampsMixin, SchemaVersionM
     )
     # Why the card failed (typed error text, no secrets); NULL unless status is 'failed'.
     failure_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    # Draft runs on this card so far; at MAX_DRAFT_ATTEMPTS a failed draft is closed.
+    attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     cost_usd: Mapped[Decimal] = mapped_column(
         Numeric(12, 6), default=Decimal("0"), server_default=text("0")
     )
