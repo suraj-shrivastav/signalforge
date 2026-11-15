@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     # app at /indexnow-key.txt). Leave either empty to turn the ping off.
     site_url: str = ""
     indexnow_key: str = ""
+    # Shared with the web app (REVALIDATE_SECRET on Vercel). With SITE_URL set, the API expires
+    # the web cache after a publish, an unpublish or new images, so changes show at once instead
+    # of after the five-minute cache. Leave unset to turn it off.
+    revalidate_secret: SecretStr | None = None
 
     # PRD §12 proposed figures, to be calibrated. Decimal, not float: these are
     # compared against accumulated spend and must not drift.

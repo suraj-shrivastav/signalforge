@@ -472,6 +472,39 @@ def test_publish_pings_indexnow_only_when_configured(
     assert pings[0][:2] == ("https://example.com", "k")
 
 
+def test_publish_unpublish_and_images_refresh_the_site_only_when_configured(
+    ctx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(articles, "revalidate_site", lambda *a: calls.append(a))
+    client, repo = ctx
+    client.post(f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={})
+    client.post("/editor/articles/title/unpublish", headers=H)
+    assert calls == []
+
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={
+            "site_url": "https://example.com",
+            "revalidate_secret": SecretStr("s3cret"),
+            "supabase_url": "https://proj.supabase.co",
+        }
+    )
+    slug = client.post(
+        f"/editor/drafts/{approve(client, repo)}/publish", headers=H, json={}
+    ).json()["slug"]
+    assert calls == [("https://example.com", "s3cret")]
+    images = {
+        "cover": {"src": f"{BUCKET}/{slug}/cover.svg", "alt": "Cover alt"},
+        "figure": {"src": f"{BUCKET}/{slug}/figure.svg", "alt": "Fig", "caption": ""},
+    }
+    assert client.post(f"/editor/articles/{slug}/images", headers=H, json=images).status_code == 200
+    assert client.post(f"/editor/articles/{slug}/unpublish", headers=H).status_code == 200
+    assert len(calls) == 3
+    # Unpublishing an article that is already down changes nothing, so it does not refresh.
+    client.post(f"/editor/articles/{slug}/unpublish", headers=H)
+    assert len(calls) == 3
+
+
 BUCKET = "https://proj.supabase.co/storage/v1/object/public/article-images"
 
 

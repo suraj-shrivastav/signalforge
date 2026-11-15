@@ -34,6 +34,7 @@ from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.image_storage import ImageStorageError, check_svg, upload_svg
 from signalforge.indexnow import ping_indexnow
 from signalforge.publishing import meta_description, slugify, unique_slug
+from signalforge.site_revalidate import revalidate_site
 from signalforge.stages.draft_review import apply_sentence_edit
 
 router = APIRouter()
@@ -182,6 +183,14 @@ def review_draft(
     return _out(row)
 
 
+def refresh_site(background: BackgroundTasks, settings: Any) -> None:
+    """After the response, expire the web app's article cache (needs SITE_URL and the secret)."""
+    if settings.site_url and settings.revalidate_secret is not None:
+        background.add_task(
+            revalidate_site, settings.site_url, settings.revalidate_secret.get_secret_value()
+        )
+
+
 def process_note(row: Any, settings: Any) -> str:
     """The note readers see: says whether an editor or the automated review approved it."""
     if row.review_note == POLICY_APPROVAL_NOTE:
@@ -231,6 +240,7 @@ def publish_approved(
     )
     if settings.site_url and settings.indexnow_key:
         background.add_task(ping_indexnow, settings.site_url, settings.indexnow_key, saved.slug)
+    refresh_site(background, settings)
     return PublishedOut(
         slug=saved.slug,
         status=cast(Any, saved.status),
@@ -278,6 +288,8 @@ def publish_draft(
 )
 def unpublish_article(
     slug: str,
+    request: Request,
+    background: BackgroundTasks,
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> PublishedOut:
     row = published.get_by_slug(slug)
@@ -285,6 +297,7 @@ def unpublish_article(
         raise HTTPException(status_code=404, detail="Article not found")
     if row.status == "published":
         published.unpublish(row)
+        refresh_site(background, request.app.state.settings)
     return PublishedOut(
         slug=row.slug,
         status=cast(Any, row.status),
@@ -320,6 +333,7 @@ def attach_images(
     slug: str,
     payload: ImagesIn,
     request: Request,
+    background: BackgroundTasks,
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> PublishedOut:
     """Attach the cover and the inline image (stored in the Supabase bucket) to an article."""
@@ -337,6 +351,7 @@ def attach_images(
         cover=payload.cover.model_dump() if payload.cover else None,
         figure=payload.figure.model_dump() if payload.figure else None,
     )
+    refresh_site(background, request.app.state.settings)
     return PublishedOut(
         slug=row.slug,
         status=cast(Any, row.status),
@@ -354,6 +369,7 @@ def upload_images(
     slug: str,
     payload: ImagesUploadIn,
     request: Request,
+    background: BackgroundTasks,
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
 ) -> PublishedOut:
     """Store the agent's rendered SVGs in the article-images bucket and attach them.
@@ -390,6 +406,7 @@ def upload_images(
             "caption": payload.figure.caption,
         },
     )
+    refresh_site(background, settings)
     return PublishedOut(
         slug=row.slug,
         status=cast(Any, row.status),
