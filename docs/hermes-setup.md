@@ -1,11 +1,38 @@
 # SignalForge on a new device: Hermes + scheduler setup
 
-SignalForge's backend runs on Render (database on Supabase, website on Vercel). The pipeline is driven by a cloud cron autopilot; see [deploy-cron.md](deploy-cron.md). The laptop runs Hermes. The launchd scheduler below is a fallback only: unload it before you enable the cron, and never run both.
+## What runs where
 
-1. **Pipeline scheduler, a fallback only** (launchd + shell). The cron autopilot is the primary driver; use launchd only if the cron is down, and never together with it (section 2): four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the two top-scored cards, researches them, drafts them, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
-2. **Hermes** (agent + Telegram gateway): the owner's Telegram control (section 5) and one evening job (6 pm) that reports the day to Telegram and attaches images when needed.
+| Part | Where | Job |
+|---|---|---|
+| Backend API and database | Render and Supabase | The pipeline's state and all endpoints. |
+| Website | Vercel | Serves the published articles. |
+| Cron autopilot (`apps/worker/autopilot.py`) | Render cron job, every 15 minutes | Runs the pipeline: four slots a day, publish pacing, images, closing dead cards. See [deploy-cron.md](deploy-cron.md). |
+| launchd `ai.signalforge.cron` | The owner's laptop | Fallback only. It runs the same pipeline slots until the cloud cron is set up. Never run it beside the cron. |
+| Hermes | The owner's laptop | The owner's Telegram control and the 6 pm evening report. |
 
-The pipeline does not depend on an LLM agent, so a Hermes failure never blocks drafting or publishing.
+Hermes never schedules the pipeline. The owner uses it from Telegram to find out why an article is not published (`why`), to ask for research on a topic (`topic`), to see the publish queue (`queue`), and to ask anything about the pipeline. The pipeline does not depend on Hermes, so a Hermes failure never blocks drafting or publishing.
+
+State on the owner's machine (checked 2026-11-15 with `hermes cron list` and launchd):
+
+- launchd `ai.signalforge.cron` is loaded and runs the pipeline slots today.
+- Hermes job `signalforge-evening-tick` (6 pm evening report) is the only SignalForge Hermes job that should be active.
+- `signalforge-morning-tick`, `signalforge-midday-tick` and `signalforge-night-autopilot` are paused legacy jobs that used to drive the pipeline. They would double-run with the autopilot: remove them (next section).
+- `job-pipeline` is unrelated to SignalForge. Leave it.
+
+1. **Pipeline scheduler, a fallback only** (launchd + shell): section 2 below. Four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the two top-scored cards, researches them, drafts them, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
+2. **Hermes** (agent + Telegram gateway): the owner's Telegram control (section 5) and one evening job (6 pm) that reports the day to Telegram.
+
+## Clean up legacy Hermes jobs
+
+The old morning, midday and night tick jobs ran the pipeline from Hermes. The autopilot and launchd replaced them. List the jobs, then remove each legacy one:
+
+```bash
+hermes cron list
+hermes cron remove <id>        # alias: rm, delete. Do this for each of the three legacy jobs
+hermes cron pause <id>         # or at least pause it; never resume it
+```
+
+Use the ids that `hermes cron list` prints for `signalforge-morning-tick`, `signalforge-midday-tick` and `signalforge-night-autopilot`. Keep the evening job and `job-pipeline`. Then `hermes cron list` should show one active SignalForge job.
 
 ## Publishing limits
 
@@ -102,20 +129,41 @@ The prompt reads `GET /agent/controls`, `/agent/work` and `/agent/runs` (the cro
 
 ### Hermes memory
 
-Add these facts to `~/.hermes/memories/MEMORY.md` (one entry per fact, separated by `§`) so Hermes can answer questions about the pipeline:
-
-- API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. The agent key also reads `/agent/*` and `/cards/queue`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
-- Research needs at least 3 claims, otherwise one extra search round. A card gets at most 2 research attempts and 2 draft attempts, then `next_action` is `close` (also after a `needs_more_info` draft or 2 redrafts). Never retry a closed card; the autopilot log on the cron host records it. While paused the API answers 423 to runs, publish-next and topics: report the pause, do not retry. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
-- The cloud cron autopilot runs the pipeline (the launchd scheduler is a fallback only, never run beside it). Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
-- The article-images skill lives in the repo at `skills/article-images/`. Use the project venv (`.venv/bin/python`), because system python 3.9 is too old.
+See "Install or update the Hermes memory entries" below. Do not hand-copy facts into memory: the reference entry holds them.
 
 ## 5. Telegram control
 
-The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). To install it: open that file, copy everything after its first four lines (`sed 1,4d scripts/hermes/telegram-control.md`) and add it to `~/.hermes/memories/MEMORY.md` as one entry, separated from the others by `§`. It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>` and `cards` to the bot, and maps each to an API call with the agent key. It never unpublishes or deletes, and acts only on messages from the owner's chat.
+The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). To install it: open that file, copy everything after its first four lines (`sed 1,4d scripts/hermes/telegram-control.md`) and add it to `~/.hermes/memories/MEMORY.md` as one entry, separated from the others by `§`. It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>`, `cards`, `why <title or slug>`, `topic <url or query>` and `queue` to the bot, and maps each to an API call with the agent key. Free-form questions are answered from the read-only endpoints only. It never unpublishes or deletes, and acts only on messages from the owner's chat. `topic` is normal research that waits its turn; `hot` jumps the queue.
 
-Hermes takes standing facts from `~/.hermes/memories/MEMORY.md` (see Hermes memory above). Make sure `API_BASE_URL` is set in `~/.hermes/.env` next to `AGENT_API_KEY`. Restart the gateway (`hermes gateway status`), then send `status` to the bot to check it answers.
+Make sure `API_BASE_URL` is set in `~/.hermes/.env` next to `AGENT_API_KEY`. Restart the gateway (`hermes gateway status`), then send `status` to the bot to check it answers.
 
 The control works only while the gateway host is on. The pipeline does not depend on it: pause also works with `curl` (see [deploy-cron.md](deploy-cron.md)).
+
+## Install or update the Hermes memory entries
+
+Two entries in `~/.hermes/memories/MEMORY.md` tell Hermes what SignalForge is and what it may call. Entries are separated by a line with `§`. Replace the old SignalForge entries (the earlier API, limits and "Telegram control" entries) with these two; do not append next to them, or Hermes reads two versions of the same facts.
+
+1. Back up: `cp ~/.hermes/memories/MEMORY.md ~/.hermes/memories/MEMORY.md.bak`.
+2. Open the file, delete the old SignalForge entries, and keep the unrelated ones.
+3. Add the reference entry: `sed 1,4d scripts/hermes/signalforge-reference.md` (what SignalForge is, who runs what, card states, limits, endpoint table, rules).
+4. Add the control entry: `sed 1,4d scripts/hermes/telegram-control.md` (the owner's commands).
+5. Put `§` on its own line between entries, make sure `API_BASE_URL` and `AGENT_API_KEY` are in `~/.hermes/.env`, restart the gateway (`hermes gateway restart`) and send `why <a title>` and `queue` to the bot.
+
+Re-do this after the two files change in the repo. Hermes must never write these entries itself.
+
+## Optional: run the Hermes gateway on a cloud host
+
+By default Telegram works only while the laptop is on and awake, because the gateway runs there. To keep Telegram answering with the laptop off, run the gateway on an always-on host (a small VM; any Linux box with Hermes installed). This is optional: the pipeline itself already runs in the cloud.
+
+```bash
+hermes setup                  # provider key, on the host
+hermes gateway setup          # choose Telegram, same bot token and chat id
+hermes gateway run            # foreground, recommended for Docker; or:
+hermes gateway install && hermes gateway start   # systemd service
+hermes gateway status
+```
+
+Copy `~/.hermes/.env` values (`AGENT_API_KEY`, `API_BASE_URL`) and the two memory entries to the host. Run the gateway in one place only: stop the laptop's service first (`hermes gateway stop`), because two gateways polling one Telegram bot fight over messages. The evening job runs where the gateway scheduler runs, so recreate it on the host (section 4) and remove it from the laptop. `hermes gateway --help` lists the other options (`enroll`, `migrate`).
 
 ## 6. Keep the machine awake (recommended)
 
@@ -141,7 +189,7 @@ A healthy run logs `tick finished`, `accept ...: HTTP 201`, `research finished`,
 
 ## Models
 
-The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; see `src/signalforge/llm/roles.py`) and works with any OpenAI-compatible endpoint. Hermes' own model (currently Nemotron) is separate: it only schedules and reports, so changing either never affects the other. The article writer and the claim judge must stay in different model families.
+The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; see `src/signalforge/llm/roles.py`) and works with any OpenAI-compatible endpoint. Hermes' own model (currently Nemotron) is separate: it only answers the owner and writes the report, so changing either never affects the other. The article writer and the claim judge must stay in different model families.
 
 ## Troubleshooting
 
@@ -151,6 +199,7 @@ The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; 
 | `publish-next` returns `published: null, waiting: N` | Pacing limit (4 h apart, 3 per 24 h). Expected, drafts drain as slots open. |
 | Log shows `slot ... FAILED (attempt 3)` | Read the lines above it. Fix the cause, then delete `~/.signalforge-state` to retry the slot. |
 | `backend unreachable, will retry next interval` | Render cold start or no wifi. Retries automatically. |
+| Evening job fails with `403 Authorization failed` from NVIDIA NIM | Hermes's own model key expired or was revoked. Update the provider key with `hermes setup` (or the provider key in `~/.hermes/.env`). The SignalForge key (`AGENT_API_KEY`) is separate and unaffected: the pipeline keeps running. |
 | Hermes job `agent reported failure` | The agent was cut off (often by sleep) or the model call failed. Check `hermes cron runs`, `~/.hermes/logs/errors.log`. |
 | Telegram `nodename nor servname provided` or `Sticky Telegram path ... failed` | Network dropped across sleep. The gateway retries; reports may arrive late. |
 | A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 6). |

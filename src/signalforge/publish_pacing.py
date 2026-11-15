@@ -27,3 +27,24 @@ def next_publish_time(
     if len(recent) >= daily_cap:
         at = max(at, recent[len(recent) - daily_cap] + _DAY)
     return at
+
+
+def schedule(
+    published: Sequence[datetime],
+    waiting: int,
+    now: datetime,
+    *,
+    min_gap: timedelta,
+    daily_cap: int,
+) -> list[datetime]:
+    """Estimated publish time of each of ``waiting`` drafts, in queue order.
+
+    Each draft takes the next free slot after the ones before it. Read-only: nothing is stored.
+    """
+    times = list(published)
+    out: list[datetime] = []
+    for _ in range(waiting):
+        at = next_publish_time(times, now, min_gap=min_gap, daily_cap=daily_cap)
+        out.append(at)
+        times.append(at)
+    return out

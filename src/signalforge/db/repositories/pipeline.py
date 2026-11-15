@@ -10,7 +10,8 @@ from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.published import PublishedArticleRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
-from signalforge.pipeline_state import classify, redrafts_used
+from signalforge.explain import CardFacts
+from signalforge.pipeline_state import CardState, classify, redrafts_used
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,41 @@ class PipelineRepository:
 
         ``max_redrafts`` is AUTO_REVIEW_MAX_REDRAFTS: a revise past it is closed.
         """
+        cards = []
+        for f in self.facts(limit, accepted_only=True):
+            state = self.state_of(f, max_redrafts)
+            cards.append(
+                PipelineCard(
+                    f.card_id, f.title, state.stage, state.next_action,
+                    f.slug if f.published_status == "published" else None, f.created_at,
+                )
+            )  # fmt: skip
+        return cards
+
+    @staticmethod
+    def state_of(f: CardFacts, max_redrafts: int) -> CardState:
+        """The one classification of a card's facts (shared by the list and the explainer)."""
+        return classify(
+            research=f.research_status,
+            research_attempts=f.research_attempts,
+            draft=f.draft_status,
+            draft_attempts=f.draft_attempts,
+            review=f.review_status,
+            redrafts=redrafts_used(f.review_log),
+            max_redrafts=max_redrafts,
+            published=f.published_status,
+            has_cover=f.has_cover,
+            has_figure=f.has_figure,
+        )
+
+    def facts(
+        self, limit: int, *, accepted_only: bool = True, card_id: UUID | None = None
+    ) -> list[CardFacts]:
+        """Newest cards first with the stored facts of each. Read-only.
+
+        ``accepted_only`` keeps cards whose latest decision is 'accepted'; without it any card
+        comes back with its latest decision (None if it has none).
+        """
         latest = (
             select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
             .distinct(EditorDecisionRow.topic_card_id)
@@ -47,57 +83,47 @@ class PipelineRepository:
                 TopicCardRow.id,
                 Signal.title,
                 TopicCardRow.created_at,
+                latest.c.decision,
                 ResearchPackageRow.status,
                 ResearchPackageRow.attempts,
+                ResearchPackageRow.failure_reason,
                 ArticleDraftRow.status,
                 ArticleDraftRow.attempts,
+                ArticleDraftRow.failure_reason,
                 ArticleDraftRow.review_status,
+                ArticleDraftRow.review_log,
                 PublishedArticleRow.status,
                 PublishedArticleRow.slug,
                 PublishedArticleRow.body,
-                ArticleDraftRow.review_log,
             )
             .join(Signal, Signal.id == TopicCardRow.signal_id)
-            .join(latest, latest.c.topic_card_id == TopicCardRow.id)
+            .outerjoin(latest, latest.c.topic_card_id == TopicCardRow.id)
             .outerjoin(ResearchPackageRow, ResearchPackageRow.card_id == TopicCardRow.id)
             .outerjoin(ArticleDraftRow, ArticleDraftRow.card_id == TopicCardRow.id)
             .outerjoin(PublishedArticleRow, PublishedArticleRow.card_id == TopicCardRow.id)
-            .where(latest.c.decision == "accepted")
             .order_by(TopicCardRow.created_at.desc(), TopicCardRow.id.desc())
             .limit(limit)
         )
-        cards = []
+        if accepted_only:
+            query = query.where(latest.c.decision == "accepted")
+        if card_id is not None:
+            query = query.where(TopicCardRow.id == card_id)
+        out = []
         for (
-            card_id,
-            title,
-            created,
-            research,
-            attempts,
-            draft,
-            draft_attempts,
-            review,
-            pub,
-            slug,
-            body,
-            review_log,
-        ) in self._session.execute(query).all():
+            cid, title, created, decision, r_status, r_attempts, r_failure,
+            d_status, d_attempts, d_failure, review, review_log, pub, slug, body,
+        ) in self._session.execute(query).all():  # fmt: skip
             body = body or {}
-            state = classify(
-                research=research,
-                research_attempts=attempts or 0,
-                draft=draft,
-                draft_attempts=draft_attempts or 0,
-                review=review,
-                redrafts=redrafts_used(review_log or []),
-                max_redrafts=max_redrafts,
-                published=pub,
-                has_cover=bool((body.get("cover") or {}).get("src")),
-                has_figure=bool(body.get("figure")),
-            )
-            cards.append(
-                PipelineCard(
-                    card_id, title, state.stage, state.next_action,
-                    slug if pub == "published" else None, created,
+            out.append(
+                CardFacts(
+                    card_id=cid, title=title, created_at=created, decision=decision,
+                    research_status=r_status, research_attempts=r_attempts or 0,
+                    research_failure=r_failure, draft_status=d_status,
+                    draft_attempts=d_attempts or 0, draft_failure=d_failure,
+                    review_status=review, review_log=tuple(review_log or ()),
+                    published_status=pub, slug=slug,
+                    has_cover=bool((body.get("cover") or {}).get("src")),
+                    has_figure=bool(body.get("figure")),
                 )
             )  # fmt: skip
-        return cards
+        return out
