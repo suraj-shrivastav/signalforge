@@ -330,8 +330,19 @@ def test_cards_mid_stage_count_as_in_flight() -> None:  # /agent/work hides wait
     pipeline = {"counts": {}, "cards": [_card("c1", "wait"), _card("c2", "wait"),
                                         _card("c3", "none"), _card("c4", "close")]}  # fmt: skip
     routes = _slot_routes([], **{"GET /cards/queue": queue, "GET /agent/pipeline": pipeline})
-    assert autopilot.top_up_cards(api(routes, calls), 3) == 1
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.url.path == "/agent/pipeline":
+            seen.append(request.url.query.decode())
+        body = routes.get((request.method, request.url.path), {})
+        return httpx.Response(200, json=body)
+
+    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    assert autopilot.top_up_cards(autopilot.Api(client, sleep=lambda _s: None), 3) == 1
     assert "GET /agent/pipeline" in calls
+    assert seen == ["limit=200"]
 
 
 def test_a_tick_with_a_non_zero_exit_code_fails_the_slot(

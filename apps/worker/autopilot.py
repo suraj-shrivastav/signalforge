@@ -196,7 +196,9 @@ def accept_best_cards(api: Api, count: int) -> int:
 
 def top_up_cards(api: Api, target: int) -> int:
     """Accept just enough cards that about ``target`` are in flight (publish queue included)."""
-    cards = api.call("GET", "/agent/pipeline").get("cards", [])  # /agent/work hides wait cards
+    cards = api.call("GET", "/agent/pipeline", params={"limit": 200}).get(
+        "cards", []
+    )  # /agent/work hides wait cards
     in_flight = sum(1 for c in cards if c.get("next_action") not in _NOT_IN_FLIGHT)
     return accept_best_cards(api, max(0, target - in_flight))
 
