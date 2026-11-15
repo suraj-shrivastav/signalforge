@@ -47,3 +47,19 @@ def test_new_slot_resets_failures(db_session: Session) -> None:
     repo.claim_slot("2026-11-15-00", NOW, LEASE)
     repo.finish_slot("2026-11-15-00", ok=False)
     assert repo.claim_slot("2026-11-15-06", NOW, LEASE).failures == 0
+
+
+def test_release_keeps_failures_and_the_slot_is_reclaimable(db_session: Session) -> None:
+    repo = ControlsRepository(db_session)
+    slot = "2026-11-15-18"
+    repo.claim_slot(slot, NOW, LEASE)
+    repo.finish_slot(slot, ok=False)  # one real failure
+    assert repo.claim_slot(slot, NOW, LEASE).failures == 1
+    row = repo.release_slot(slot)
+    assert (row.slot_status, row.slot_failures, row.slot_lease_until) == ("failed", 1, None)
+    assert repo.claim_slot(slot, NOW, LEASE).failures == 1
+    repo.release_slot("2026-11-15-00")  # another slot: ignored
+    assert repo.get().slot_status == "running"
+    repo.finish_slot(slot, ok=True)
+    repo.release_slot(slot)  # not running: ignored
+    assert repo.get().slot_status == "done"

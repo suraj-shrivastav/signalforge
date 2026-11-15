@@ -54,6 +54,11 @@ class StubControls:
 
     def finish_slot(self, slot: str, ok: bool) -> Any:  # noqa: ARG002
         self.row.slot_status = "done" if ok else "failed"
+        self.row.slot_failures += 0 if ok else 1
+        return self.row
+
+    def release_slot(self, slot: str) -> Any:  # noqa: ARG002
+        self.row.slot_status = "failed"
         return self.row
 
 
@@ -95,6 +100,18 @@ def test_slot_claim_is_exclusive(ctx: tuple[TestClient, StubControls]) -> None:
     body = {"slot": "2026-11-15-06"}
     assert client.post("/agent/controls/slot/claim", json=body, headers=H).json()["claimed"]
     assert not client.post("/agent/controls/slot/claim", json=body, headers=H).json()["claimed"]
+
+
+def test_slot_finish_release_does_not_count_a_failure(
+    ctx: tuple[TestClient, StubControls],
+) -> None:
+    client, _ = ctx
+    body = {"slot": "2026-11-15-06", "ok": False, "release": True}
+    out = client.post("/agent/controls/slot/finish", json=body, headers=H).json()
+    assert (out["slot_status"], out["slot_failures"]) == ("failed", 0)
+    body = {"slot": "2026-11-15-06", "ok": False}
+    out = client.post("/agent/controls/slot/finish", json=body, headers=H).json()
+    assert out["slot_failures"] == 1
 
 
 def test_controls_need_a_key(ctx: tuple[TestClient, StubControls]) -> None:

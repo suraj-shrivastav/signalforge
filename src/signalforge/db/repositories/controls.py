@@ -59,6 +59,15 @@ class ControlsRepository:
         self._session.flush()
         return SlotClaim(True, slot, failures)
 
+    def release_slot(self, slot: str) -> PipelineControl:
+        """End a running slot that was paused, not failed: shown as failed, failures unchanged."""
+        row = self.get()
+        if row.slot == slot and row.slot_status == "running":
+            row.slot_status = "failed"
+            row.slot_lease_until = None
+            self._session.flush()
+        return row
+
     def finish_slot(self, slot: str, ok: bool) -> PipelineControl:
         row = self.get()
         if row.slot == slot:

@@ -30,9 +30,8 @@ REPO = Path(__file__).resolve().parents[2]
 _POLL_S = 60
 _MAX_POLLS = 30
 _LEASE_MINUTES = 360  # a worst-case slot runs about 330 min; the default lease is 120
-# Cards that already hold a place in the pipeline: they count toward the accept target.
-_IN_FLIGHT = ("run_research", "retry_research", "run_draft", "retry_draft", "auto_review",
-              "run_revise", "publish")  # fmt: skip
+# A card in any other next_action (waiting mid-stage included) holds a place in the pipeline.
+_NOT_IN_FLIGHT = ("none", "close")
 
 
 class PausedError(Exception):
@@ -43,6 +42,7 @@ class Api:
     def __init__(self, client: httpx.Client, sleep: Callable[[float], None] = time.sleep) -> None:
         self._client = client
         self._sleep = sleep
+        self.failure: str | None = None  # why the last start() was false, when known
 
     def call(self, method: str, path: str, **kw: Any) -> Any:
         for attempt in range(4):
@@ -93,8 +93,11 @@ class Api:
             error = last.get("error") if isinstance(last, dict) else "no result"
             log.warning("%s did not finish ok: %s", stage, error)  # error is a type name
             return False
-        if stage == "tick" and (last.get("result") or {}).get("exit_code"):
-            log.warning("tick exited %s", last["result"]["exit_code"])
+        code = (last.get("result") or {}).get("exit_code") if stage == "tick" else 0
+        if code:
+            self.failure = f"tick exit_code {code}"
+            log.warning("tick exited %s", code)
+            return False
         return True
 
 
@@ -193,8 +196,10 @@ def accept_best_cards(api: Api, count: int) -> int:
 
 def top_up_cards(api: Api, target: int) -> int:
     """Accept just enough cards that about ``target`` are in flight (publish queue included)."""
-    cards = api.call("GET", "/agent/work").get("cards", [])
-    in_flight = sum(1 for c in cards if c.get("next_action") in _IN_FLIGHT)
+    cards = api.call("GET", "/agent/pipeline", params={"limit": 200}).get(
+        "cards", []
+    )  # /agent/work hides wait cards
+    in_flight = sum(1 for c in cards if c.get("next_action") not in _NOT_IN_FLIGHT)
     return accept_best_cards(api, max(0, target - in_flight))
 
 
@@ -226,7 +231,7 @@ def review_cards(api: Api, env: Mapping[str, str]) -> None:
 def run_slot(api: Api, env: Mapping[str, str], first_try: bool) -> str | None:
     """Run one slot. None when it finished, else the step that failed."""
     if not api.start("tick"):
-        return "tick"
+        return api.failure or "tick"
     if first_try:  # a retried slot already accepted its cards
         top_up_cards(api, _accept_target(env))
     for _ in range(2):
@@ -258,9 +263,12 @@ def _outcome(slot: str, outcome: str, reason: str | None, code: int) -> int:
 
 
 def _finish(api: Api, env: Mapping[str, str], slot: str, ok: bool, failures: int | None) -> None:
-    """Close the claimed slot. ``failures`` None (a pause) never alerts."""
+    """Close the claimed slot. ``failures`` None (a pause) releases it: no failure, no alert."""
+    body: dict[str, Any] = {"slot": slot, "ok": ok}
+    if failures is None:
+        body["release"] = True
     try:
-        api.call("POST", "/agent/controls/slot/finish", json={"slot": slot, "ok": ok})
+        api.call("POST", "/agent/controls/slot/finish", json=body)
     except Exception as exc:  # noqa: BLE001 - the alert below must still go out
         log.warning("slot finish failed: %s", _why(exc))
     if not ok and failures is not None and failures + 1 >= 3:
