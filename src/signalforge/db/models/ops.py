@@ -17,16 +17,19 @@ from decimal import Decimal
 from enum import StrEnum
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -124,3 +127,29 @@ class LLMCall(Base, UUIDPrimaryKeyMixin, TimestampsMixin):
     error: Mapped[str | None] = mapped_column(Text, default=None)
 
     stage_run: Mapped[StageRun] = relationship(back_populates="llm_calls")
+
+
+class PipelineControl(Base, TimestampsMixin):
+    """One row (id 1): the kill switch and the 6-hour slot lease. Seeded by migration 0013."""
+
+    __tablename__ = "pipeline_controls"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="singleton"),
+        CheckConstraint(
+            "slot_status IS NULL OR slot_status IN ('running', 'done', 'failed')",
+            name="slot_status_allowed",
+        ),
+        CheckConstraint("slot_failures >= 0", name="slot_failures_non_negative"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    paused_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    paused_by: Mapped[str | None] = mapped_column(String(32), default=None)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    # Set by a circuit breaker: the pause lifts by itself after this. NULL for a manual pause.
+    paused_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    slot: Mapped[str | None] = mapped_column(String(16), default=None)
+    slot_status: Mapped[str | None] = mapped_column(String(16), default=None)
+    slot_failures: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    slot_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
