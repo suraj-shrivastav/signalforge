@@ -951,6 +951,27 @@ def test_a_topic_needs_a_key_and_a_free_pipeline(
     assert client.post("/agent/topics", headers=HA, json={"query": "fine query"}).status_code == 409
 
 
+def test_a_topic_is_refused_while_paused(
+    actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.api import agent_runs
+
+    client, repo = actx
+    started: list[object] = []
+
+    def start_job(*args: object) -> bool:
+        started.append(args)
+        return True
+
+    monkeypatch.setattr(agent_runs, "start_job", start_job)
+    repo.controls.get = lambda: SimpleNamespace(  # type: ignore[attr-defined]
+        paused=True, paused_until=None, paused_reason="drill"
+    )
+    r = client.post("/agent/topics", headers=HA, json={"query": "fine query", "hot": True})
+    assert r.status_code == 423
+    assert started == []
+
+
 def test_a_published_table_reaches_the_public_article_with_its_source(
     ctx: tuple[TestClient, StubRepo],
 ) -> None:

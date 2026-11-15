@@ -1,4 +1,3 @@
-# ruff: noqa: ARG002, PT018
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -28,20 +27,32 @@ class StubControls:
     def get(self) -> Any:
         return self.row
 
-    def pause(self, reason: str, actor: str, now: datetime, until: datetime | None = None) -> Any:
+    def pause(
+        self,
+        reason: str,
+        actor: str,
+        now: datetime,  # noqa: ARG002
+        until: datetime | None = None,
+    ) -> Any:
         self.row.paused, self.row.paused_reason, self.row.paused_by = True, reason, actor
         self.row.paused_until = until
         return self.row
 
-    def resume(self, actor: str) -> Any:
+    def resume(self, actor: str) -> Any:  # noqa: ARG002
         self.row.paused, self.row.paused_reason, self.row.paused_until = False, None, None
         return self.row
 
-    def claim_slot(self, slot: str, now: datetime, lease: Any, max_failures: int = 3) -> SlotClaim:
+    def claim_slot(
+        self,
+        slot: str,
+        now: datetime,  # noqa: ARG002
+        lease: Any,  # noqa: ARG002
+        max_failures: int = 3,  # noqa: ARG002
+    ) -> SlotClaim:
         self.claims.append(slot)
         return SlotClaim(len(self.claims) == 1, slot, 0)
 
-    def finish_slot(self, slot: str, ok: bool) -> Any:
+    def finish_slot(self, slot: str, ok: bool) -> Any:  # noqa: ARG002
         self.row.slot_status = "done" if ok else "failed"
         return self.row
 
@@ -58,15 +69,18 @@ def ctx() -> Iterator[tuple[TestClient, StubControls]]:
 def test_pause_records_actor_and_resume_clears(ctx: tuple[TestClient, StubControls]) -> None:
     client, stub = ctx
     r = client.post("/agent/controls/pause", json={"reason": "drill"}, headers=H)
-    assert r.status_code == 200 and r.json()["paused"] is True
-    assert stub.row.paused_by == "editor" and stub.row.paused_until is None
+    assert r.status_code == 200
+    assert r.json()["paused"] is True
+    assert stub.row.paused_by == "editor"
+    assert stub.row.paused_until is None
     assert client.post("/agent/controls/resume", headers=H).json()["paused"] is False
 
 
 def test_breaker_pause_sets_expiry(ctx: tuple[TestClient, StubControls]) -> None:
     client, stub = ctx
     client.post("/agent/controls/pause", json={"reason": "canary", "minutes": 360}, headers=H)
-    assert stub.row.paused_until is not None and stub.row.paused_until > datetime.now(UTC)
+    assert stub.row.paused_until is not None
+    assert stub.row.paused_until > datetime.now(UTC)
 
 
 def test_paused_blocks_stage_runs_and_publish(ctx: tuple[TestClient, StubControls]) -> None:

@@ -111,9 +111,9 @@ Every automatic edit and decision is in the draft's review log with `actor` (`ag
 
 ## Kill switch and slot lease
 
-A pause stops the agent without revoking its key. While paused, `POST /agent/run/{stage}` and
-`POST /agent/publish-next` return **423**; `auto-review?publish=true` still reviews and approves
-but does not publish (`queued: true`). Reads and editor publishes are not affected.
+A pause stops the agent without revoking its key. While paused, `POST /agent/run/{stage}`,
+`POST /agent/publish-next` and `POST /agent/topics` return **423**; `auto-review?publish=true` still reviews and approves
+but does not publish (`queued: true`). The auto pipeline after an accept skips while paused (the decision is still recorded). Reads and editor publishes are not affected.
 
 | Call | Does |
 |---|---|

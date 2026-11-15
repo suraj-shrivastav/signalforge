@@ -381,7 +381,7 @@ def publish_next(
 
 
 @router.post("/topics", response_model=RunOut, status_code=202)
-def request_topic(payload: TopicIn, request: Request) -> RunOut:
+def request_topic(payload: TopicIn, request: Request, controls: Controls) -> RunOut:
     """Ask for a topic by URL or plain text. It runs in the background; read the outcome in
     ``GET /agent/runs`` under ``last.topic``.
 
@@ -391,7 +391,9 @@ def request_topic(payload: TopicIn, request: Request) -> RunOut:
     rejects like any other. With ``hot`` it is accepted at once and researched and drafted next,
     ahead of every other card and outside the daily research cap; then run auto-review with
     ``force=true`` to publish past the pace. One run at a time: 409 while another is going.
+    423 while the pipeline is paused.
     """
+    _ensure_running(controls)
     settings = request.app.state.settings
 
     def job() -> dict[str, Any]:
