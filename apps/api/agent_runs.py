@@ -66,14 +66,16 @@ def start_job(stage: str, job: Callable[[], Any]) -> bool:
         except Exception as exc:
             log.exception("agent run failed", extra={"stage": stage})
             outcome = {"ok": False, "error": type(exc).__name__}
+        try:
+            # Record the result before the slot frees, so a poll never sees the previous run's.
+            _STATE["last"][stage] = {
+                "started_at": started,
+                "finished_at": datetime.now(UTC).isoformat(),
+                **outcome,
+            }
         finally:
             _STATE["running"] = None
             _LOCK.release()
-        _STATE["last"][stage] = {
-            "started_at": started,
-            "finished_at": datetime.now(UTC).isoformat(),
-            **outcome,
-        }
 
     threading.Thread(target=work, daemon=True).start()
     return True

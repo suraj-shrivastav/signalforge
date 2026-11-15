@@ -252,6 +252,12 @@ def publish_draft(
     """
     if request.state.actor == "agent":
         ensure_running(controls)
+        existing = published.get_by_card(card_id)
+        if existing is not None and existing.status == "unpublished":
+            raise HTTPException(
+                status_code=409,
+                detail="Unpublished by the owner; only the editor key can republish",
+            )
     return publish_approved(
         card_id, payload, request.app.state.settings, background, repo, published
     )

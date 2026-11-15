@@ -709,6 +709,33 @@ def test_agent_key_publishes_when_running(actx: tuple[TestClient, StubRepo]) -> 
     assert (r.status_code, r.json()["status"]) == (200, "published")
 
 
+def test_agent_key_cannot_republish_an_unpublished_article(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    client.post("/editor/articles/title/unpublish", headers=H)
+    r = client.post(f"/editor/drafts/{card_id}/publish", headers=HA, json={})
+    assert r.status_code == 409
+    assert (
+        r.json()["error"]["message"]
+        == "Unpublished by the owner; only the editor key can republish"
+    )
+    assert repo.published.get_by_card(card_id).status == "unpublished"  # type: ignore[attr-defined]
+
+
+def test_editor_key_republishes_an_unpublished_article(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    client.post("/editor/articles/title/unpublish", headers=H)
+    r = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    assert (r.status_code, r.json()["status"]) == (200, "published")
+
+
 def test_run_stage_starts_in_the_background_and_reports_busy(
     actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
 ) -> None:
