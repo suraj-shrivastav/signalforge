@@ -56,7 +56,7 @@ flowchart TD
 ## Agentic engineering, in practice
 
 ### 1. Separate the writer from the grader
-The writer and the claim judge are different roles, and the system **refuses to run them on the same model family**. A model never marks its own homework. This is checked before any card is touched.
+The writer and the claim judge are different roles, and the system **warns when they share a model family** (only NVIDIA-hosted models were reachable, so a cross-family judge was not possible). A model should not mark its own homework. Milestone 2 makes this a hard check again once a cross-family judge passes calibration.
 
 ### 2. Evidence before prose
 Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first. Research has to earn its place too: it needs at least three claims (one extra search round if short), arXiv papers are read by their results and limitations sections, and a card that fails research twice is closed with a reason instead of retried forever.
@@ -91,7 +91,7 @@ Everything the agent reads from the web is wrapped, escaped, and declared as dat
 Hermes holds one **revocable** key. It has no database access and no storage credentials: even image upload goes through the application, which holds the storage key itself. Revoking the key stops the agent immediately.
 
 ### 9. Skills, not scripts
-Capabilities the agent needs are packaged as skills. The `article-images` skill is the example. No model draws: a script builds a cover ("Signal Steps", one of 13 soft pastels, with a headline fact grounded in the article's verified claims) and a figure, rejects any number not in the article, renders deterministic SVG, and uploads it. The scheduler runs it every 15 minutes. The model supplies judgement, and code supplies the guarantees.
+Capabilities the agent needs are packaged as skills. The `article-images` skill is the example. No model draws: a script builds a cover ("Signal Steps", one of 13 soft pastels, with a headline fact grounded in the article's verified claims) and a figure, rejects any number not in the article, renders deterministic SVG, and uploads it. The autopilot runs it every 15 minutes. The model supplies judgement, and code supplies the guarantees.
 
 ## How the autonomy grew
 
@@ -119,7 +119,7 @@ Every published article is built from its verified claims and carries its source
 
 ## Running it
 
-A launchd scheduler on the operator's laptop runs the pipeline in four slots a day (00, 06, 12, 18 local), accepting the two top-scored cards each time. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes sends an evening report and lists closed cards. Setup for a new machine is in [docs/hermes-setup.md](docs/hermes-setup.md).
+A cloud cron job (the autopilot, `python -m apps.worker.autopilot`) runs every 15 minutes. It publishes the next queued draft, makes images, closes dead cards, and once per 6-hour slot (00, 06, 12, 18) accepts the two top-scored cards and takes them through research, draft, review and publish. A slot lease stops two runners from doubling a slot. The owner can pause everything with a kill switch, and the autopilot sends a webhook alert after repeated failures. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes is the owner's Telegram control (status, pause, resume, publish now, hot topics) and sends an evening report; it does not drive the pipeline. Cron setup is in [docs/deploy-cron.md](docs/deploy-cron.md); Hermes setup, and the laptop launchd fallback, in [docs/hermes-setup.md](docs/hermes-setup.md).
 
 ## Architecture
 

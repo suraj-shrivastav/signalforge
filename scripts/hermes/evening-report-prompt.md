@@ -1,13 +1,13 @@
 # Hermes evening job prompt (images + Telegram report)
 
-Use with `hermes cron create --name signalforge-evening-report --schedule "0 18 * * *" --deliver telegram --grace-minutes 720 --prompt "$(sed 1,3d evening-report-prompt.md)"`.
+Use with `hermes cron create --name signalforge-evening-report --schedule "0 18 * * *" --deliver telegram --grace-minutes 720 --prompt "$(sed 1,5d evening-report-prompt.md)"`.
 Replace the paths below with this machine's repo path.
 
-The SignalForge pipeline (tick, accept best card, research, draft, auto-review, publish) already ran from a launchd script; its log is /Users/suraj/signalforge-cron.log. Standing owner policy: no approval is needed, never ask questions. Send the header X-Editor-Key with the AGENT_API_KEY environment variable on every request and never print the key.
+The SignalForge pipeline (tick, accept best card, research, draft, auto-review, publish) runs from a cloud cron job (the autopilot); there is no local log. Standing owner policy: no approval is needed, never ask questions. Send the header X-Editor-Key with the AGENT_API_KEY environment variable on every request and never print the key.
 
-1. Read the last 40 lines of /Users/suraj/signalforge-cron.log. Note the card accepted, published or queued slugs and any FAILED or error lines.
-2. Images are made by the scheduler (it runs `articleimg.py auto` every 15 minutes: no model, always valid). GET /agent/work. If any article still has next_action attach_images, run once: API_BASE_URL=https://signalforge-wmtl.onrender.com EDITOR_API_KEY="$AGENT_API_KEY" /Users/suraj/personal/signalforge/.venv/bin/python /Users/suraj/personal/signalforge/skills/article-images/scripts/articleimg.py auto . On a 502, retry once after 30 s. Do not draw or write SVG yourself. Report any SKIP line verbatim.
-List every card the agent closed today (decision `rejected`, note starting `auto-closed:`) by title.
+1. GET /agent/controls. Note whether the pipeline is paused (paused_reason, paused_by), the slot, slot_status and slot_failures.
+2. GET /agent/work and GET /agent/runs. Note today's activity: cards by stage, the slugs published or queued, and the last run results with any errors.
+3. List every card the agent closed today by title. The API has no list of past decisions, so list the cards in /agent/work whose next_action is `close` (the autopilot rejects them with the note `auto-closed: <stage>`).
+4. Images are made by the autopilot (it runs `articleimg.py auto` every 15 minutes: no model, always valid). If any article in /agent/work still has next_action attach_images, run once: API_BASE_URL=https://signalforge-wmtl.onrender.com EDITOR_API_KEY="$AGENT_API_KEY" /Users/suraj/personal/signalforge/.venv/bin/python /Users/suraj/personal/signalforge/skills/article-images/scripts/articleimg.py auto . On a 502, retry once after 30 s. Do not draw or write SVG yourself. Report any SKIP line verbatim.
 
-
-Final response (delivered to the owner): card title and score, published or queued (slug, URL, next_publish_at), images attached, and any errors verbatim. Do not unpublish or delete anything.
+Final response (delivered to the owner): published or queued (slug, URL, next_publish_at), paused state, slot failures, cards closed, images attached, and any errors verbatim. Do not unpublish or delete anything.
