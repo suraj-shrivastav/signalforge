@@ -16,15 +16,18 @@ def send_alert(
         log.warning("alert not sent, ALERT_WEBHOOK_URL unset", extra={"title": title})
         return False
     text = f"[SignalForge] {title}: {detail}"
-    http = client or httpx.Client(timeout=_TIMEOUT_S)
+    http: httpx.Client | None = client
     try:
+        if http is None:
+            http = httpx.Client(timeout=_TIMEOUT_S)
         response = http.post(url, json={"text": text, "content": text})
         ok = response.is_success
-    except httpx.HTTPError as exc:
+    except Exception as exc:  # noqa: BLE001 - an alert must never break the run that sends it
+        # Log the type only: the message of an httpx error can carry the secret webhook URL.
         log.warning("alert failed", extra={"title": title, "error": type(exc).__name__})
         return False
     finally:
-        if client is None:
+        if client is None and http is not None:
             http.close()
     if not ok:
         log.warning("alert rejected", extra={"title": title, "status": response.status_code})
