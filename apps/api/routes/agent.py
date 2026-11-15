@@ -292,6 +292,7 @@ def auto_review(
         max_flagged_share=settings.auto_review_max_flagged_share,
         max_redrafts=settings.auto_review_max_redrafts,
         min_section_sentences=settings.auto_review_min_section_sentences,
+        length_floor_ratio=settings.auto_review_length_floor_ratio,
     )
     redrafts = redrafts_used(row.review_log)
     decision = decide(

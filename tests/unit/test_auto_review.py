@@ -11,7 +11,12 @@ from signalforge.core.artifacts.article import (
 from signalforge.core.artifacts.research import ClaimStatus
 
 POLICY = ReviewPolicy(
-    min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1, min_section_sentences=2
+    min_words=20,
+    min_claims=2,
+    max_flagged_share=0.4,
+    max_redrafts=1,
+    min_section_sentences=2,
+    length_floor_ratio=0.0,
 )
 GOOD = "The sentence states a plain fact about the system."
 
@@ -161,3 +166,24 @@ def test_a_title_with_a_strong_word_no_claim_uses_is_sent_back() -> None:
     action, reasons = run(b)
     assert action == "revise"
     assert any("'only', 'reliably'" in r for r in reasons)
+
+
+def test_a_draft_below_its_template_minimum_is_sent_back() -> None:
+    policy = ReviewPolicy(
+        min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1, length_floor_ratio=1.0
+    )
+    result = decide(body(), ArticleTemplate.PAPER_BREAKDOWN, 0, policy)
+    assert result.action == "revise"
+    assert any("minimum 500 for paper_breakdown" in r for r in result.reasons)
+
+
+def test_the_floor_ratio_scales_the_template_minimum() -> None:
+    long = body(paragraphs=(" ".join([GOOD] * 50),))  # 450 words plus a 3-word dek
+    lenient = ReviewPolicy(
+        min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1, length_floor_ratio=0.8
+    )
+    strict = ReviewPolicy(
+        min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1, length_floor_ratio=1.0
+    )
+    assert decide(long, ArticleTemplate.PAPER_BREAKDOWN, 0, lenient).action == "approve"
+    assert decide(long, ArticleTemplate.PAPER_BREAKDOWN, 0, strict).action == "revise"

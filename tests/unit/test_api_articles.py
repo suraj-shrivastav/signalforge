@@ -648,6 +648,7 @@ def actx() -> Iterator[tuple[TestClient, StubRepo]]:
             editor_api_key=KEY,  # type: ignore[arg-type]
             agent_api_key=AGENT_KEY,  # type: ignore[arg-type]
             auto_review_min_words=1,
+            auto_review_length_floor_ratio=0.0,
             auto_review_min_claims=1,
         )
     )
