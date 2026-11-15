@@ -29,7 +29,10 @@ paid plan. Check the current pricing page before relying on it.
 - `SITE_URL` (the public web URL, no trailing slash), `INDEXNOW_KEY`, `PUBLISH_BYLINE`
 - `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_*`, `LLM_EXTRA_BODY`,
   `LLM_EMBED_EXTRA_BODY`, `LLM_MAX_OUTPUT_TOKENS`, `TAVILY_API_KEY` (the stages run inside the API)
-- Optional: `AUTO_PIPELINE_ON_ACCEPT=true`, `AUTO_PIPELINE_DAILY_CAP`, `AI_TRAINING_CRAWLERS`
+- Optional: `AUTO_PIPELINE_DAILY_CAP`, `AI_TRAINING_CRAWLERS`, `ALERT_WEBHOOK_URL` (the API sends
+  the pause alert)
+- Leave `AUTO_PIPELINE_ON_ACCEPT` unset (false) when the cron autopilot runs the pipeline: see
+  [deploy-cron.md](deploy-cron.md#api-host-settings)
 
 **web**
 
@@ -46,6 +49,8 @@ agent key. No Supabase key: the api uploads the images. See `skills/article-imag
 Either let Hermes call `POST /agent/run/tick`, or add a third service from the same Dockerfile
 with start command `python -m apps.worker.tick` and a cron schedule such as `*/30 * * * *`.
 Use one of the two, not both. The cron autopilot (`python -m apps.worker.autopilot`) replaces both: see [deploy-cron.md](deploy-cron.md).
+Create it as a new service with only the variables listed there. Do not duplicate the `api`
+service: the copy would carry `DATABASE_URL` and the Supabase and LLM keys.
 
 ## Check after deploy
 
