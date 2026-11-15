@@ -15,6 +15,7 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 COPY apps ./apps
+COPY skills ./skills
 COPY alembic.ini ./
 
 # Railway sets PORT. The web app reaches this service over it.

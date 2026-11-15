@@ -45,7 +45,7 @@ agent key. No Supabase key: the api uploads the images. See `skills/article-imag
 
 Either let Hermes call `POST /agent/run/tick`, or add a third service from the same Dockerfile
 with start command `python -m apps.worker.tick` and a cron schedule such as `*/30 * * * *`.
-Use one of the two, not both.
+Use one of the two, not both. The cron autopilot (`python -m apps.worker.autopilot`) replaces both: see [deploy-cron.md](deploy-cron.md).
 
 ## Check after deploy
 

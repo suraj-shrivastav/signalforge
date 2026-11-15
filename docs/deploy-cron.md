@@ -16,7 +16,8 @@ Each run:
 
 1. Create a Cron Job from this repository, built the same way as the API service.
 2. Schedule `*/15 * * * *`. Command `uv run python -m apps.worker.autopilot`.
-3. Set the variables below.
+3. Make sure the build uses the repository root and includes `skills/`: the images tick runs `skills/article-images/scripts/articleimg.py` (standard library only) and skips silently if it is missing. No Render config is in this repo, so check this in the Render service settings.
+4. Set the variables below.
 
 | Variable | Value |
 |---|---|
@@ -30,7 +31,7 @@ Each run:
 
 ## Railway equivalent
 
-Add a service from the same repository and Dockerfile (`infra/railway/api.Dockerfile`). Set a
+Add a service from the same repository and Dockerfile (`infra/railway/api.Dockerfile`, which copies `skills/` into the image). Set a
 custom start command `uv run python -m apps.worker.autopilot`, a cron schedule `*/15 * * * *`
 and the same variables. See [deploy-railway.md](deploy-railway.md). Use one scheduler per
 deployment: do not also run the old `python -m apps.worker.tick` cron service.

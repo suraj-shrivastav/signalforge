@@ -151,7 +151,7 @@ The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; 
 | `backend unreachable, will retry next interval` | Render cold start or no wifi. Retries automatically. |
 | Hermes job `agent reported failure` | The agent was cut off (often by sleep) or the model call failed. Check `hermes cron runs`, `~/.hermes/logs/errors.log`. |
 | Telegram `nodename nor servname provided` or `Sticky Telegram path ... failed` | Network dropped across sleep. The gateway retries; reports may arrive late. |
-| A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 5). |
+| A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 6). |
 | Cards with `close` | Research failed twice, or the draft had no usable claims. The agent rejects them with `needs_more_evidence`. Read the failure reason and fix the source problem if any. They do not block other cards. |
 | Research fails with `LLM provider unavailable (status=500)` on embeddings | Set `LLM_EMBED_BATCH_SIZE=1` on the backend. Claim merging is skipped if the embedding call still fails. |
 | `column research_packages.attempts does not exist` | Migration `0012` was not applied. Run `alembic upgrade head`. |
