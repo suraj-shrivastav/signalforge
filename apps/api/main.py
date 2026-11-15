@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, Response
 from sqlalchemy.exc import SQLAlchemyError
 
 from apps.api.errors import REQUEST_ID_HEADER, register_error_handlers
-from apps.api.routes import agent, articles, cards, ingest, public, signals
+from apps.api.routes import agent, agent_explain, articles, cards, ingest, public, signals
 from signalforge.core.config import Settings, get_settings
 from signalforge.core.logging import configure_logging, correlation_id
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
@@ -75,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(cards.router)
     app.include_router(articles.router)
     app.include_router(agent.router)
+    app.include_router(agent_explain.router)
     app.include_router(public.router)
     if settings.ingest_endpoint_enabled:
         app.include_router(ingest.router)

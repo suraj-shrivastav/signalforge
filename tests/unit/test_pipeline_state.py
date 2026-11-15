@@ -147,8 +147,8 @@ def test_accepted_cards_counts_redrafts_from_the_review_log() -> None:
     from signalforge.db.repositories.pipeline import PipelineRepository
 
     log = [{"type": "redraft"}, {"type": "redraft_failed"}]
-    row = (uuid4(), "t", datetime.now(UTC), "researched", 1, "drafted", 1, "revise",
-           None, None, None, log)  # fmt: skip
+    row = (uuid4(), "t", datetime.now(UTC), "accepted", "researched", 1, None,
+           "drafted", 1, None, "revise", log, None, None, None)  # fmt: skip
     session = SimpleNamespace(execute=lambda _q: SimpleNamespace(all=lambda: [row]))
     repo = PipelineRepository(session)  # type: ignore[arg-type]
     [exhausted] = repo.accepted_cards(10, max_redrafts=2)

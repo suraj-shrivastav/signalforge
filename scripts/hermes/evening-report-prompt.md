@@ -10,4 +10,10 @@ The SignalForge pipeline (tick, accept best card, research, draft, auto-review, 
 3. Do not list closed cards: the autopilot closes them within 15 minutes and they leave /agent/work at once. The autopilot log on the cron host records each close (`auto-closed <card_id> (<stage>): <title>`).
 4. Images are made by the autopilot (it runs `articleimg.py auto` every 15 minutes: no model, always valid). If any article in /agent/work still has next_action attach_images, run once: API_BASE_URL=https://signalforge-wmtl.onrender.com EDITOR_API_KEY="$AGENT_API_KEY" /Users/suraj/personal/signalforge/.venv/bin/python /Users/suraj/personal/signalforge/skills/article-images/scripts/articleimg.py auto . On a 502, retry once after 30 s. Do not draw or write SVG yourself. Report any SKIP line verbatim.
 
+What the report covers (the owner reads it on Telegram, keep it short):
+- Published or queued: GET /agent/publish-queue gives the approved drafts waiting, each with its estimated publish time and the pace, and whether the pipeline is paused. Published today: GET /public/articles.
+- Paused: say so with the reason and who paused it.
+- Slot failures: slot_failures above 0 or a failed slot_status from /agent/controls, and any error in /agent/runs.
+- Closed cards: for any card the owner asks about, or one in /agent/pipeline with a close next_action, GET /agent/cards/explain?q=<title> and give its summary. Closed cards leave /agent/work within 15 minutes.
+
 Final response (delivered to the owner): published or queued (slug, URL, next_publish_at), paused state, slot failures, images attached, and any errors verbatim. Do not unpublish or delete anything.

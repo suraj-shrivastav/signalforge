@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.db.repositories.cards import CardRepository
 from signalforge.db.repositories.controls import ControlsRepository
+from signalforge.db.repositories.pipeline import PipelineRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.db.repositories.signals import SignalRepository
 from signalforge.db.session import session_scope
@@ -39,3 +40,8 @@ def get_article_repository(request: Request) -> Iterator[ArticleDraftRepository]
 def get_published_repository(request: Request) -> Iterator[PublishedArticleRepository]:
     with session_scope(request.app.state.session_factory) as session:
         yield PublishedArticleRepository(session)
+
+
+def get_pipeline_repository(request: Request) -> Iterator[PipelineRepository]:
+    with session_scope(request.app.state.session_factory) as session:
+        yield PipelineRepository(session)
