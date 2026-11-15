@@ -59,7 +59,7 @@ flowchart TD
 The writer and the claim judge are different roles, and the system **refuses to run them on the same model family**. A model never marks its own homework. This is checked before any card is touched.
 
 ### 2. Evidence before prose
-Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first. Research has to earn its place too: it needs at least three claims (one extra search round if short), arXiv papers are read by their results and limitations sections, and a card that fails research twice is parked instead of retried forever.
+Research stores source documents and exact evidence spans first. The writer only sees that package, and every claim it declares must point at a span. A mechanical span match runs before the LLM judge, because a cheap deterministic check should always go first. Research has to earn its place too: it needs at least three claims (one extra search round if short), arXiv papers are read by their results and limitations sections, and a card that fails research twice is closed with a reason instead of retried forever.
 
 ### 3. Flag, do not block
 My first design failed closed: any unsupported sentence killed the whole draft. I built an evaluation harness with a golden set and measured it. Across the same four fixtures:
@@ -119,7 +119,7 @@ Every published article is built from its verified claims and carries its source
 
 ## Running it
 
-A launchd scheduler on the operator's laptop runs the pipeline in four slots a day (00, 06, 12, 18 local), accepting the two top-scored cards each time. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes sends an evening report and lists parked cards. Setup for a new machine is in [docs/hermes-setup.md](docs/hermes-setup.md).
+A launchd scheduler on the operator's laptop runs the pipeline in four slots a day (00, 06, 12, 18 local), accepting the two top-scored cards each time. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes sends an evening report and lists closed cards. Setup for a new machine is in [docs/hermes-setup.md](docs/hermes-setup.md).
 
 ## Architecture
 
