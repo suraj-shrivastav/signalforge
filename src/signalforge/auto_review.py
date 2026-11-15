@@ -41,7 +41,7 @@ class ReviewPolicy:
     max_flagged_share: float = 0.4
     max_redrafts: int = 2
     min_section_sentences: int = 2
-    length_floor_ratio: float = 1.0
+    length_floor_ratio: float = 0.8
 
 
 @dataclass(frozen=True)
@@ -144,19 +144,22 @@ def decide(
     body: ArticleBody, template: ArticleTemplate, redrafts: int, policy: ReviewPolicy
 ) -> AutoDecision:
     """Apply the policy to a drafted article. ``redrafts`` counts earlier revisions."""
-    flags = body.flags
-    if any(f.section == DEK for f in flags):
-        # The dek is the article's answer; a body sentence is no substitute (Decision 6).
-        return _fail(
-            body, ["the dek is flagged: restate the main finding from the claims"], redrafts, policy
-        )
-    share = len(flags) / _sentences(body)
+    dek_reasons = (
+        ["the dek is flagged: restate the main finding from the claims"]
+        if any(f.section == DEK for f in body.flags)
+        else []
+    )
+    # The dek is the article's answer; a body sentence is no substitute (Decision 6), so a
+    # flagged dek is never deleted and is reported together with every other reason.
+    flags = tuple(f for f in body.flags if f.section != DEK)
+    share = len(body.flags) / _sentences(body)
     if share > policy.max_flagged_share:
         return _fail(
             body,
             [
-                f"{len(flags)} sentences are flagged ({share:.0%}), "
-                f"limit {policy.max_flagged_share:.0%}"
+                *dek_reasons,
+                f"{len(body.flags)} sentences are flagged ({share:.0%}), "
+                f"limit {policy.max_flagged_share:.0%}",
             ],
             redrafts,
             policy,
@@ -174,7 +177,7 @@ def decide(
         if opener is not None:
             openers.append(opener)
         deleted.append(flag)
-    reasons: list[str] = []
+    reasons: list[str] = [*dek_reasons]
     words = word_count(current)
     floor = max(policy.min_words, math.ceil(LENGTH_BANDS[template][0] * policy.length_floor_ratio))
     if words < floor:

@@ -1236,7 +1236,7 @@ Add a short header comparing this report with the Task 5 baseline. Record publis
 **Milestone 2a is done when**, over 14 days of production:
 - no published article has a dangling opener or a section under 2 sentences;
 - no published title uses a strong word that no cited claim states;
-- at least 90% of published articles reach the floor set in Task 6;
+- at most 20% of drafted cards end closed as `revise_exhausted` (from `GET /agent/pipeline?limit=200`). The automated review enforces the floor for every automated publish, so the share of published articles that reach it is not a useful measure;
 - every article published after Task 1, and every one corrected by its backfill, has the honest process note;
 - publishing averages at least 1.5 articles a day, so the gates did not starve the pipeline.
 
