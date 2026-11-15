@@ -113,6 +113,12 @@ class Settings(BaseSettings):
         "Sources were collected and checked automatically against their stored text. "
         "An editor reviewed and approved this article before it was published."
     )
+    # Shown instead of publish_process_note when the automated review approved the draft
+    # (auto-review), so readers are never told an editor checked it when none did.
+    publish_process_note_auto: str = (
+        "Sources were collected and checked automatically against their stored text. "
+        "Automated checks, not an editor, approved this article for publication."
+    )
 
     # Run research then draft in the API process right after an editor accepts a card.
     # Off by default. The cap counts research packages created in the last 24 hours, so a

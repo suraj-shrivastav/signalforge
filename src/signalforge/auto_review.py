@@ -18,6 +18,10 @@ from signalforge.core.errors import ArtifactValidationError
 from signalforge.stages.draft_extraction import publish_gate, word_count
 from signalforge.stages.draft_review import DEK, apply_sentence_edit
 
+# The review_note of a draft this module approved. Publishing reads it to choose the
+# process note readers see (2026-11-15 quality review, D4).
+POLICY_APPROVAL_NOTE = "approved by policy"
+
 _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 _GOOD = frozenset({ClaimStatus.VERIFIED, ClaimStatus.SUPPORTED})
 

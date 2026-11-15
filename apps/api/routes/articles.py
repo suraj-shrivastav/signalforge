@@ -24,6 +24,7 @@ from apps.api.schemas import (
     ReviewIn,
     SentenceEditIn,
 )
+from signalforge.auto_review import POLICY_APPROVAL_NOTE
 from signalforge.control_policy import is_paused
 from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.errors import ArtifactValidationError
@@ -181,6 +182,13 @@ def review_draft(
     return _out(row)
 
 
+def process_note(row: Any, settings: Any) -> str:
+    """The note readers see: says whether an editor or the automated review approved it."""
+    if row.review_note == POLICY_APPROVAL_NOTE:
+        return str(settings.publish_process_note_auto)
+    return str(settings.publish_process_note)
+
+
 def publish_approved(
     card_id: UUID,
     payload: PublishIn,
@@ -216,7 +224,7 @@ def publish_approved(
             "seo_title": payload.seo_title or body.title,
             "meta_description": payload.meta_description or meta_description(body.dek),
             "byline": settings.publish_byline,
-            "process_note": settings.publish_process_note,
+            "process_note": process_note(row, settings),
             "editor_analysis": payload.editor_analysis.strip(),
             "body": body.model_dump(mode="json"),
         },
