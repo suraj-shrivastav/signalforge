@@ -10,8 +10,10 @@ from signalforge.core.artifacts.article import (
 )
 from signalforge.core.artifacts.research import ClaimStatus
 
-POLICY = ReviewPolicy(min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1)
-GOOD = "This sentence states a plain fact about the system."
+POLICY = ReviewPolicy(
+    min_words=20, min_claims=2, max_flagged_share=0.4, max_redrafts=1, min_section_sentences=2
+)
+GOOD = "The sentence states a plain fact about the system."
 
 
 def claim(status: ClaimStatus = ClaimStatus.VERIFIED) -> ArticleClaim:
@@ -67,29 +69,6 @@ def test_too_many_flags_ask_for_a_revision() -> None:
     assert "flagged" in reasons[0]
 
 
-def test_flagged_dek_is_replaced_by_the_first_unflagged_body_sentence() -> None:
-    b = body(dek="A bad dek.", flags=(flag(-1, -1, "A bad dek."),))
-    result = decide(b, ArticleTemplate.EXPLAINER, 0, POLICY)
-    assert result.action == "approve"
-    assert result.body.dek == GOOD
-    assert result.new_dek == GOOD
-    assert result.body.sections[0].paragraphs[0].count(GOOD) == 2  # moved out of the lead
-    assert result.body.flags == ()
-
-
-def test_flagged_dek_without_a_usable_lead_is_revised() -> None:
-    too_long = "A lead that never ends " + "and on " * 60 + "stops."
-    b = body(
-        paragraphs=(too_long,),
-        dek="A bad dek.",
-        flags=(flag(-1, -1, "A bad dek."),),
-    )
-    loose = ReviewPolicy(min_words=20, min_claims=2, max_flagged_share=0.9, max_redrafts=1)
-    result = decide(b, ArticleTemplate.EXPLAINER, 0, loose)
-    assert result.action == "revise"
-    assert "no lead sentence" in result.reasons[0]
-
-
 def test_short_or_thin_drafts_are_sent_back() -> None:
     action, reasons = run(body(paragraphs=("Short.",), claims=1))
     assert action == "revise"
@@ -136,3 +115,42 @@ def test_flags_in_several_paragraphs_are_all_deleted() -> None:
     text = " ".join(result.body.sections[0].paragraphs)
     assert first not in text
     assert second not in text
+
+
+def test_a_flagged_dek_is_sent_back_not_replaced() -> None:
+    b = body(dek="A bad dek.", flags=(flag(-1, -1, "A bad dek."),))
+    action, reasons = run(b)
+    assert action == "revise"
+    assert "the dek is flagged" in reasons[0]
+
+
+def test_a_section_opening_with_a_dangling_word_is_sent_back() -> None:
+    b = body(paragraphs=(f"This dependence breaks in a tail. {GOOD} {GOOD}", f"{GOOD} {GOOD}"))
+    action, reasons = run(b)
+    assert action == "revise"
+    assert any("points back at nothing" in r for r in reasons)
+
+
+def test_deleting_an_opener_that_leaves_a_dangling_sentence_is_sent_back() -> None:
+    bad = "The detector misses small boxes."
+    b = body(
+        paragraphs=(f"{GOOD} {GOOD}", f"{bad} This gap matters at night. {GOOD}"),
+        flags=(flag(0, 1, bad),),
+    )
+    action, reasons = run(b)
+    assert action == "revise"
+    assert any("This gap matters at night." in r for r in reasons)
+
+
+def test_a_one_sentence_section_is_sent_back() -> None:
+    b = body().model_copy(
+        update={
+            "sections": (
+                ArticleSection(heading="H", paragraphs=(f"{GOOD} {GOOD} {GOOD}",)),
+                ArticleSection(heading="The problem", paragraphs=(GOOD,)),
+            )
+        }
+    )
+    action, reasons = run(b)
+    assert action == "revise"
+    assert any("'The problem' has 1 sentence" in r for r in reasons)

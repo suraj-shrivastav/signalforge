@@ -3,12 +3,14 @@
 Pure functions, no DB and no LLM. The decision is one of:
 
 - ``approve``: after deleting the flagged sentences the draft is long enough, has enough
-  verified claims and passes the dash and wording gate.
-- ``revise``: it can be fixed by a redraft (too many flags, too short, too few claims).
+  verified claims, still reads in order and passes the dash and wording gate.
+- ``revise``: it can be fixed by a redraft (a flagged dek, too many flags, too short, too few
+  claims, or text a deletion left pointing at nothing).
 - ``reject``: it already had the maximum number of redrafts and still fails.
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -32,6 +34,7 @@ class ReviewPolicy:
     min_claims: int = 3
     max_flagged_share: float = 0.4
     max_redrafts: int = 2
+    min_section_sentences: int = 2
 
 
 @dataclass(frozen=True)
@@ -40,19 +43,64 @@ class AutoDecision:
     reasons: tuple[str, ...]
     body: ArticleBody
     deleted: tuple[ArticleFlag, ...] = ()
-    new_dek: str | None = None
 
 
 _SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"(\d])")
-_MAX_DEK_CHARS = 280
+
+# Words that point back at text before them. A section's first sentence, or a sentence a
+# deletion moved to the front of a paragraph, cannot open with one: the reader has not seen
+# what it refers to (2026-11-15 quality review, D1).
+_DANGLING = re.compile(r"^(?:This|These|That|Those|Such|It|Its|They|Their)\b")
 
 
-def _lead_sentence(body: ArticleBody, flagged: set[str]) -> str | None:
-    """First sentence of the first paragraph that is not flagged and is short enough for a dek."""
-    for sentence in _SPLIT.split(body.sections[0].paragraphs[0]):
-        text = sentence.strip()
-        if text and text not in flagged and len(text) <= _MAX_DEK_CHARS:
-            return text
+def _sentences_of(paragraph: str) -> list[str]:
+    return [s.strip() for s in _SPLIT.split(paragraph.strip()) if s.strip()]
+
+
+def _opening(paragraph: str) -> str:
+    sentences = _sentences_of(paragraph)
+    return sentences[0] if sentences else ""
+
+
+def coherence_problems(
+    body: ArticleBody, min_section_sentences: int, openers: Sequence[str] = ()
+) -> list[str]:
+    """Readability failures code can see: dangling openers and sections too thin to stand.
+
+    ``openers`` are sentences a deletion moved to the front of a paragraph.
+    """
+    problems: list[str] = []
+    if _DANGLING.match(body.dek.strip()):
+        problems.append(f"the dek opens with a word that points back at nothing: '{body.dek[:80]}'")
+    paragraph_starts = {_opening(p) for s in body.sections for p in s.paragraphs}
+    candidates = [_opening(s.paragraphs[0]) for s in body.sections]
+    candidates += [o.strip() for o in openers]
+    seen: set[str] = set()
+    for text in candidates:
+        if text in seen or text not in paragraph_starts or not _DANGLING.match(text):
+            continue
+        seen.add(text)
+        problems.append(f"a paragraph opens with a word that points back at nothing: '{text[:80]}'")
+    for section in body.sections:
+        count = sum(len(_sentences_of(p)) for p in section.paragraphs)
+        if count < min_section_sentences:
+            problems.append(
+                f"section '{section.heading}' has {count} sentence(s), "
+                f"minimum {min_section_sentences}"
+            )
+    return problems
+
+
+def _opener_after_deleting(body: ArticleBody, flag: ArticleFlag) -> str | None:
+    """The sentence that moves to the front of its paragraph when ``flag``, its first, goes."""
+    if not 0 <= flag.section < len(body.sections):
+        return None
+    paragraphs = body.sections[flag.section].paragraphs
+    if not 0 <= flag.paragraph < len(paragraphs):
+        return None
+    sentences = _sentences_of(paragraphs[flag.paragraph])
+    if len(sentences) > 1 and sentences[0] == flag.text.strip():
+        return sentences[1]
     return None
 
 
@@ -90,6 +138,11 @@ def decide(
 ) -> AutoDecision:
     """Apply the policy to a drafted article. ``redrafts`` counts earlier revisions."""
     flags = body.flags
+    if any(f.section == DEK for f in flags):
+        # The dek is the article's answer; a body sentence is no substitute (Decision 6).
+        return _fail(
+            body, ["the dek is flagged: restate the main finding from the claims"], redrafts, policy
+        )
     share = len(flags) / _sentences(body)
     if share > policy.max_flagged_share:
         return _fail(
@@ -103,36 +156,16 @@ def decide(
         )
     current = body
     deleted: list[ArticleFlag] = []
-    new_dek: str | None = None
-    flagged_texts = {f.text for f in flags}
-    # Body flags last to first, so deleting a paragraph or section never shifts a flag still to
-    # come; the dek goes last, after the body it borrows its lead from is final.
-    ordered = sorted(flags, key=lambda f: (f.section != DEK, f.section, f.paragraph), reverse=True)
-    for flag in ordered:
+    openers: list[str] = []
+    # Last to first, so deleting a paragraph or section never shifts a flag still to come.
+    for flag in sorted(flags, key=lambda f: (f.section, f.paragraph), reverse=True):
+        opener = _opener_after_deleting(current, flag)
         try:
-            if flag.section == DEK:
-                # A dek cannot be deleted: use the article's first unflagged sentence instead.
-                lead = _lead_sentence(current, flagged_texts)
-                if lead is None:
-                    return _fail(
-                        body, ["the dek is flagged and no lead sentence fits"], redrafts, policy
-                    )
-                current = apply_sentence_edit(
-                    current,
-                    section=DEK,
-                    paragraph=flag.paragraph,
-                    text=flag.text,
-                    replacement=lead,
-                )
-                new_dek = lead
-                if len(_SPLIT.split(current.sections[0].paragraphs[0])) > 1:
-                    current = apply_sentence_edit(
-                        current, section=0, paragraph=0, text=lead, replacement=None
-                    )
-            else:
-                current = _delete(current, flag)
+            current = _delete(current, flag)
         except ArtifactValidationError as exc:
             return _fail(body, [f"cannot fix a flagged sentence: {exc.message}"], redrafts, policy)
+        if opener is not None:
+            openers.append(opener)
         deleted.append(flag)
     reasons: list[str] = []
     words = word_count(current)
@@ -141,7 +174,8 @@ def decide(
     good = sum(c.status in _GOOD for c in current.claims)
     if good < policy.min_claims:
         reasons.append(f"{good} verified or supported claims, minimum {policy.min_claims}")
+    reasons.extend(coherence_problems(current, policy.min_section_sentences, openers))
     reasons.extend(f for f in publish_gate(current, template) if not f.startswith("length"))
     if reasons:
         return _fail(body, reasons, redrafts, policy)
-    return AutoDecision("approve", (), current, tuple(deleted), new_dek)
+    return AutoDecision("approve", (), current, tuple(deleted))

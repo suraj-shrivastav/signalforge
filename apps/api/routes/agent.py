@@ -291,6 +291,7 @@ def auto_review(
         min_claims=settings.auto_review_min_claims,
         max_flagged_share=settings.auto_review_max_flagged_share,
         max_redrafts=settings.auto_review_max_redrafts,
+        min_section_sentences=settings.auto_review_min_section_sentences,
     )
     redrafts = redrafts_used(row.review_log)
     decision = decide(
@@ -312,7 +313,6 @@ def auto_review(
                     "type": "auto_edit",
                     "actor": actor,
                     "deleted": [f.text for f in decision.deleted],
-                    "new_dek": decision.new_dek,
                 },
             )
         repo.save_review(
