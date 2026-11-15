@@ -679,6 +679,36 @@ def test_agent_key_works_on_editor_endpoints_and_wrong_keys_do_not(
     assert client.get("/agent/runs", headers=HA).status_code == 200
 
 
+def _pause(repo: StubRepo) -> None:
+    repo.controls.get = lambda: SimpleNamespace(  # type: ignore[attr-defined]
+        paused=True, paused_until=None, paused_reason="drill"
+    )
+
+
+def test_agent_key_cannot_publish_while_paused(actx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    _pause(repo)
+    r = client.post(f"/editor/drafts/{card_id}/publish", headers=HA, json={})
+    assert r.status_code == 423
+    assert repo.published.get_by_card(card_id) is None  # type: ignore[attr-defined]
+
+
+def test_editor_key_publishes_while_paused(actx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    _pause(repo)
+    r = client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={})
+    assert (r.status_code, r.json()["status"]) == (200, "published")
+
+
+def test_agent_key_publishes_when_running(actx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = actx
+    card_id = _approve_without_publishing(client, repo)
+    r = client.post(f"/editor/drafts/{card_id}/publish", headers=HA, json={})
+    assert (r.status_code, r.json()["status"]) == (200, "published")
+
+
 def test_run_stage_starts_in_the_background_and_reports_busy(
     actx: tuple[TestClient, StubRepo], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -728,6 +758,20 @@ def test_auto_review_sends_a_thin_draft_back_with_the_reasons(
     assert "words" in out["reasons"][0]
     assert repo.rows[card_id].review_status == "revise"
     assert "words" in repo.rows[card_id].review_note
+
+
+def test_auto_review_counts_a_failed_redraft_toward_the_cap(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    client.app.state.settings = client.app.state.settings.model_copy(  # type: ignore[attr-defined]
+        update={"auto_review_min_words": 500, "auto_review_max_redrafts": 2}
+    )
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    repo.rows[card_id].review_log = [{"type": "redraft_failed"}, {"type": "redraft"}]
+    out = client.post(f"/agent/drafts/{card_id}/auto-review", headers=HA).json()
+    assert out["action"] == "reject"
+    assert repo.rows[card_id].review_status == "rejected"
 
 
 def _approve_without_publishing(client: TestClient, repo: StubRepo) -> UUID:

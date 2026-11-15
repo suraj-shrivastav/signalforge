@@ -4,6 +4,8 @@ Ingests every source, then assesses, builds topic cards, researches accepted
 cards and drafts researched ones. One failing source or stage never stops the
 later ones. The LLM stages are still attempted when all sources failed (there
 may be a backlog).
+While the pipeline is paused (the kill switch in pipeline_controls) it does nothing and
+exits 0.
 Exit codes: 0 = at least one source ingested and every LLM stage ok or skipped;
 1 = every source failed (even if an LLM stage also failed);
 2 = ingest ok but an LLM stage failed.
@@ -19,8 +21,10 @@ from sqlalchemy import Engine
 
 from apps.worker import assess, cards, draft, research
 from apps.worker._args import MAX_HOURS, bounded_limit, hours, limit
+from signalforge.control_policy import is_paused
 from signalforge.core.config import get_settings
 from signalforge.core.logging import configure_logging
+from signalforge.db.repositories.controls import ControlsRepository
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
 from signalforge.plugins.sources import SOURCE_NAMES, USER_AGENT, build_source
 from signalforge.stages.ingest import run_ingest
@@ -101,6 +105,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     since = datetime.now(UTC) - timedelta(hours=args.hours)
     session_factory = create_session_factory(engine)
     try:
+        # Short session: the controls row is locked only while it is read.
+        with session_factory() as session:
+            paused = is_paused(ControlsRepository(session).get(), datetime.now(UTC))
+        if paused:
+            log.info("pipeline is paused; tick does nothing")
+            print("paused: nothing run")
+            return 0
         with httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
             for name in SOURCE_NAMES:
                 if not source_enabled(vertical_cfg, name):

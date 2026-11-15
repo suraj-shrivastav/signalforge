@@ -1,13 +1,18 @@
 """Article drafts. Editor-only read; there is no public route until approval exists."""
 
 from collections import Counter
+from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
-from apps.api.deps import get_article_repository, get_published_repository
+from apps.api.deps import (
+    get_article_repository,
+    get_controls_repository,
+    get_published_repository,
+)
 from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import (
     ArticleDraftOut,
@@ -19,9 +24,11 @@ from apps.api.schemas import (
     ReviewIn,
     SentenceEditIn,
 )
+from signalforge.control_policy import is_paused
 from signalforge.core.artifacts.article import ArticleBody
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
+from signalforge.db.repositories.controls import ControlsRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.image_storage import ImageStorageError, check_svg, upload_svg
 from signalforge.indexnow import ping_indexnow
@@ -81,6 +88,12 @@ def _out(row: Any, published_slug: str | None = None) -> ArticleDraftOut:
         tokens=row.tokens,
         created_at=row.created_at,
     )
+
+
+def ensure_running(controls: ControlsRepository) -> None:
+    """423 while the pipeline is paused (the kill switch the agent must obey)."""
+    if is_paused(controls.get(), datetime.now(UTC)):
+        raise HTTPException(status_code=423, detail="Pipeline is paused")
 
 
 def get_draft_row(repo: ArticleDraftRepository, card_id: UUID) -> Any:
@@ -230,7 +243,15 @@ def publish_draft(
     background: BackgroundTasks,
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
+    controls: Annotated[ControlsRepository, Depends(get_controls_repository)],
 ) -> PublishedOut:
+    """Publish an approved draft. With the agent key, 423 while the pipeline is paused.
+
+    The editor key always publishes: it is the owner's manual override, and the only way to
+    bring back an article the owner unpublished.
+    """
+    if request.state.actor == "agent":
+        ensure_running(controls)
     return publish_approved(
         card_id, payload, request.app.state.settings, background, repo, published
     )

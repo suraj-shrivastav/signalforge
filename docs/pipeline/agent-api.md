@@ -23,8 +23,8 @@ endpoints below).
 | `run_revise` | `POST /agent/run/revise` |
 | `publish` | `POST /agent/publish-next` (one call for all waiting drafts; it follows the publish pace) |
 | `attach_images` | follow `skills/article-images/SKILL.md` |
-| `close` | the card cannot finish (research failed twice, or the draft had no usable claims). Reject it: `POST /cards/{id}/decision` with `{"decision":"rejected","reason_tags":["needs_more_evidence"],"note":"auto-closed: <stage>"}`. Never retry. |
-| `wait`, `none` | nothing to do |
+| `close` | the card cannot finish (research failed twice, the draft had no usable claims, or a revise has used all `AUTO_REVIEW_MAX_REDRAFTS` redrafts). Reject it: `POST /cards/{id}/decision` with `{"decision":"rejected","reason_tags":["needs_more_evidence"],"note":"auto-closed: <stage>"}`. Never retry. |
+| `wait`, `none` | nothing to do. An article the owner unpublished is `none` (stage `unpublished`): the agent never republishes it. Only an editor publish brings it back. |
 
 ## Decisions and reason tags
 
@@ -103,8 +103,11 @@ publishes still count toward the pace, so the next scheduled one waits its turn.
   `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims and no dash or banned phrasing.
 - A flagged sentence that is the only content of a section removes that section.
 - Pass: approved (and published with `publish=true`). Fail: `revise` with the reasons as the
-  note; `POST /agent/run/revise` redrafts with that note. After `AUTO_REVIEW_MAX_REDRAFTS`
-  (2) failed redrafts the draft is rejected.
+  note; `POST /agent/run/revise` redrafts with that note. A card gets at most
+  `AUTO_REVIEW_MAX_REDRAFTS` (2) redrafts. A redraft that fails (the writer or judge errored)
+  keeps the old body and the `revise` status, and its `redraft_failed` event in the review
+  log counts as one of them. With the redrafts used up, a failing draft is rejected by
+  auto-review, and a card still in `revise` gets `next_action` `close`.
 
 Every automatic edit and decision is in the draft's review log with `actor` (`agent` or
 `editor`). `POST /editor/articles/{slug}/unpublish` takes an article down.
@@ -112,8 +115,9 @@ Every automatic edit and decision is in the draft's review log with `actor` (`ag
 ## Kill switch and slot lease
 
 A pause stops the agent without revoking its key. While paused, `POST /agent/run/{stage}`,
-`POST /agent/publish-next` and `POST /agent/topics` return **423**; `auto-review?publish=true` still reviews and approves
-but does not publish (`queued: true`). The auto pipeline after an accept skips while paused (the decision is still recorded). Reads and editor publishes are not affected.
+`POST /agent/publish-next`, `POST /agent/topics` and `POST /editor/drafts/{id}/publish` with
+the agent key return **423**; `auto-review?publish=true` still reviews and approves
+but does not publish (`queued: true`). The auto pipeline after an accept skips while paused (the decision is still recorded). The old cron entry point `python -m apps.worker.tick` exits 0 without running anything. Reads and publishes with the editor key are not affected: the editor key is the owner's manual override.
 
 | Call | Does |
 |---|---|

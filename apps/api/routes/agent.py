@@ -20,7 +20,7 @@ from apps.api.deps import (
     get_published_repository,
     get_session,
 )
-from apps.api.routes.articles import get_draft_row, publish_approved
+from apps.api.routes.articles import ensure_running, get_draft_row, publish_approved
 from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import PublishedOut, PublishIn
 from apps.worker import topic as topic_job
@@ -35,6 +35,7 @@ from signalforge.db.repositories.controls import ControlsRepository
 from signalforge.db.repositories.pipeline import PipelineRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.db.session import ConnectionMode, create_db_engine
+from signalforge.pipeline_state import redrafts_used
 from signalforge.publish_pacing import next_publish_time
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_editor_key)])
@@ -145,11 +146,6 @@ def _controls_out(row: Any) -> ControlsOut:
     )  # fmt: skip
 
 
-def _ensure_running(controls: ControlsRepository) -> None:
-    if is_paused(controls.get(), datetime.now(UTC)):
-        raise HTTPException(status_code=423, detail="Pipeline is paused")
-
-
 @router.get("/controls", response_model=ControlsOut)
 def get_controls(controls: Controls) -> ControlsOut:
     """The kill switch and the slot lease the autopilot holds."""
@@ -186,27 +182,31 @@ def finish_slot(body: SlotFinishIn, controls: Controls) -> ControlsOut:
     return _controls_out(controls.finish_slot(body.slot, body.ok))
 
 
-def _cards(session: Session, limit: int) -> list[PipelineCardOut]:
+def _cards(session: Session, limit: int, settings: Any) -> list[PipelineCardOut]:
     return [
         PipelineCardOut(
             card_id=c.card_id, title=c.title, stage=c.stage, next_action=c.next_action, slug=c.slug
         )
-        for c in PipelineRepository(session).accepted_cards(limit)
+        for c in PipelineRepository(session).accepted_cards(
+            limit, max_redrafts=settings.auto_review_max_redrafts
+        )
     ]
 
 
 @router.get("/pipeline", response_model=PipelineOut)
 def pipeline(
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> PipelineOut:
     """Every recently accepted card with its stage and the next action."""
-    cards = _cards(session, limit)
+    cards = _cards(session, limit, request.app.state.settings)
     return PipelineOut(counts=dict(Counter(c.stage for c in cards)), cards=cards)
 
 
 @router.get("/work", response_model=PipelineOut)
 def work(
+    request: Request,
     session: Annotated[Session, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> PipelineOut:
@@ -214,7 +214,11 @@ def work(
 
     Pick new topics with GET /cards/queue and POST /cards/{id}/decision.
     """
-    cards = [c for c in _cards(session, limit) if c.next_action not in ("none", "wait")]
+    cards = [
+        c
+        for c in _cards(session, limit, request.app.state.settings)
+        if c.next_action not in ("none", "wait")
+    ]
     return PipelineOut(counts=dict(Counter(c.next_action for c in cards)), cards=cards)
 
 
@@ -236,7 +240,7 @@ def run_stage(
     ``limit`` is how many cards to take; research defaults to 1 (the best waiting card),
     every other stage to 10. 423 while the pipeline is paused.
     """
-    _ensure_running(controls)
+    ensure_running(controls)
     count = limit if limit is not None else _DEFAULT_LIMIT.get(stage, 10)
     if not agent_runs.start(stage, request.app.state.settings, count, retry_failed):
         raise HTTPException(status_code=409, detail="Another run is still going")
@@ -265,8 +269,9 @@ def auto_review(
     Approve: flagged sentences are deleted, the draft is approved and (with publish=true)
     published, on the publish pace unless ``force=true`` (a hot topic the owner asked for).
     Revise: it goes back for a redraft with the reasons as the note (run stage
-    'revise'). Reject: it already had the maximum redrafts. Every step is logged. While the
-    pipeline is paused it still reviews and approves, but never publishes (``queued`` is true).
+    'revise'). Reject: it already used the maximum redrafts (failed ones count). Every step
+    is logged. While the pipeline is paused it still reviews and approves, but never
+    publishes (``queued`` is true).
     """
     paused = is_paused(controls.get(), datetime.now(UTC))
     settings = request.app.state.settings
@@ -281,7 +286,7 @@ def auto_review(
         max_flagged_share=settings.auto_review_max_flagged_share,
         max_redrafts=settings.auto_review_max_redrafts,
     )
-    redrafts = sum(1 for e in row.review_log if e.get("type") == "redraft")
+    redrafts = redrafts_used(row.review_log)
     decision = decide(
         ArticleBody.model_validate(row.draft), ArticleTemplate(row.template), redrafts, policy
     )
@@ -362,9 +367,9 @@ def publish_next(
     a hot topic the owner asked for. ``card_id`` picks that waiting draft instead of the oldest.
     423 while the pipeline is paused.
     """
-    _ensure_running(controls)
+    ensure_running(controls)
     settings = request.app.state.settings
-    waiting = [c for c in _cards(session, 200) if c.next_action == "publish"]
+    waiting = [c for c in _cards(session, 200, settings) if c.next_action == "publish"]
     if card_id is not None:
         chosen = next((c for c in waiting if c.card_id == card_id), None)
         if chosen is None:
@@ -393,7 +398,7 @@ def request_topic(payload: TopicIn, request: Request, controls: Controls) -> Run
     ``force=true`` to publish past the pace. One run at a time: 409 while another is going.
     423 while the pipeline is paused.
     """
-    _ensure_running(controls)
+    ensure_running(controls)
     settings = request.app.state.settings
 
     def job() -> dict[str, Any]:
