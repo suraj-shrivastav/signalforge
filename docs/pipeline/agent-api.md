@@ -103,17 +103,26 @@ publishes still count toward the pace, so the next scheduled one waits its turn.
 
 `auto-review` replaces the editor's read-through with rules (`signalforge/auto_review.py`):
 
-- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (40%) of sentences flagged: revise.
-- Otherwise every flagged sentence is deleted. A flagged dek is replaced by the first unflagged sentence of the article (that sentence leaves the body); if none fits, revise.
-- After deletions the draft needs at least `AUTO_REVIEW_MIN_WORDS` (250) words,
-  `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims and no dash or banned phrasing.
-- A flagged sentence that is the only content of a section removes that section.
+- Before review, the draft stage repairs once: one writer call rewrites or drops each flagged sentence and an overreaching title, then everything is checked again (`stages/draft.py`).
+- A flagged dek: revise, with the reason `the dek is flagged: restate the main finding from the claims`.
+- More than `AUTO_REVIEW_MAX_FLAGGED_SHARE` (40%) of sentences flagged: revise (`N sentences are flagged (P%), limit 40%`).
+- Otherwise every flagged sentence is deleted, a section left empty is removed, then the draft is revised if any of these hold. Each failing check adds its own reason, and all reasons are the note:
+  - fewer words than `ceil(band minimum x AUTO_REVIEW_LENGTH_FLOOR_RATIO)`, never below `AUTO_REVIEW_MIN_WORDS` (250): `<words> words after deletions, minimum <floor> for <template>`. The ratio defaults to 0.8 (baseline: below 100% of the template minimum, 38 of 60 published articles; below 80%, 22 of 60). Raise to 1.0 when Milestone 2b deepens research.
+  - fewer than `AUTO_REVIEW_MIN_CLAIMS` (3) verified or supported claims: `<n> verified or supported claims, minimum 3`.
+  - the dek opens with a word that points back at nothing: `the dek opens with a word that points back at nothing: '<text>'`.
+  - a paragraph opens that way, including one a deletion moved to the front: `a paragraph opens with a word that points back at nothing: '<text>'`. The words are This, These, That, Those, Such, It, Its, They, Their.
+  - a section under `AUTO_REVIEW_MIN_SECTION_SENTENCES` (2) sentences: `section '<heading>' has <n> sentence(s), minimum 2`.
+  - a strong title word no cited claim states: `the title uses '<word>', which no cited claim states`.
+  - a dash or banned phrasing: `contains an em dash or an en dash used as a dash`, `contains banned authorship phrasing: '<phrase>'`.
+  - a deletion that cannot be made: `cannot fix a flagged sentence: <message>`.
 - Pass: approved (and published with `publish=true`). Fail: `revise` with the reasons as the
   note; `POST /agent/run/revise` redrafts with that note. A card gets at most
   `AUTO_REVIEW_MAX_REDRAFTS` (2) redrafts. A redraft that fails (the writer or judge errored)
   keeps the old body and the `revise` status, and its `redraft_failed` event in the review
   log counts as one of them. With the redrafts used up, a failing draft is rejected by
   auto-review, and a card still in `revise` gets `next_action` `close`.
+
+The process note on the public article says an editor reviewed it only when one did. When the draft's `review_note` is `approved by policy` (the auto-review approval), the note is `PUBLISH_PROCESS_NOTE_AUTO` (automated checks, not an editor, approved it); any other approval uses `PUBLISH_PROCESS_NOTE`. `python -m apps.worker.backfill_process_note [--apply]` rewrites the note on articles already published that way (dry run by default). `python -m apps.worker.quality_report --days N` prints a read-only readability and length report on published articles.
 
 Every automatic edit and decision is in the draft's review log with `actor` (`agent` or
 `editor`). `POST /editor/articles/{slug}/unpublish` takes an article down.
