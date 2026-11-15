@@ -619,6 +619,13 @@ def run_draft(
                         status=DraftStatus.FAILED,
                         template=template,
                     )
+                except Exception as exc:
+                    # Untyped: the run still fails, but a redraft is logged first (type name
+                    # only, the message may carry a secret) so the cap counts it.
+                    if existing is not None:
+                        repo.record_failed_revision(existing, type(exc).__name__)
+                        session.commit()
+                    raise
                 if draft.status is DraftStatus.DRAFTED:
                     drafted += 1
                 elif draft.status is DraftStatus.NEEDS_MORE_INFO:
