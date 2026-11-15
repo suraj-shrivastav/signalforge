@@ -153,3 +153,4 @@ class PipelineControl(Base, TimestampsMixin):
     slot_status: Mapped[str | None] = mapped_column(String(16), default=None)
     slot_failures: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     slot_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    slot_holder: Mapped[str | None] = mapped_column(String(64), default=None)

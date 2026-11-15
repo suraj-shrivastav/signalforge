@@ -124,6 +124,7 @@ class SlotIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     slot: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}-(00|06|12|18)$")
     lease_minutes: int = Field(default=120, ge=10, le=720)
+    holder: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class SlotFinishIn(BaseModel):
@@ -174,7 +175,9 @@ def resume(request: Request, controls: Controls) -> ControlsOut:
 @router.post("/controls/slot/claim", response_model=SlotClaimOut)
 def claim_slot(body: SlotIn, controls: Controls) -> SlotClaimOut:
     """Take the lease on a six-hour slot; ``claimed`` is false if another run holds it."""
-    claim = controls.claim_slot(body.slot, datetime.now(UTC), timedelta(minutes=body.lease_minutes))
+    claim = controls.claim_slot(
+        body.slot, datetime.now(UTC), timedelta(minutes=body.lease_minutes), holder=body.holder
+    )
     return SlotClaimOut(claimed=claim.claimed, slot=claim.slot, failures=claim.failures)
 
 

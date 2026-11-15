@@ -130,7 +130,7 @@ but does not publish (`queued: true`). The auto pipeline after an accept skips w
 | `GET /agent/controls` | `{paused, paused_reason, paused_by, paused_until, slot, slot_status, slot_failures}` |
 | `POST /agent/controls/pause` | `{"reason": "...", "minutes": null}`. `minutes` set is a breaker pause that lifts itself; without it the pause holds until resumed. Sends a webhook alert if `ALERT_WEBHOOK_URL` is set. |
 | `POST /agent/controls/resume` | clears the pause |
-| `POST /agent/controls/slot/claim` | `{"slot": "2026-11-15-06", "lease_minutes": 120}` returns `{claimed, slot, failures}`; `claimed` is false if the slot is held or done |
+| `POST /agent/controls/slot/claim` | `{"slot": "2026-11-15-06", "lease_minutes": 120, "holder": "<id>"}` returns `{claimed, slot, failures}`; `claimed` is false if the slot is held or done. `holder` is optional (max 64 chars, `[A-Za-z0-9_-]`): the same holder asking again while its own lease runs gets `claimed: true` with the lease and failures unchanged, so a client whose reply was lost can retry safely. Finishing or releasing the slot clears it. |
 | `POST /agent/controls/slot/finish` | `{"slot": "...", "ok": true}` ends the lease. `ok: false` counts one failure. `{"slot": "...", "ok": false, "release": true}` is for a pause: a running slot ends as `failed` with the lease cleared and `slot_failures` unchanged, so it can be claimed again and does not count toward the 3-failure limit. |
 
 Pause and resume record `paused_by` as `editor` or `agent`, by the key used.
