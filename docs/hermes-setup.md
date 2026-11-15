@@ -10,7 +10,7 @@ The pipeline does not depend on an LLM agent, so a Hermes failure never blocks d
 ## Publishing limits
 
 - At least 4 hours between articles, at most 3 per rolling 24 hours. The API enforces this; the scripts cannot go over it.
-- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts its `next_action` becomes `close` and the agent rejects it (the evening report lists closed cards).
+- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts its `next_action` becomes `close` and the agent rejects it (the autopilot logs each close as `auto-closed <card_id> (<stage>): <title>`).
 - A late slot (laptop off) runs as soon as the Mac is awake, so the number of articles per day can drop below 3 on days the Mac was off.
 
 ## Backend setup (one time, any new Render or database)
@@ -39,7 +39,7 @@ If the repo lives elsewhere, set `SIGNALFORGE_REPO` in `~/.signalforge.env`.
 
 ## 2. Install the pipeline scheduler (fallback / until the soak passes)
 
-Once the cron autopilot has passed its soak ([deploy-cron.md](deploy-cron.md)), skip this section and decommission launchd as described there. Run both side by side only during the soak: the slot lease makes the second runner a no-op.
+Once the cron autopilot has passed its soak ([deploy-cron.md](deploy-cron.md)), skip this section and decommission launchd as described there. Never run launchd next to the cron autopilot: the scripts keep their slot in `~/.signalforge-state` and never take the API's slot lease, so both would run every slot. Unload launchd before you enable the cron.
 
 ```bash
 scripts/hermes/install.sh      # first run creates ~/.signalforge.env and stops
@@ -96,14 +96,14 @@ hermes cron list
 
 **Only this job should be enabled for SignalForge in Hermes.** Do not create or unpause the old morning, midday or night tick jobs: they run the same pipeline as the launchd scheduler and would double every run. Other Hermes jobs (job search and so on) are independent and need no change.
 
-The prompt reads `GET /agent/controls`, `/agent/work` and `/agent/runs` (the cron has no local log) and tells Hermes to list closed cards by title. To refresh an existing job after the prompt changes, edit its `prompt` in `~/.hermes/cron/jobs.json` (back the file up first) or recreate the job with the command above.
+The prompt reads `GET /agent/controls`, `/agent/work` and `/agent/runs` (the cron has no local log). Closed cards leave `/agent/work` at once, so the report does not list them: the autopilot log on the cron host records each close. To refresh an existing job after the prompt changes, edit its `prompt` in `~/.hermes/cron/jobs.json` (back the file up first) or recreate the job with the command above.
 
 ### Hermes memory
 
 Add these facts to `~/.hermes/memories/MEMORY.md` (one entry per fact, separated by `§`) so Hermes can answer questions about the pipeline:
 
 - API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. Reads of run state (`/agent/runs`, `/cards/queue`, `/agent/work`) need `EDITOR_API_KEY`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
-- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `close`. Never retry a closed card; the evening report lists it by title. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
+- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `close`. Never retry a closed card; the autopilot log on the cron host records it. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
 - The cloud cron autopilot runs the pipeline (the launchd scheduler is a fallback until the soak passes). Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
 - The article-images skill lives in the repo at `skills/article-images/`. Use the project venv (`.venv/bin/python`), because system python 3.9 is too old.
 
