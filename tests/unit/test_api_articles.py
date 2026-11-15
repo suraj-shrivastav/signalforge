@@ -50,7 +50,7 @@ EDITOR_ONLY = (
 BODY = ArticleBody(
     title="Title",
     dek="Dek",
-    sections=(ArticleSection(heading="H", paragraphs=("P",)),),
+    sections=(ArticleSection(heading="H", paragraphs=("P", "P")),),
     claims=(
         ArticleClaim(
             text="c", evidence_span="span", document_indices=(0,), status=ClaimStatus.VERIFIED
