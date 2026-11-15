@@ -42,6 +42,20 @@ _BANNED_PHRASES = re.compile(
     r"|this article was (generated|written by))\b",
     re.IGNORECASE,
 )
+# Words that claim exclusivity, superiority or a solved problem. A title may use one only
+# when a claim the article cites uses the same word (2026-11-15 quality review, D2).
+_STRONG_WORD = re.compile(
+    r"\b(?:only|first|best|beats?|outperform(?:s|ed)?|solve[sd]?|reliably|always|never"
+    r"|break(?:s|through)?|eliminates?|replaces?|transforms?|revolutioni[sz]es?|reshapes?"
+    r"|guarantees?|proves?|proven|conclusive(?:ly)?|unprecedented)\b",
+    re.IGNORECASE,
+)
+
+
+def title_overreach(title: str, support: str) -> list[str]:
+    """Strong words in ``title`` that ``support`` never uses, lower-cased and sorted."""
+    allowed = {m.group(0).lower() for m in _STRONG_WORD.finditer(support)}
+    return sorted({m.group(0).lower() for m in _STRONG_WORD.finditer(title)} - allowed)
 
 
 def select_template(

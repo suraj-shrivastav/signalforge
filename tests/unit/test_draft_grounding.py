@@ -304,3 +304,28 @@ def test_a_failed_repair_keeps_the_writer_sentences_and_their_flags() -> None:
     assert draft.status is DraftStatus.DRAFTED
     assert draft.draft is not None
     assert [f.text for f in draft.draft.flags] == [UNCITED]
+
+
+def test_repair_rewrites_an_overreaching_title() -> None:
+    fix = repaired(title="Nemotron scores 535.4 out of 600")
+    draft = run(
+        [writer(title="Nemotron beats the contest"), all_true(), fix, all_true()], repair=True
+    )
+    assert draft.draft is not None
+    assert draft.draft.title == "Nemotron scores 535.4 out of 600"
+
+
+def test_a_paper_title_that_still_overreaches_falls_back_to_the_paper_title() -> None:
+    gateway = make_gateway([writer(title="Nemotron beats the contest"), all_true()])
+    draft = _process_card(
+        gateway, package(), ArticleTemplate.NEWS_BRIEF, RUN, "", "paper", "", repair=False
+    )
+    assert draft.draft is not None
+    assert draft.draft.title == "Post"
+
+
+def test_an_overreaching_title_without_a_fallback_is_kept_with_a_note() -> None:
+    draft = run([writer(title="Nemotron beats the contest"), all_true()])
+    assert draft.draft is not None
+    assert draft.draft.title == "Nemotron beats the contest"
+    assert "title: uses 'beats'" in draft.review_summary

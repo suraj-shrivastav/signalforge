@@ -17,7 +17,7 @@ from typing import Literal
 from signalforge.core.artifacts.article import ArticleBody, ArticleFlag, ArticleTemplate
 from signalforge.core.artifacts.research import ClaimStatus
 from signalforge.core.errors import ArtifactValidationError
-from signalforge.stages.draft_extraction import publish_gate, word_count
+from signalforge.stages.draft_extraction import publish_gate, title_overreach, word_count
 from signalforge.stages.draft_review import DEK, apply_sentence_edit
 
 # The review_note of a draft this module approved. Publishing reads it to choose the
@@ -175,6 +175,10 @@ def decide(
     if good < policy.min_claims:
         reasons.append(f"{good} verified or supported claims, minimum {policy.min_claims}")
     reasons.extend(coherence_problems(current, policy.min_section_sentences, openers))
+    overreach = title_overreach(current.title, " ".join(c.text for c in current.claims))
+    if overreach:
+        listed = ", ".join(repr(w) for w in overreach)
+        reasons.append(f"the title uses {listed}, which no cited claim states")
     reasons.extend(f for f in publish_gate(current, template) if not f.startswith("length"))
     if reasons:
         return _fail(body, reasons, redrafts, policy)
