@@ -22,7 +22,9 @@ class _Session:
         return self.used
 
 
-def _wire(monkeypatch: pytest.MonkeyPatch, used: int) -> list[tuple[str, int]]:
+def _wire(
+    monkeypatch: pytest.MonkeyPatch, used: int, paused: bool = False
+) -> list[tuple[str, int]]:
     calls: list[tuple[str, int]] = []
     engine = SimpleNamespace(dispose=lambda: calls.append(("dispose", 0)))
     monkeypatch.setattr(auto_pipeline, "create_db_engine", lambda *_a: engine)
@@ -36,6 +38,10 @@ def _wire(monkeypatch: pytest.MonkeyPatch, used: int) -> list[tuple[str, int]]:
         calls.append(("draft", limit))
         return SimpleNamespace(drafted=limit)
 
+    row = SimpleNamespace(paused=paused, paused_until=None)
+    monkeypatch.setattr(
+        auto_pipeline, "ControlsRepository", lambda _s: SimpleNamespace(get=lambda: row)
+    )
     monkeypatch.setattr(research, "run", fake_research)
     monkeypatch.setattr(draft, "run", fake_draft)
     return calls
@@ -53,6 +59,12 @@ def test_runs_research_then_draft_within_the_cap(monkeypatch: pytest.MonkeyPatch
     calls = _wire(monkeypatch, used=8)
     auto_pipeline.run_after_accept(_settings(10))
     assert calls == [("research", 1), ("draft", 1), ("dispose", 0)]
+
+
+def test_skips_while_the_pipeline_is_paused(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _wire(monkeypatch, used=0, paused=True)
+    auto_pipeline.run_after_accept(_settings(10))
+    assert calls == [("dispose", 0)]  # no research, no draft
 
 
 def test_skips_when_the_daily_cap_is_reached(monkeypatch: pytest.MonkeyPatch) -> None:

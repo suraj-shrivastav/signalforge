@@ -7,8 +7,10 @@ from sqlalchemy import func, select
 
 from apps.api import agent_runs
 from apps.worker import draft, research
+from signalforge.control_policy import is_paused
 from signalforge.core.config import Settings
 from signalforge.db.models.research import ResearchPackageRow
+from signalforge.db.repositories.controls import ControlsRepository
 from signalforge.db.session import ConnectionMode, create_db_engine, create_session_factory
 
 log = logging.getLogger(__name__)
@@ -25,6 +27,9 @@ def run_after_accept(settings: Settings) -> None:
         try:
             since = datetime.now(UTC) - timedelta(hours=24)
             with create_session_factory(engine)() as session:
+                if is_paused(ControlsRepository(session).get(), datetime.now(UTC)):
+                    log.info("paused, skipping auto pipeline")
+                    return
                 used = session.scalar(
                     select(func.count())
                     .select_from(ResearchPackageRow)
