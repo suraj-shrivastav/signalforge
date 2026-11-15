@@ -46,6 +46,32 @@ def claims_reply(span: str, text: str = "claim") -> str:
     return json.dumps({"claims": [{"text": text, "evidence_span": span}]})
 
 
+def rich_reply(span: str, text: str = "claim") -> str:
+    """Three claims, one with a digit, so the research gate (MIN_CLAIMS, numeric) passes."""
+    return json.dumps(
+        {
+            "claims": [
+                {"text": text, "evidence_span": span},
+                {"text": "second claim, 2 runs", "evidence_span": "every benchmark tested"},
+                {
+                    "text": "third claim",
+                    "evidence_span": "across multiple independent evaluation runs",
+                },
+            ]
+        }
+    )
+
+
+class _DistinctEmbeddingProvider(FakeProvider):
+    """Orthogonal vectors per text, so no claims merge (the default embeds all alike)."""
+
+    def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
+        vectors = [
+            tuple(1.0 if j == i else 0.0 for j in range(len(texts))) for i in range(len(texts))
+        ]
+        return EmbeddingReply(vectors, input_tokens=0, latency_ms=0)
+
+
 class FakeFetcher:
     def __init__(self, pages: dict[str, str | Exception]) -> None:
         self._pages = pages
@@ -68,7 +94,7 @@ class FakeSearch:
 
 
 def gateway_factory(replies: list[str]) -> Callable[[Session, Budget], LLMGateway]:
-    provider = FakeProvider(replies)
+    provider = _DistinctEmbeddingProvider(replies)
 
     def make(session: Session, budget: Budget) -> LLMGateway:
         roles = {ROLE: ModelSpec("acme/m", "acme"), EMBEDDING_ROLE: ModelSpec("acme/e", "acme")}
@@ -122,18 +148,21 @@ def row_for(session: Session, card_id: object) -> ResearchPackageRow:
 
 def test_full_success(db_session: Session) -> None:
     card = seed_card(db_session)
-    fetcher = FakeFetcher({"https://example.com/article": PRIMARY_TEXT})
+    fetcher = FakeFetcher(
+        {"https://example.com/article": PRIMARY_TEXT, "https://sec.example.com/": SECONDARY_TEXT}
+    )
+    span = "beats the prior best by a wide margin"
     result = run_research(
         db_session,
-        gateway_factory([claims_reply("beats the prior best by a wide margin")]),
+        gateway_factory([rich_reply(span), rich_reply(span)]),
         fetcher,
-        FakeSearch([]),
+        FakeSearch([SearchResult(url="https://sec.example.com/", title="Coverage")]),
         budget_limits=DEFAULT_LIMITS,
     )
     assert result.researched == 1
     row = row_for(db_session, card.id)
     assert row.status == "researched"
-    assert len(row.claims) == 1
+    assert len(row.claims) == 4
 
 
 def test_primary_fetch_error_needs_more_info(db_session: Session) -> None:
@@ -200,10 +229,21 @@ def test_already_researched_card_not_reconsidered(db_session: Session) -> None:
 
 def test_secondary_search_failure_does_not_fail_card(db_session: Session) -> None:
     card = seed_card(db_session)
-    fetcher = FakeFetcher({"https://example.com/article": PRIMARY_TEXT})
+    # Search is down, so the independent document is the paper the primary cites.
+    primary = PRIMARY_TEXT.replace(
+        "</article>", '<a href="https://arxiv.org/pdf/2609.02849v2">paper</a></article>'
+    )
+    fetcher = FakeFetcher(
+        {
+            "https://example.com/article": primary,
+            "https://arxiv.org/html/2609.02849": ProviderRejectedError("404"),
+            "https://arxiv.org/abs/2609.02849": PAPER_TEXT,
+        }
+    )
+    span = "beats the prior best"
     result = run_research(
         db_session,
-        gateway_factory([claims_reply("beats the prior best")]),
+        gateway_factory([rich_reply(span), rich_reply(span)]),
         fetcher,
         FakeSearch(ProviderRejectedError("search down")),
         budget_limits=DEFAULT_LIMITS,
@@ -225,8 +265,8 @@ def test_blank_secondary_title_falls_back_to_hostname(db_session: Session) -> No
         db_session,
         gateway_factory(
             [
-                claims_reply("beats the prior best by a wide margin"),
-                claims_reply("beats the prior best by a wide margin"),
+                rich_reply("beats the prior best by a wide margin"),
+                rich_reply("beats the prior best by a wide margin"),
             ]
         ),
         fetcher,
@@ -247,24 +287,41 @@ def test_claim_text_with_apostrophe_is_stored_unescaped(db_session: Session) -> 
         "<p>The model's accuracy improved significantly across every benchmark tested "
         "by the independent research team.</p></article></body></html>"
     )
-    fetcher = FakeFetcher({"https://example.com/article": text})
+    fetcher = FakeFetcher(
+        {"https://example.com/article": text, "https://sec.example.com/": SECONDARY_TEXT}
+    )
     result = run_research(
         db_session,
         gateway_factory(
             [
-                claims_reply(
-                    "The model's accuracy improved significantly",
-                    "The model's accuracy improved significantly",
-                )
+                json.dumps(
+                    {
+                        "claims": [
+                            {
+                                "text": "The model's accuracy improved significantly",
+                                "evidence_span": "The model's accuracy improved significantly",
+                            },
+                            {
+                                "text": "It held across 2 benchmarks",
+                                "evidence_span": "across every benchmark tested",
+                            },
+                            {
+                                "text": "A team ran it",
+                                "evidence_span": "by the independent research team",
+                            },
+                        ]
+                    }
+                ),
+                json.dumps({"claims": []}),
             ]
         ),
         fetcher,
-        FakeSearch([]),
+        FakeSearch([SearchResult(url="https://sec.example.com/", title="Coverage")]),
         budget_limits=DEFAULT_LIMITS,
     )
     assert result.researched == 1
     row = row_for(db_session, card.id)
-    assert len(row.claims) == 1
+    assert len(row.claims) == 3
     assert row.claims[0]["text"] == "The model's accuracy improved significantly"
     assert "&#x27;" not in row.claims[0]["text"]
     assert "&quot;" not in row.claims[0]["text"]
@@ -283,22 +340,33 @@ class _PricedProvider:
         max_tokens: int | None = None,
     ) -> ProviderReply:
         return ProviderReply(
-            claims_reply("beats the prior best"), input_tokens=100, output_tokens=50, latency_ms=1
+            rich_reply("beats the prior best"), input_tokens=100, output_tokens=50, latency_ms=1
         )
 
     def embed(self, model: str, texts: list[str], *, timeout_s: float) -> EmbeddingReply:
-        return EmbeddingReply([(1.0, 0.0)] * len(texts), input_tokens=10, latency_ms=1)
+        vectors = [
+            tuple(1.0 if j == i else 0.0 for j in range(len(texts))) for i in range(len(texts))
+        ]
+        return EmbeddingReply(vectors, input_tokens=10, latency_ms=1)
 
 
 def test_written_row_has_nonzero_cost_calls_tokens(db_session: Session) -> None:
     card = seed_card(db_session)
-    fetcher = FakeFetcher({"https://example.com/article": PRIMARY_TEXT})
+    fetcher = FakeFetcher(
+        {"https://example.com/article": PRIMARY_TEXT, "https://sec.example.com/": SECONDARY_TEXT}
+    )
 
     def make(session: Session, budget: Budget) -> LLMGateway:
         roles = {ROLE: ModelSpec("acme/m", "acme"), EMBEDDING_ROLE: ModelSpec("acme/e", "acme")}
         return LLMGateway(_PricedProvider(), roles, budget, session)
 
-    result = run_research(db_session, make, fetcher, FakeSearch([]), budget_limits=DEFAULT_LIMITS)
+    result = run_research(
+        db_session,
+        make,
+        fetcher,
+        FakeSearch([SearchResult(url="https://sec.example.com/", title="Coverage")]),
+        budget_limits=DEFAULT_LIMITS,
+    )
     assert result.researched == 1
     row = row_for(db_session, card.id)
     assert row.calls > 0
@@ -322,7 +390,7 @@ def test_cited_paper_is_fetched_as_a_document(db_session: Session) -> None:
     span = "beats the prior best by a wide margin"
     result = run_research(
         db_session,
-        gateway_factory([claims_reply(span), claims_reply(span)]),
+        gateway_factory([rich_reply(span), rich_reply(span)]),
         fetcher,
         FakeSearch([SearchResult(url="https://arxiv.org/abs/2609.02849", title="dup")]),
         budget_limits=DEFAULT_LIMITS,
@@ -341,10 +409,11 @@ def test_mirror_of_the_primary_is_dropped(db_session: Session) -> None:
     )
     result = run_research(
         db_session,
-        gateway_factory([claims_reply("beats the prior best by a wide margin")]),
+        gateway_factory([rich_reply("beats the prior best by a wide margin")]),
         fetcher,
         FakeSearch([SearchResult(url="https://mirror.example.net/", title="Mirror")]),
         budget_limits=DEFAULT_LIMITS,
     )
-    assert result.researched == 1
+    # A mirror is not independent evidence, so the lone primary cannot pass the gate.
+    assert result.needs_more_info == 1
     assert len(row_for(db_session, card.id).documents) == 1
