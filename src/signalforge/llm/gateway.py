@@ -22,7 +22,7 @@ from signalforge.llm.providers import (
     ProviderReply,
 )
 from signalforge.llm.registry import get_provider
-from signalforge.llm.roles import ModelSpec, RoleMap, build_roles
+from signalforge.llm.roles import ModelSpec, RoleMap, build_roles, unpriced_models
 
 log = logging.getLogger(__name__)
 
@@ -256,9 +256,13 @@ def build_gateway(settings: Settings, session: Session, budget: Budget) -> LLMGa
             httpx.Client(),
             max_output_tokens=settings.llm_max_output_tokens_article_writer,
         )
+    roles = build_roles(settings)
+    unpriced = unpriced_models(roles)
+    if unpriced:
+        log.warning("models without a configured price; their cost reads 0: %s", unpriced)
     return LLMGateway(
         get_provider(settings),
-        build_roles(settings),
+        roles,
         budget,
         session,
         role_providers=role_providers,
