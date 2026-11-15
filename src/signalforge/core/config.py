@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # It opens the same write endpoints plus /agent/*. Unset: the agent has no access.
     agent_api_key: SecretStr | None = None
 
+    # Incoming webhook (Slack or Discord) for pauses, breakers and failed slots. Unset: logs only.
+    alert_webhook_url: SecretStr | None = None
+
     # Pace for articles the agent publishes (auto-review with publish=true and
     # POST /agent/publish-next): at least this long between two, and at most this many in
     # 24 hours. An approved draft waits until a slot opens. An editor's own publish ignores it.

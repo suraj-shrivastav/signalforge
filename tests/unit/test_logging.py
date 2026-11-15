@@ -98,3 +98,13 @@ def test_current_correlation_id_reflects_the_active_block() -> None:
     assert current_correlation_id() is None
     with correlation_id("abc"):
         assert current_correlation_id() == "abc"
+
+
+def test_http_client_loggers_stay_quiet_so_secret_urls_are_not_logged() -> None:
+    configure_logging("DEBUG")
+    try:
+        for name in ("httpx", "httpcore"):
+            assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
+    finally:
+        for name in ("httpx", "httpcore"):
+            logging.getLogger(name).setLevel(logging.NOTSET)

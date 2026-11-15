@@ -80,6 +80,10 @@ def configure_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level.upper())
+    # httpx and httpcore log every request URL at INFO/DEBUG. Some URLs are secrets (the alert
+    # webhook), so keep them out of the logs whatever the root level is.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def log_llm_call(
