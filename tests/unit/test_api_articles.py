@@ -1084,3 +1084,24 @@ def test_a_table_whose_source_is_missing_still_shows_without_one(
     table = client.get(f"/articles/{slug}").json()["sections"][0]["table"]
     assert table["source"] is None
     assert table["rows"] == [["1", "2"], ["3", "4"]]
+
+
+def test_policy_approved_article_says_automated_checks_approved_it(
+    ctx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = ctx
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    repo.rows[card_id].review_status = "approved"
+    repo.rows[card_id].review_note = "approved by policy"
+    assert client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).status_code == 200
+    saved = repo.published.rows[card_id]  # type: ignore[attr-defined]
+    assert "not an editor" in saved.process_note
+    assert "An editor reviewed" not in saved.process_note
+
+
+def test_editor_approved_article_keeps_the_editor_note(ctx: tuple[TestClient, StubRepo]) -> None:
+    client, repo = ctx
+    card_id = approve(client, repo)
+    assert client.post(f"/editor/drafts/{card_id}/publish", headers=H, json={}).status_code == 200
+    saved = repo.published.rows[card_id]  # type: ignore[attr-defined]
+    assert "An editor reviewed and approved" in saved.process_note

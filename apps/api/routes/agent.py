@@ -25,7 +25,7 @@ from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import PublishedOut, PublishIn
 from apps.worker import topic as topic_job
 from signalforge.alerts import send_alert
-from signalforge.auto_review import ReviewPolicy, decide
+from signalforge.auto_review import POLICY_APPROVAL_NOTE, ReviewPolicy, decide
 from signalforge.control_policy import is_paused
 from signalforge.core.artifacts.article import ArticleBody, ArticleTemplate
 from signalforge.core.canonical import canonical_url
@@ -318,7 +318,7 @@ def auto_review(
         repo.save_review(
             row,
             "approved",
-            "approved by policy",
+            POLICY_APPROVAL_NOTE,
             {"type": "review", "decision": "approved", "actor": actor},
         )
         if publish and paused:
