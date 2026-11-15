@@ -3,6 +3,8 @@
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from signalforge.core.budget import BudgetScope
 from signalforge.core.config import Settings
 
@@ -37,3 +39,23 @@ def test_caps_are_overridable_from_the_environment() -> None:
 def test_caps_stay_exact_decimals() -> None:
     """A float cap would defeat the point of Decimal accumulation."""
     assert isinstance(build(budget_per_topic_usd="0.33").budget_per_topic_usd, Decimal)
+
+
+def test_budget_limits_include_call_caps() -> None:
+    settings = build(budget_max_calls_per_topic=40, budget_max_calls_per_article=7)
+
+    assert settings.budget_limits(BudgetScope.ARTICLE).max_calls == 7
+    assert settings.budget_limits(BudgetScope.TOPIC).max_calls == 40
+
+
+def test_call_caps_default_to_unset() -> None:
+    settings = build()
+
+    assert settings.budget_limits(BudgetScope.TOPIC).max_calls is None
+    assert settings.budget_limits(BudgetScope.ARTICLE).max_calls is None
+
+
+def test_llm_prices_parse_from_json_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PRICES", '{"nvidia/x": {"input": "0.2", "output": "0.6"}}')
+
+    assert build().llm_prices["nvidia/x"].output == Decimal("0.6")

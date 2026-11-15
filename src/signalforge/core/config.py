@@ -11,7 +11,15 @@ from functools import lru_cache
 from typing import Any, Self
 from urllib.parse import urlparse
 
-from pydantic import AliasChoices, Field, PostgresDsn, SecretStr, ValidationError, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    PostgresDsn,
+    SecretStr,
+    ValidationError,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from signalforge.core.budget import BudgetLimits, BudgetScope
@@ -22,6 +30,13 @@ class Environment(StrEnum):
     LOCAL = "local"
     CI = "ci"
     PRODUCTION = "production"
+
+
+class ModelPrice(BaseModel):
+    """USD per million tokens. Set every model in use, or cost reads 0 and caps never trip."""
+
+    input: Decimal = Field(ge=0)
+    output: Decimal = Field(ge=0)
 
 
 class Settings(BaseSettings):
@@ -122,6 +137,12 @@ class Settings(BaseSettings):
     # compared against accumulated spend and must not drift.
     budget_per_topic_usd: Decimal = Decimal("0.50")
     budget_per_article_usd: Decimal = Decimal("1.50")
+    # Keyed by model id. Env: LLM_PRICES='{"vendor/model": {"input": "0.2", "output": "0.6"}}'.
+    llm_prices: dict[str, ModelPrice] = Field(default_factory=dict)
+    # Call caps trip even when a provider's price is unknown. Unset means no cap; set them
+    # from the p95 of real runs (see scripts/hermes/signalforge.env.example).
+    budget_max_calls_per_topic: int | None = Field(default=None, ge=1)
+    budget_max_calls_per_article: int | None = Field(default=None, ge=1)
 
     # Temporary HTTP trigger for ingest (ADR-0005). Default off. Owner: suraj.
     # Remove when ingest runs through the queue.
@@ -177,10 +198,11 @@ class Settings(BaseSettings):
     def budget_limits(self, scope: BudgetScope) -> BudgetLimits:
         """Configured caps for a scope, so limits live in config rather than in stages."""
         caps = {
-            BudgetScope.TOPIC: self.budget_per_topic_usd,
-            BudgetScope.ARTICLE: self.budget_per_article_usd,
+            BudgetScope.TOPIC: (self.budget_per_topic_usd, self.budget_max_calls_per_topic),
+            BudgetScope.ARTICLE: (self.budget_per_article_usd, self.budget_max_calls_per_article),
         }
-        return BudgetLimits(max_cost_usd=caps[scope])
+        cost, calls = caps[scope]
+        return BudgetLimits(max_cost_usd=cost, max_calls=calls)
 
 
 @lru_cache(maxsize=1)
