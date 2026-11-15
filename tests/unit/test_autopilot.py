@@ -233,6 +233,7 @@ def _slot_routes(cards: list[dict[str, object]], **extra: object) -> dict[tuple[
     routes: dict[tuple[str, str], object] = {
         ("GET", "/agent/controls"): UNPAUSED,
         ("GET", "/agent/work"): {"counts": {}, "cards": cards},
+        ("GET", "/agent/pipeline"): {"counts": {}, "cards": cards},
         ("GET", "/agent/runs"): ALL_OK,
         ("GET", "/cards/queue"): [],
         ("POST", "/agent/publish-next"): {"published": None, "waiting": 0, "next_publish_at": None},
@@ -321,6 +322,49 @@ def test_cards_in_flight_count_toward_the_accept_target(target: int, accepted: i
     a = api(_slot_routes(cards, **{"GET /cards/queue": queue}), calls)
     assert autopilot.top_up_cards(a, target) == accepted
     assert sum(c.endswith("/decision") for c in calls) == accepted
+
+
+def test_cards_mid_stage_count_as_in_flight() -> None:  # /agent/work hides wait cards
+    calls: list[str] = []
+    queue = [{"id": f"q{i}", "status": "proposed", "score": i} for i in range(5)]
+    pipeline = {"counts": {}, "cards": [_card("c1", "wait"), _card("c2", "wait"),
+                                        _card("c3", "none"), _card("c4", "close")]}  # fmt: skip
+    routes = _slot_routes([], **{"GET /cards/queue": queue, "GET /agent/pipeline": pipeline})
+    assert autopilot.top_up_cards(api(routes, calls), 3) == 1
+    assert "GET /agent/pipeline" in calls
+
+
+def test_a_tick_with_a_non_zero_exit_code_fails_the_slot(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    runs = {"running": None, "last": {"tick": {"ok": True, "result": {"exit_code": 2}}}}
+    calls: list[str] = []
+    sent: dict[str, object] = {}
+    routes = _slot_routes([], **{"GET /agent/runs": runs})
+    with caplog.at_level("INFO", logger="autopilot"):
+        assert autopilot.run_once(api(routes, calls, sent), NOW, {}) == 1
+    assert sent["/agent/controls/slot/finish"] == {"slot": "2026-11-15-06", "ok": False}
+    assert "POST /agent/run/research" not in calls
+    lines = [r for r in caplog.records if r.message == "slot outcome"]
+    assert lines[-1].reason == "tick exit_code 2"  # type: ignore[attr-defined]
+
+
+def test_a_pause_mid_run_releases_the_slot_and_does_not_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alerts: list[str] = []
+    monkeypatch.setattr(autopilot, "send_alert", lambda *a: alerts.append(a[1]))
+    calls: list[str] = []
+    sent: dict[str, object] = {}
+    claim = {"claimed": True, "slot": "s", "failures": 2}
+    routes = _slot_routes([], **{"POST /agent/run/tick": 423,
+                                 "POST /agent/controls/slot/claim": claim})  # fmt: skip
+    env = {"ALERT_WEBHOOK_URL": "https://hook.test"}
+    assert autopilot.run_once(api(routes, calls, sent), NOW, env) == 0
+    assert sent["/agent/controls/slot/finish"] == {
+        "slot": "2026-11-15-06", "ok": False, "release": True,
+    }  # fmt: skip
+    assert alerts == []
 
 
 def test_start_waits_and_retries_once_when_another_run_is_going() -> None:  # 7

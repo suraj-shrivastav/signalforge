@@ -130,6 +130,7 @@ class SlotFinishIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     slot: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}-(00|06|12|18)$")
     ok: bool
+    release: bool = False  # a pause, not a failure: the slot stays retryable, failures unchanged
 
 
 class SlotClaimOut(BaseModel):
@@ -179,6 +180,8 @@ def claim_slot(body: SlotIn, controls: Controls) -> SlotClaimOut:
 
 @router.post("/controls/slot/finish", response_model=ControlsOut)
 def finish_slot(body: SlotFinishIn, controls: Controls) -> ControlsOut:
+    if body.release:
+        return _controls_out(controls.release_slot(body.slot))
     return _controls_out(controls.finish_slot(body.slot, body.ok))
 
 

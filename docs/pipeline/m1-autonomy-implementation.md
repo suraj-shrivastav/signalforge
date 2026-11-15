@@ -132,16 +132,17 @@ Stage runs are daemon threads, so a restart leaves `running` rows. At startup `s
 
 There is no R4 in the ruling list.
 
-## 6. Known residuals (not yet fixed)
+## 6. Known residuals
 
-- `apps/api/agent_runs.py` clears `running` before writing `last[stage]`. In a tiny window the autopilot can read the previous run's result. Fix: write `last[stage]` before releasing.
-- A pause mid-slot counts as a slot failure, so the retry after resume accepts no new cards.
-- A tick with a non-zero exit_code only warns; it does not fail the slot.
-- The accept target ignores cards mid-stage (`wait`).
-- A redraft that raises a non-typed error logs no `redraft_failed` event (pre-existing).
 - A claim call that fails after the server took the lease leaves the slot held for the 360-minute lease.
-- The agent key can republish an owner-unpublished article via POST /editor/drafts/{id}/publish when not paused: publish_approved (apps/api/routes/articles.py:184-205) only rejects status == 'published', and the route (articles.py:247-256) only gates the agent key on pause. Fix: reject the agent actor when the existing published row is 'unpublished' (editor key keeps manual republish). The autopilot and Hermes do not call this route.
 - Hermes Telegram control works only while its gateway host (the laptop) is on. Moving the gateway to the cloud is a follow-up.
+
+Fixed after M1 merge:
+
+- A pause mid-slot no longer counts as a failure. The autopilot sends `slot/finish` with `release: true`; the slot shows as `failed` but `slot_failures` is unchanged, so the next run claims it again and accepts cards normally (this PR).
+- A tick with a non-zero `exit_code` now fails the slot, with `tick exit_code N` in the outcome line (this PR).
+- The accept target counts every non-terminal card, mid-stage (`wait`) included, read from `GET /agent/pipeline` because `/agent/work` hides `wait` (this PR).
+- `agent_runs` ordering race, the agent-key republish of an unpublished article, and the untyped redraft error (the companion API fix PR).
 
 ## 7. Owner steps before the soak, and soak pass criteria
 
