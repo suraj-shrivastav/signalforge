@@ -1,5 +1,7 @@
 # Milestone 2a: Readable and Honest Articles Implementation Plan
 
+Status 2026-11-15: Tasks 1-7 merged (#156-#161 and this PR). Backfill applied to 59 articles. Length floor default 0.8 from the baseline (ruling). The 14-day measurement (Task 7 Step 3) is pending.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Stop publishing articles that read out of order, overclaim in the title, fall short of their template length, or tell readers an editor approved them when one did not.
