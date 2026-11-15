@@ -4,7 +4,7 @@ Written for an engineer or agent with no context. The plan is [docs/superpowers/
 
 ## 1. Goal and status
 
-Goal: SignalForge runs with no human at runtime, off the laptop, and the owner can stop it at any time. Milestone 1 ("unattended and stoppable") was merged on 2026-11-15 (PRs #136 to #148). The production database is at alembic revision 0014 (0015 is applied with the claim-holder PR). The 7-day soak is pending (owner steps in section 7).
+Goal: SignalForge runs with no human at runtime, off the laptop, and the owner can stop it at any time. Milestone 1 ("unattended and stoppable") was merged on 2026-11-15 (PRs #136 to #148). The production database is at alembic revision 0015 (head). Follow-up PRs after the M1 merge: #149 (docs record), #150 and #151 (residual fixes), #152 (claim holder), #153 (Hermes diagnostics). The 7-day soak is pending (owner steps in section 7).
 
 ## 2. What shipped, by PR
 
@@ -108,9 +108,9 @@ Stage runs are daemon threads, so a restart leaves `running` rows. At startup `s
 |---|---|---|---|
 | 0013 | `pipeline_controls` (seeded row) | 2026-11-15 | main at 40e7350 |
 | 0014 | `article_drafts.attempts` | 2026-11-15 | the PR #144 head, afe2163, just before merge, with owner approval |
-| 0015 | `pipeline_controls.slot_holder` | pending | applied to production before merge with owner approval |
+| 0015 | `pipeline_controls.slot_holder` | 2026-11-15 | from PR #152 head 39abd3c, just before merge, with owner approval |
 
-`alembic upgrade head` was run again from main at 3c76e70 on 2026-11-15 and the database is at head (0014). The migrations folder is `src/signalforge/db/migrations/versions`. Note for Milestone 2: the plan names its first migration `0014 sentence_verdicts`; that number is taken, so it becomes 0015.
+`alembic upgrade head` was run again from main at 3c76e70 on 2026-11-15 and the database was at head (0014); 0015 followed with #152, so production is now at 0015 (head). The migrations folder is `src/signalforge/db/migrations/versions`. Note for Milestone 2: the plan names its first migration `0014 sentence_verdicts`; 0014 and 0015 are taken, so it becomes 0016.
 
 ## 5. Decisions (rulings) made during implementation
 
@@ -139,7 +139,7 @@ There is no R4 in the ruling list.
 
 Fixed after M1 merge:
 
-- A claim call that fails after the server took the lease no longer strands the slot. Migration 0015 adds `pipeline_controls.slot_holder`; the autopilot sends one `holder` id per run and retries the claim once with the same id, and the server hands the same holder its own claim back without changing the lease or the failure count. `finish_slot` and `release_slot` clear the holder (this PR).
+- A claim call that fails after the server took the lease no longer strands the slot. Migration 0015 adds `pipeline_controls.slot_holder`; the autopilot sends one `holder` id per run and retries the claim once with the same id, and the server hands the same holder its own claim back without changing the lease or the failure count. `finish_slot` and `release_slot` clear the holder (#152).
 - A pause mid-slot no longer counts as a failure. The autopilot sends `slot/finish` with `release: true`; the slot shows as `failed` but `slot_failures` is unchanged, so the next run claims it again and accepts cards normally (this PR).
 - A tick with a non-zero `exit_code` now fails the slot, with `tick exit_code N` in the outcome line (this PR).
 - The accept target counts every non-terminal card, mid-stage (`wait`) included, read from `GET /agent/pipeline` because `/agent/work` hides `wait` (this PR).
