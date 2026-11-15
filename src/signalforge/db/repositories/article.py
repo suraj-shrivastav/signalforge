@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Subquery, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,20 @@ from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
 from signalforge.pipeline_state import MAX_DRAFT_ATTEMPTS
+
+
+def _latest_decision() -> Subquery:
+    """Each card's latest editor decision, as a subquery (topic_card_id, decision)."""
+    return (
+        select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
+        .distinct(EditorDecisionRow.topic_card_id)
+        .order_by(
+            EditorDecisionRow.topic_card_id,
+            EditorDecisionRow.decided_at.desc(),
+            EditorDecisionRow.created_at.desc(),
+        )
+        .subquery()
+    )
 
 
 class ArticleDraftRepository:
@@ -42,16 +56,7 @@ class ArticleDraftRepository:
                     ArticleDraftRow.attempts >= MAX_DRAFT_ATTEMPTS,
                 )
             )
-        latest = (
-            select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
-            .distinct(EditorDecisionRow.topic_card_id)
-            .order_by(
-                EditorDecisionRow.topic_card_id,
-                EditorDecisionRow.decided_at.desc(),
-                EditorDecisionRow.created_at.desc(),
-            )
-            .subquery()
-        )
+        latest = _latest_decision()
         query = (
             select(TopicCardRow, Signal, ResearchPackageRow)
             .join(Signal, Signal.id == TopicCardRow.signal_id)
@@ -70,13 +75,20 @@ class ArticleDraftRepository:
     def list_revisions(
         self, limit: int
     ) -> list[tuple[TopicCardRow, Signal, ResearchPackageRow, ArticleDraftRow]]:
-        """Drafts the editor sent back (review_status 'revise'), oldest review first."""
+        """Drafts sent back for a redraft (review_status 'revise'), oldest review first.
+
+        The card's latest decision must still be 'accepted': a card the agent closed (or an
+        editor rejected) is never redrafted.
+        """
+        latest = _latest_decision()
         query = (
             select(TopicCardRow, Signal, ResearchPackageRow, ArticleDraftRow)
             .join(Signal, Signal.id == TopicCardRow.signal_id)
+            .join(latest, latest.c.topic_card_id == TopicCardRow.id)
             .join(ResearchPackageRow, ResearchPackageRow.card_id == TopicCardRow.id)
             .join(ArticleDraftRow, ArticleDraftRow.card_id == TopicCardRow.id)
             .where(
+                latest.c.decision == "accepted",
                 ArticleDraftRow.review_status == "revise",
                 ResearchPackageRow.status == ResearchStatus.RESEARCHED.value,
             )
@@ -115,6 +127,21 @@ class ArticleDraftRepository:
         row.cost_usd = row.cost_usd + cost_usd
         row.calls = row.calls + calls
         row.tokens = row.tokens + tokens
+        self._session.flush()
+
+    def record_failed_revision(self, row: ArticleDraftRow, reason: str | None) -> None:
+        """Log a redraft that failed. The body and the 'revise' status stay as they were.
+
+        It counts toward AUTO_REVIEW_MAX_REDRAFTS (``pipeline_state.redrafts_used``), so a
+        redraft that keeps failing ends in a closed card, not an endless retry.
+        """
+        event = {
+            "type": "redraft_failed",
+            "note": row.review_note,
+            "error": reason,
+            "at": datetime.now(UTC).isoformat(),
+        }
+        row.review_log = [*row.review_log, event]
         self._session.flush()
 
     def insert(

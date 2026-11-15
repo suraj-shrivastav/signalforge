@@ -237,6 +237,9 @@ def test_revise_redrafts_with_the_editor_note_and_keeps_the_draft_on_failure(
     db_session.expire_all()
     kept = row(db_session, card)
     assert (kept.review_status, kept.calls) == ("revise", first_calls)
+    assert kept.review_log[-1]["type"] == "redraft_failed"
+    assert kept.review_log[-1]["note"] == "Lead with the benchmark margin"
+    assert kept.review_log[-1]["error"].startswith("ProviderRejectedError:")
 
     provider = FakeProvider([writer(paragraph="Redone."), judge(True, True)])
 
@@ -257,3 +260,15 @@ def test_revise_redrafts_with_the_editor_note_and_keeps_the_draft_on_failure(
     assert redone.review_log[-1]["note"] == "Lead with the benchmark margin"
     assert redone.draft["sections"][0]["paragraphs"][0] == "Redone."
     assert run_draft(db_session, make, budget_limits=LIMITS, revise=True).considered == 0
+
+
+def test_revise_skips_a_card_that_was_closed(db_session: Session) -> None:
+    card = seed(db_session)
+    run_draft(db_session, factory([writer(), judge(True, True)]), budget_limits=LIMITS)
+    ArticleDraftRepository(db_session).save_review(
+        row(db_session, card), "revise", "too thin", {"type": "review"}
+    )
+    CardRepository(db_session).add_decision(
+        card.id, "rejected", ["needs_more_evidence"], "auto-closed: revise_exhausted", None
+    )
+    assert run_draft(db_session, factory([]), budget_limits=LIMITS, revise=True).considered == 0

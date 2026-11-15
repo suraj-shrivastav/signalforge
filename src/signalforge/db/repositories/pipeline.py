@@ -10,7 +10,7 @@ from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.published import PublishedArticleRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
-from signalforge.pipeline_state import classify
+from signalforge.pipeline_state import classify, redrafts_used
 
 
 @dataclass(frozen=True)
@@ -27,8 +27,11 @@ class PipelineRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def accepted_cards(self, limit: int) -> list[PipelineCard]:
-        """Newest accepted cards (latest decision 'accepted') with their derived stage."""
+    def accepted_cards(self, limit: int, *, max_redrafts: int) -> list[PipelineCard]:
+        """Newest accepted cards (latest decision 'accepted') with their derived stage.
+
+        ``max_redrafts`` is AUTO_REVIEW_MAX_REDRAFTS: a revise past it is closed.
+        """
         latest = (
             select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
             .distinct(EditorDecisionRow.topic_card_id)
@@ -52,6 +55,7 @@ class PipelineRepository:
                 PublishedArticleRow.status,
                 PublishedArticleRow.slug,
                 PublishedArticleRow.body,
+                ArticleDraftRow.review_log,
             )
             .join(Signal, Signal.id == TopicCardRow.signal_id)
             .join(latest, latest.c.topic_card_id == TopicCardRow.id)
@@ -75,6 +79,7 @@ class PipelineRepository:
             pub,
             slug,
             body,
+            review_log,
         ) in self._session.execute(query).all():
             body = body or {}
             state = classify(
@@ -83,6 +88,8 @@ class PipelineRepository:
                 draft=draft,
                 draft_attempts=draft_attempts or 0,
                 review=review,
+                redrafts=redrafts_used(review_log or []),
+                max_redrafts=max_redrafts,
                 published=pub,
                 has_cover=bool((body.get("cover") or {}).get("src")),
                 has_figure=bool(body.get("figure")),

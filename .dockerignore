@@ -8,7 +8,6 @@
 apps/web
 tests
 docs
-skills
 SESSION_PROGRESS.md
 __pycache__
 .pytest_cache

@@ -7,13 +7,14 @@ from signalforge.pipeline_state import (
     MAX_DRAFT_ATTEMPTS,
     MAX_RESEARCH_ATTEMPTS,
     classify,
+    redrafts_used,
 )
 
 
 def state(**kw: object) -> tuple[str, str]:
     base: dict[str, object] = {
         "research": "researched", "draft": "drafted", "review": "pending",
-        "published": None, "has_cover": False, "has_figure": False,
+        "published": None, "has_cover": False, "has_figure": False, "max_redrafts": 2,
     }  # fmt: skip
     result = classify(**{**base, **kw})  # type: ignore[arg-type]
     return result.stage, result.next_action
@@ -37,9 +38,14 @@ def state(**kw: object) -> tuple[str, str]:
         ({"draft": "drafting", "review": None}, ("draft_drafting", "wait")),
         ({}, ("awaiting_review", "auto_review")),
         ({"review": "revise"}, ("revise_requested", "run_revise")),
+        ({"review": "revise", "redrafts": 1}, ("revise_requested", "run_revise")),
+        ({"review": "revise", "redrafts": 2}, ("revise_exhausted", "close")),
+        ({"review": "revise", "redrafts": 3}, ("revise_exhausted", "close")),
+        ({"review": "pending", "redrafts": 5}, ("awaiting_review", "auto_review")),
         ({"review": "rejected"}, ("rejected", "none")),
         ({"review": "approved"}, ("approved", "publish")),
-        ({"review": "approved", "published": "unpublished"}, ("approved", "publish")),
+        # The owner took it down: the agent leaves it down (an editor publish brings it back).
+        ({"review": "approved", "published": "unpublished"}, ("unpublished", "none")),
         ({"review": "approved", "published": "published"}, ("published", "attach_images")),
         (
             {
@@ -90,6 +96,7 @@ def test_parked_research_closes() -> None:
     result = classify(
         research="failed", draft=None, review=None, published=None,
         has_cover=False, has_figure=False, research_attempts=MAX_RESEARCH_ATTEMPTS,
+        max_redrafts=2,
     )  # fmt: skip
     assert (result.stage, result.next_action) == ("research_parked", "close")
 
@@ -99,19 +106,52 @@ def test_no_action_waits_on_a_person() -> None:
     draft = [None, "drafting", "drafted", "needs_more_info", "failed"]
     review = [None, "pending", "approved", "revise", "rejected"]
     published = [None, "published", "unpublished"]
-    for r, d, rv, p, cover, attempts, d_attempts in product(
+    for r, d, rv, p, cover, attempts, d_attempts, redrafts in product(
         research, draft, review, published, [True, False],
-        [0, MAX_RESEARCH_ATTEMPTS], [0, MAX_DRAFT_ATTEMPTS],
+        [0, MAX_RESEARCH_ATTEMPTS], [0, MAX_DRAFT_ATTEMPTS], [0, 2],
     ):  # fmt: skip
         action = classify(
             research=r, draft=d, review=rv, published=p,
             has_cover=cover, has_figure=cover, research_attempts=attempts,
-            draft_attempts=d_attempts,
+            draft_attempts=d_attempts, redrafts=redrafts, max_redrafts=2,
         ).next_action  # fmt: skip
-        assert action in AUTONOMOUS_ACTIONS, (r, d, rv, p, attempts, d_attempts, action)
+        assert action in AUTONOMOUS_ACTIONS, (r, d, rv, p, attempts, d_attempts, redrafts, action)
+
+
+def test_used_and_failed_redrafts_both_count() -> None:
+    log = [
+        {"type": "review", "decision": "revise"},
+        {"type": "redraft_failed", "error": "ProviderRejectedError: x"},
+        {"type": "redraft", "note": "n"},
+        {"type": "edit"},
+    ]
+    assert redrafts_used(log) == 2
+    assert redrafts_used([]) == 0
+
+
+def test_no_redraft_cap_closes_a_revise_at_once() -> None:
+    assert state(review="revise", max_redrafts=0) == ("revise_exhausted", "close")
 
 
 def test_close_reason_tag_is_known() -> None:
     from signalforge.core.reason_tags import REASON_TAGS
 
     assert CLOSE_REASON_TAG in REASON_TAGS
+
+
+def test_accepted_cards_counts_redrafts_from_the_review_log() -> None:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from signalforge.db.repositories.pipeline import PipelineRepository
+
+    log = [{"type": "redraft"}, {"type": "redraft_failed"}]
+    row = (uuid4(), "t", datetime.now(UTC), "researched", 1, "drafted", 1, "revise",
+           None, None, None, log)  # fmt: skip
+    session = SimpleNamespace(execute=lambda _q: SimpleNamespace(all=lambda: [row]))
+    repo = PipelineRepository(session)  # type: ignore[arg-type]
+    [exhausted] = repo.accepted_cards(10, max_redrafts=2)
+    assert (exhausted.stage, exhausted.next_action) == ("revise_exhausted", "close")
+    [open_] = repo.accepted_cards(10, max_redrafts=3)
+    assert (open_.stage, open_.next_action) == ("revise_requested", "run_revise")

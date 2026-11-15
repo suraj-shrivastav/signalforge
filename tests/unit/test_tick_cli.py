@@ -34,6 +34,7 @@ def _setup(
     cards_raises: bool = False,
     research_raises: bool = False,
     bugs: frozenset[str] = frozenset(),
+    paused: bool = False,
 ) -> dict[str, Any]:
     calls: dict[str, Any] = {
         "ingest": [],
@@ -57,6 +58,8 @@ def _setup(
     )
     monkeypatch.setattr(tick, "create_session_factory", lambda _e: lambda: _Ctx(calls))
     monkeypatch.setattr(tick, "build_source", lambda name, _c, **_kw: name)
+    control = SimpleNamespace(paused=paused, paused_until=None)
+    monkeypatch.setattr(tick, "ControlsRepository", lambda _s: SimpleNamespace(get=lambda: control))
 
     def fake_ingest(source: str, _s: object, *, since: object) -> SimpleNamespace:  # noqa: ARG001
         calls["ingest"].append(source)
@@ -113,7 +116,7 @@ def test_one_source_fails_others_run_and_assess_once(
         assert tick.main([]) == 0
     assert calls["ingest"] == list(SOURCE_NAMES)
     assert calls["assess"] == 1
-    assert calls["opened"] == calls["closed"] == len(SOURCE_NAMES)
+    assert calls["opened"] == calls["closed"] == len(SOURCE_NAMES) + 1  # + the pause check
     assert calls["disposed"] == 1
     out = capsys.readouterr().out
     assert f"{SOURCE_NAMES[0]}: FAILED (SignalForgeError)" in out
@@ -249,3 +252,16 @@ def test_fake_provider_skips_research_and_draft(
     out = capsys.readouterr().out
     assert "research: skipped (fake provider)" in out
     assert "draft: skipped (fake provider)" in out
+
+
+def test_paused_pipeline_runs_nothing_and_exits_0(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    calls = _setup(monkeypatch, failing=set(), paused=True)
+    with caplog.at_level(logging.INFO):
+        assert tick.main([]) == 0
+    assert calls["ingest"] == []
+    assert calls["order"] == []
+    assert calls["opened"] == calls["closed"] == 1
+    assert calls["disposed"] == 1
+    assert "paused" in caplog.text

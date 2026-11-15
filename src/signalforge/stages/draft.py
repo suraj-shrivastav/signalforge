@@ -626,8 +626,11 @@ def run_draft(
                 else:
                     failed += 1
                 if existing is not None:
-                    # A failed redraft leaves the editor's version and the revise status alone.
-                    if draft.status is not DraftStatus.FAILED:
+                    # A failed redraft leaves the editor's version and the revise status alone,
+                    # but is logged: it uses up one of the redrafts (AUTO_REVIEW_MAX_REDRAFTS).
+                    if draft.status is DraftStatus.FAILED:
+                        repo.record_failed_revision(existing, failure_reason)
+                    else:
                         repo.replace_revision(
                             existing,
                             draft,

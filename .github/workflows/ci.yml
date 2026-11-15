@@ -88,6 +88,17 @@ jobs:
       - name: Integration tests
         run: uv run pytest tests/integration -v
 
+  # The Railway image must build: a .dockerignore entry once dropped a path the Dockerfile
+  # copies. Build only, no push and no secrets.
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the API image
+        run: docker build -f infra/railway/api.Dockerfile -t signalforge-api-ci .
+
   web:
     name: web
     runs-on: ubuntu-latest

@@ -53,3 +53,34 @@ def test_exhausted_drafts_are_not_returned_when_retrying() -> None:
         1, retry_failed=True
     )
     assert "article_drafts.attempts >=" in str(seen[0].compile())
+
+
+def test_a_failed_redraft_is_logged_and_keeps_the_revise() -> None:
+    flushed: list[bool] = []
+    row = SimpleNamespace(
+        review_status="revise", review_note="Lead with the margin", review_log=[{"type": "review"}]
+    )
+    repo = ArticleDraftRepository(SimpleNamespace(flush=lambda: flushed.append(True)))  # type: ignore[arg-type]
+    repo.record_failed_revision(row, "ProviderRejectedError: status=402")  # type: ignore[arg-type]
+    event = row.review_log[-1]
+    assert (event["type"], event["note"], event["error"]) == (
+        "redraft_failed",
+        "Lead with the margin",
+        "ProviderRejectedError: status=402",
+    )
+    assert "at" in event
+    assert row.review_status == "revise"
+    assert flushed == [True]
+
+
+def test_revisions_skip_cards_that_are_no_longer_accepted() -> None:
+    seen: list[Any] = []
+
+    def execute(query: Any) -> SimpleNamespace:
+        seen.append(query)
+        return SimpleNamespace(all=lambda: [])
+
+    ArticleDraftRepository(SimpleNamespace(execute=execute)).list_revisions(5)  # type: ignore[arg-type]
+    sql = str(seen[0].compile())
+    assert "editor_decisions" in sql
+    assert "decision =" in sql
