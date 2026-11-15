@@ -110,7 +110,7 @@ Stage runs are daemon threads, so a restart leaves `running` rows. At startup `s
 | 0014 | `article_drafts.attempts` | 2026-11-15 | the PR #144 head, afe2163, just before merge, with owner approval |
 | 0015 | `pipeline_controls.slot_holder` | 2026-11-15 | from PR #152 head 39abd3c, just before merge, with owner approval |
 
-`alembic upgrade head` was run again from main at 3c76e70 on 2026-11-15 and the database was at head (0014); 0015 followed with #152, so production is now at 0015 (head). The migrations folder is `src/signalforge/db/migrations/versions`. Note for Milestone 2: the plan names its first migration `0014 sentence_verdicts`; 0014 and 0015 are taken, so it becomes 0016.
+`alembic upgrade head` was run again from main at 3c76e70 on 2026-11-15 and the database was at head (0014); 0015 followed with #152, so production is now at 0015 (head). The migrations folder is `src/signalforge/db/migrations/versions`. Note for later milestones: the plan's schema numbers were written before 0014 and 0015 were used here. The next free revision is 0016 (Milestone 2a adds no migration; Milestone 3's `sentence_verdicts` takes the next free one).
 
 ## 5. Decisions (rulings) made during implementation
 
@@ -177,4 +177,4 @@ Production row counts on 2026-11-15:
 
 ## 9. What's next
 
-Milestone 2, "Trustworthy judge", per section 4 of the plan: persisted sentence verdicts, a larger judge probe set, a referee role, a calibration report, a judge chosen in an ADR, and the hard writer/judge family check. It starts only after the soak passes.
+Milestone 2, "Readable and honest articles": [docs/superpowers/plans/2026-11-15-m2-article-quality.md](../superpowers/plans/2026-11-15-m2-article-quality.md), from the review in [docs/superpowers/specs/2026-11-15-article-quality-review.md](../superpowers/specs/2026-11-15-article-quality-review.md). It starts after the soak passes, except its Task 1 (the honest process note). Milestone 3, "Trustworthy judge" (formerly Milestone 2), follows: persisted sentence verdicts, a larger judge probe set, a referee role, a calibration report, a judge chosen in an ADR, and the hard writer/judge family check.
