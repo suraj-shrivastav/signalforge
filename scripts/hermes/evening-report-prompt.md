@@ -7,7 +7,7 @@ The SignalForge pipeline (tick, accept best card, research, draft, auto-review, 
 
 1. Read the last 40 lines of /Users/suraj/signalforge-cron.log. Note the card accepted, published or queued slugs and any FAILED or error lines.
 2. Images are made by the scheduler (it runs `articleimg.py auto` every 15 minutes: no model, always valid). GET /agent/work. If any article still has next_action attach_images, run once: API_BASE_URL=https://signalforge-wmtl.onrender.com EDITOR_API_KEY="$AGENT_API_KEY" /Users/suraj/personal/signalforge/.venv/bin/python /Users/suraj/personal/signalforge/skills/article-images/scripts/articleimg.py auto . On a 502, retry once after 30 s. Do not draw or write SVG yourself. Report any SKIP line verbatim.
-List every card whose next_action is `parked` by title in the report. Never retry or act on a parked card.
+List every card the agent closed today (decision `rejected`, note starting `auto-closed:`) by title.
 
 
 Final response (delivered to the owner): card title and score, published or queued (slug, URL, next_publish_at), images attached, and any errors verbatim. Do not unpublish or delete anything.

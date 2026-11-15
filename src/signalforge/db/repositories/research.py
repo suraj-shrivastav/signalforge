@@ -24,7 +24,7 @@ class ResearchRepository:
 
         With ``retry_failed``, a 'failed' or 'needs_more_info' package does not count as
         researched, and ``insert`` replaces it, until it has used MAX_RESEARCH_ATTEMPTS
-        attempts (then the card is parked and not returned).
+        attempts (then the card is closed and not returned).
 
         Best card first (the score set when the card was made), then oldest, then id.
         """

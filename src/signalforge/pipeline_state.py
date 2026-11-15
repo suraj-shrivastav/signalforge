@@ -2,8 +2,12 @@
 
 from dataclasses import dataclass
 
-# A card whose research failed or came back thin this many times is parked, not retried.
+# A card whose research failed or came back thin this many times is closed, not retried.
 MAX_RESEARCH_ATTEMPTS: int = 2
+
+# The agent closes a card it cannot finish by rejecting it with this tag. Nothing waits on a
+# person: the decision row records the actor, so an editor can still audit or reopen it.
+CLOSE_REASON_TAG: str = "needs_more_evidence"
 
 
 @dataclass(frozen=True)
@@ -28,16 +32,17 @@ def classify(
     if research == "researching":
         return CardState("researching", "wait")
     if research in ("failed", "needs_more_info") and research_attempts >= MAX_RESEARCH_ATTEMPTS:
-        # For agents: report to the owner, never retry.
-        return CardState("research_parked", "parked")
+        return CardState("research_parked", "close")
     if research in ("failed", "needs_more_info"):
         return CardState(f"research_{research}", "retry_research")
     if draft is None:
         return CardState("researched", "run_draft")
     if draft == "failed":
         return CardState("draft_failed", "retry_draft")
+    if draft == "drafting":
+        return CardState("draft_drafting", "wait")
     if draft != "drafted":
-        return CardState(f"draft_{draft}", "human_review")
+        return CardState(f"draft_{draft}", "close")
     if review == "pending":
         return CardState("awaiting_review", "auto_review")
     if review == "revise":

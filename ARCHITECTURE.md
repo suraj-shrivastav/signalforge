@@ -30,7 +30,7 @@ flowchart LR
 - **Database** (Supabase Postgres, pgvector). Migrations with Alembic in `src/signalforge/db/migrations`. Run `alembic upgrade head` before deploying code that needs a new column.
 - **Website** (Vercel): Next.js in `apps/web`. It reads only the public API. Article lists are cached for 300 s under the tag `articles`; the scheduler expires that tag after a publish.
 - **Scheduler** (laptop): launchd runs `scripts/hermes/signalforge_cron_tick.sh` every 15 minutes. It tries to publish a queued draft each time, and runs the full pipeline once per 6-hour slot (00, 06, 12, 18 local), catching up if the laptop was off.
-- **Hermes** (laptop): an agent with one revocable key. Only its evening job is enabled. It reports the day, attaches missing images, and lists parked cards. It never blocks the pipeline.
+- **Hermes** (laptop): an agent with one revocable key. Only its evening job is enabled. It reports the day, attaches missing images, and lists closed cards. It never blocks the pipeline.
 
 ## 2. Code layout
 
@@ -63,7 +63,7 @@ flowchart TD
     R -->|"researched"| D["Draft<br/>writer model declares claims"]
     R -->|"failed, attempts under 2"| RR["retry_research"]
     RR --> R
-    R -->|"failed twice"| PK(["parked"])
+    R -->|"failed twice"| PK(["closed"])
     D --> J["Judge<br/>different model family"]
     J --> AR["Auto-review<br/>rules in code"]
     AR -->|"pass"| Q["Approved queue"]
@@ -83,7 +83,7 @@ flowchart TD
 4. Extract claims from each document with the cheap model. A claim survives only if its evidence span is a verbatim substring of the document.
 5. Embed and merge near-duplicate claims across documents (similarity at least 0.85); flag likely disagreements (0.60 to 0.85). If the embedding call fails, claims are kept unmerged and research continues.
 6. Sufficiency gate: at least 3 claims, otherwise one bounded extra search round. Still short means a failure with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget` or `other`.
-7. A card gets at most 2 research attempts (`research_packages.attempts`). After that its `next_action` is `parked`; nothing retries it and the evening report lists it.
+7. A card gets at most 2 research attempts (`research_packages.attempts`). After that its `next_action` is `close`: the agent rejects it with reason `needs_more_evidence`.
 
 ### Draft and review
 
@@ -103,7 +103,7 @@ Stages ask for a role (writer, judge, relevance filter, research extraction, cla
 
 ## 5. State and the agent interface
 
-`GET /agent/work` returns every card with a `stage` and one `next_action`: `run_research`, `retry_research`, `parked`, `run_draft`, `retry_draft`, `auto_review`, `run_revise`, `publish`, `attach_images`, `human_review`, `wait` or `none`. Write calls (`POST /agent/run/<stage>`, `/agent/drafts/{id}/auto-review`, `/agent/publish-next`) are idempotent and need the revocable editor key. Every decision is stored with an actor (agent or human) and every LLM call with its cost, against a per-card budget.
+`GET /agent/work` returns every card with a `stage` and one `next_action`: `run_research`, `retry_research`, `run_draft`, `retry_draft`, `auto_review`, `run_revise`, `publish`, `attach_images`, `close`, `wait` or `none`. Write calls (`POST /agent/run/<stage>`, `/agent/drafts/{id}/auto-review`, `/agent/publish-next`) are idempotent and need the revocable editor key. Every decision is stored with an actor (agent or human) and every LLM call with its cost, against a per-card budget.
 
 ## 6. Security
 

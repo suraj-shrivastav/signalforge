@@ -10,7 +10,7 @@ The pipeline does not depend on an LLM agent, so a Hermes failure never blocks d
 ## Publishing limits
 
 - At least 4 hours between articles, at most 3 per rolling 24 hours. The API enforces this; the scripts cannot go over it.
-- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts it becomes `parked` and is never retried (the evening report lists parked cards).
+- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts its `next_action` becomes `close` and the agent rejects it (the evening report lists closed cards).
 - A late slot (laptop off) runs as soon as the Mac is awake, so the number of articles per day can drop below 3 on days the Mac was off.
 
 ## Backend setup (one time, any new Render or database)
@@ -94,14 +94,14 @@ hermes cron list
 
 **Only this job should be enabled for SignalForge in Hermes.** Do not create or unpause the old morning, midday or night tick jobs: they run the same pipeline as the launchd scheduler and would double every run. Other Hermes jobs (job search and so on) are independent and need no change.
 
-The prompt tells Hermes to list `parked` cards by title and never retry them. To refresh an existing job after the prompt changes, edit its `prompt` in `~/.hermes/cron/jobs.json` (back the file up first) or recreate the job with the command above.
+The prompt tells Hermes to list closed cards by title. To refresh an existing job after the prompt changes, edit its `prompt` in `~/.hermes/cron/jobs.json` (back the file up first) or recreate the job with the command above.
 
 ### Hermes memory
 
 Add these facts to `~/.hermes/memories/MEMORY.md` (one entry per fact, separated by `§`) so Hermes can answer questions about the pipeline:
 
 - API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. Reads of run state (`/agent/runs`, `/cards/queue`, `/agent/work`) need `EDITOR_API_KEY`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
-- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `parked`. Never retry or accept a parked card; list it by title for the owner. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
+- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `close`. Never retry a closed card; the evening report lists it by title. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
 - The launchd scheduler runs the pipeline. Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
 - The article-images skill lives in the repo at `skills/article-images/`. Use the project venv (`.venv/bin/python`), because system python 3.9 is too old.
 
@@ -142,7 +142,7 @@ The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; 
 | Hermes job `agent reported failure` | The agent was cut off (often by sleep) or the model call failed. Check `hermes cron runs`, `~/.hermes/logs/errors.log`. |
 | Telegram `nodename nor servname provided` or `Sticky Telegram path ... failed` | Network dropped across sleep. The gateway retries; reports may arrive late. |
 | A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 5). |
-| Cards stuck with `parked` | Research failed twice. Read the failure reason, fix the source problem if any, or ignore. They do not block other cards. |
+| Cards with `close` | Research failed twice, or the draft had no usable claims. The agent rejects them with `needs_more_evidence`. Read the failure reason and fix the source problem if any. They do not block other cards. |
 | Research fails with `LLM provider unavailable (status=500)` on embeddings | Set `LLM_EMBED_BATCH_SIZE=1` on the backend. Claim merging is skipped if the embedding call still fails. |
 | `column research_packages.attempts does not exist` | Migration `0012` was not applied. Run `alembic upgrade head`. |
 | Runs happen at odd times | Check for a leftover crontab (`crontab -l`) or old Hermes tick jobs; remove or `hermes cron pause <id>` them. |

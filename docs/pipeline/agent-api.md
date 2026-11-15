@@ -23,8 +23,7 @@ endpoints below).
 | `run_revise` | `POST /agent/run/revise` |
 | `publish` | `POST /agent/publish-next` (one call for all waiting drafts; it follows the publish pace) |
 | `attach_images` | follow `skills/article-images/SKILL.md` |
-| `human_review` | needs a person (draft had no usable claims); skip or reject |
-| `parked` | research failed twice (`research_packages.attempts` reached 2); report it to the owner, never retry |
+| `close` | the card cannot finish (research failed twice, or the draft had no usable claims). Reject it: `POST /cards/{id}/decision` with `{"decision":"rejected","reason_tags":["needs_more_evidence"],"note":"auto-closed: <stage>"}`. Never retry. |
 | `wait`, `none` | nothing to do |
 
 ## Decisions and reason tags
