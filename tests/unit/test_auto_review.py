@@ -154,3 +154,10 @@ def test_a_one_sentence_section_is_sent_back() -> None:
     action, reasons = run(b)
     assert action == "revise"
     assert any("'The problem' has 1 sentence" in r for r in reasons)
+
+
+def test_a_title_with_a_strong_word_no_claim_uses_is_sent_back() -> None:
+    b = body().model_copy(update={"title": "Only frontier models can investigate reliably"})
+    action, reasons = run(b)
+    assert action == "revise"
+    assert any("'only', 'reliably'" in r for r in reasons)

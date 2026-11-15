@@ -45,6 +45,7 @@ from signalforge.db.repositories.article import ArticleDraftRepository
 from signalforge.llm.gateway import LLMGateway
 from signalforge.stages.draft_extraction import (
     LENGTH_BANDS,
+    PAPER_SOURCE_TYPE,
     ClaimCheck,
     assign_status,
     build_review_summary,
@@ -56,6 +57,7 @@ from signalforge.stages.draft_extraction import (
     select_template,
     sentence_problems,
     span_documents,
+    title_overreach,
     unfamiliar_names,
 )
 from signalforge.stages.draft_headline import (
@@ -492,6 +494,27 @@ def _apply_repair(
 MAX_FLAGGED_SHARE = 0.5
 
 
+def _cited_text(package: ResearchPackage, flat: Sequence[_Sentence]) -> str:
+    """Text of every claim the article cites: all its title may claim (D2)."""
+    return " ".join(package.claims[i].text for i in sorted({i for s in flat for i in s.ids}))
+
+
+def _primary_title(package: ResearchPackage) -> str:
+    return next((d.title for d in package.documents if d.is_primary), "")
+
+
+def _acceptable_title(
+    candidate: str, package: ResearchPackage, flat: Sequence[_Sentence], title_support: str
+) -> str | None:
+    """``candidate`` cleaned, or None when it overreaches or has a number no claim holds."""
+    text = fix_dashes(unescape(candidate)).strip()
+    if not text or title_overreach(text, _cited_text(package, flat)):
+        return None
+    if sentence_problems(text, range(len(package.claims)), title_support):
+        return None
+    return text
+
+
 def _process_card(
     gateway: LLMGateway,
     package: ResearchPackage,
@@ -532,22 +555,33 @@ def _process_card(
         for section in reply.sections
     ]
     title = fix_dashes(unescape(reply.title)).strip()
+    everything = range(count)
+    title_support = claim_support(package.claims, everything, package.documents)
     flat, where = _flatten(dek, structure)
     problems, verdicts, notes = _check(gateway, run_id, package, flat)
-    if repair and problems:
+    overreach = title_overreach(title, _cited_text(package, flat))
+    if repair and (problems or overreach):
         try:
-            fixed = _repair(gateway, run_id, package, flat, problems)
+            fixed = _repair(gateway, run_id, package, flat, problems, title if overreach else None)
             new_dek, new_structure = _apply_repair(dek, structure, fixed, set(problems), count)
             new_flat, new_where = _flatten(new_dek, new_structure)
             rechecked = _check(gateway, run_id, package, new_flat)
         except SignalForgeError as exc:
-            # Best effort (Decision 2): keep the writer's sentences and their flags.
+            # Best effort (Decision 2): keep the writer's sentences, title and flags.
             log.warning("draft repair failed", extra={"error": type(exc).__name__})
         else:
             dek, structure, flat, where = new_dek, new_structure, new_flat, new_where
             problems, verdicts, notes = rechecked
-    everything = range(count)
-    title_support = claim_support(package.claims, everything, package.documents)
+            if overreach and fixed.title:
+                title = _acceptable_title(fixed.title, package, flat, title_support) or title
+    overreach = title_overreach(title, _cited_text(package, flat))
+    if overreach and source_type == PAPER_SOURCE_TYPE:
+        # The authors' own title never overclaims their paper (Decision 5).
+        title = _acceptable_title(_primary_title(package), package, flat, title_support) or title
+        overreach = title_overreach(title, _cited_text(package, flat))
+    if overreach:
+        words = ", ".join(repr(w) for w in overreach)
+        notes.append(f"title: uses {words}, which no cited claim states")
     notes.extend(
         f"title: {problem}" for problem in sentence_problems(title, everything, title_support)
     )

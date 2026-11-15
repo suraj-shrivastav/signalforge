@@ -22,6 +22,7 @@ from signalforge.stages.draft_extraction import (
     publish_gate,
     select_template,
     span_documents,
+    title_overreach,
 )
 
 
@@ -147,3 +148,15 @@ def test_gate_checks_title_and_length_band() -> None:
     failures = publish_gate(body("too short", title="A \u2014 B"), ArticleTemplate.EXPLAINER)
     assert len(failures) == 2
     assert "outside the explainer band 700-1000" in failures[1]
+
+
+def test_title_overreach_lists_strong_words_the_claims_never_use() -> None:
+    assert title_overreach("LFM3 Beats Larger Models", "LFM3 outperforms larger models") == [
+        "beats"
+    ]
+    assert title_overreach("Only Frontier Models Can Reliably Investigate", "") == [
+        "only",
+        "reliably",
+    ]
+    assert title_overreach("Method outperforms baselines", "It outperforms the baselines") == []
+    assert title_overreach("A plain title", "") == []
