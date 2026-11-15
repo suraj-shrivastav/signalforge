@@ -413,7 +413,47 @@ def test_claim_asks_for_a_lease_longer_than_a_slot_can_run() -> None:  # 11
         [], **{"POST /agent/controls/slot/claim": {"claimed": False, "slot": "s", "failures": 0}}
     )
     autopilot.run_once(api(routes, [], sent), NOW, {})
-    assert sent["/agent/controls/slot/claim"] == {"slot": "2026-11-15-06", "lease_minutes": 360}
+    body = sent["/agent/controls/slot/claim"]
+    assert isinstance(body, dict)
+    holder = body.pop("holder")
+    assert body == {"slot": "2026-11-15-06", "lease_minutes": 360}
+    assert isinstance(holder, str)
+    assert len(holder) == 32
+
+
+def test_a_lost_claim_reply_is_retried_with_the_same_holder() -> None:
+    claims: list[dict[str, object]] = []
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.url.path == "/agent/controls/slot/claim":
+            claims.append(json.loads(request.content))
+            if len(claims) <= 4:  # the first call exhausts its own 4 attempts
+                raise httpx.ReadTimeout("reply lost", request=request)
+            return httpx.Response(200, json={"claimed": True, "slot": "s", "failures": 0})
+        if request.url.path == "/agent/controls":
+            return httpx.Response(200, json=UNPAUSED)
+        return httpx.Response(200, json={"started": False, "cards": []})
+
+    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    a = autopilot.Api(client, sleep=lambda _s: None)
+    autopilot.run_once(a, NOW, {})
+    assert len(claims) == 5
+    assert len({c["holder"] for c in claims}) == 1
+    assert "POST /agent/run/tick" in calls  # the slot ran
+
+
+def test_a_claim_that_fails_twice_ends_the_run_as_failed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/agent/controls":
+            return httpx.Response(200, json=UNPAUSED)
+        if request.url.path == "/agent/controls/slot/claim":
+            raise httpx.ConnectError("down", request=request)
+        return httpx.Response(200, json={"cards": []})
+
+    client = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(handler))
+    assert autopilot.run_once(autopilot.Api(client, sleep=lambda _s: None), NOW, {}) == 1
 
 
 def _images_env(tmp: object, monkeypatch: pytest.MonkeyPatch, script: bool) -> None:

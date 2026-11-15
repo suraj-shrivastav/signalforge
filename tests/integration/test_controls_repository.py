@@ -63,3 +63,34 @@ def test_release_keeps_failures_and_the_slot_is_reclaimable(db_session: Session)
     repo.finish_slot(slot, ok=True)
     repo.release_slot(slot)  # not running: ignored
     assert repo.get().slot_status == "done"
+
+
+def test_same_holder_reclaims_idempotently(db_session: Session) -> None:
+    repo = ControlsRepository(db_session)
+    first = repo.claim_slot("2026-11-15-06", NOW, LEASE, holder="run-a")
+    assert first.claimed
+    row = repo.get()
+    lease_until = row.slot_lease_until
+    again = repo.claim_slot("2026-11-15-06", NOW + timedelta(minutes=5), LEASE, holder="run-a")
+    assert (again.claimed, again.slot, again.failures) == (True, "2026-11-15-06", 0)
+    row = repo.get()
+    assert (row.slot_lease_until, row.slot_failures) == (lease_until, 0)
+
+
+def test_other_holder_is_refused_while_the_lease_holds(db_session: Session) -> None:
+    repo = ControlsRepository(db_session)
+    assert repo.claim_slot("2026-11-15-06", NOW, LEASE, holder="run-a").claimed
+    assert not repo.claim_slot("2026-11-15-06", NOW, LEASE, holder="run-b").claimed
+    assert not repo.claim_slot("2026-11-15-06", NOW, LEASE).claimed  # no holder: still refused
+
+
+def test_holder_is_cleared_on_finish_and_release(db_session: Session) -> None:
+    repo = ControlsRepository(db_session)
+    repo.claim_slot("2026-11-15-06", NOW, LEASE, holder="run-a")
+    assert repo.get().slot_holder == "run-a"
+    repo.release_slot("2026-11-15-06")
+    assert repo.get().slot_holder is None
+    repo.claim_slot("2026-11-15-06", NOW, LEASE, holder="run-b")
+    assert repo.get().slot_holder == "run-b"
+    repo.finish_slot("2026-11-15-06", ok=False)
+    assert repo.get().slot_holder is None

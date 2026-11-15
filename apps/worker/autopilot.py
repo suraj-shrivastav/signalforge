@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -275,6 +276,20 @@ def _finish(api: Api, env: Mapping[str, str], slot: str, ok: bool, failures: int
         send_alert(env.get("ALERT_WEBHOOK_URL"), "slot failed 3 times", slot)  # never raises
 
 
+def _claim(api: Api, slot: str) -> Any:
+    """Claim the slot with one holder id for this run.
+
+    If the call fails after the server took the lease, the same id on the second try is
+    handed the claim back, so a lost reply cannot strand the slot for the whole lease.
+    """
+    body = {"slot": slot, "lease_minutes": _LEASE_MINUTES, "holder": uuid4().hex}
+    try:
+        return api.call("POST", "/agent/controls/slot/claim", json=body)
+    except (httpx.HTTPError, RuntimeError) as exc:
+        log.warning("claim failed, retrying once with the same holder: %s", _why(exc))
+        return api.call("POST", "/agent/controls/slot/claim", json=body)
+
+
 def run_once(api: Api, now: datetime, env: Mapping[str, str]) -> int:
     slot = current_slot(now, env.get("AUTOPILOT_TZ", "UTC"))
     try:
@@ -293,8 +308,7 @@ def run_once(api: Api, now: datetime, env: Mapping[str, str]) -> int:
                 raise
             except Exception as exc:  # noqa: BLE001
                 log.warning("%s step failed: %s", name, _why(exc))
-        body = {"slot": slot, "lease_minutes": _LEASE_MINUTES}
-        claim = api.call("POST", "/agent/controls/slot/claim", json=body)
+        claim = _claim(api, slot)
     except PausedError:
         return _outcome(slot, "paused", "paused before the claim", 0)
     except Exception as exc:  # noqa: BLE001

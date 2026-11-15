@@ -23,6 +23,7 @@ class StubControls:
             slot=None, slot_status=None, slot_failures=0,
         )  # fmt: skip
         self.claims: list[str] = []
+        self.holders: list[str | None] = []
 
     def get(self) -> Any:
         return self.row
@@ -48,7 +49,9 @@ class StubControls:
         now: datetime,  # noqa: ARG002
         lease: Any,  # noqa: ARG002
         max_failures: int = 3,  # noqa: ARG002
+        holder: str | None = None,
     ) -> SlotClaim:
+        self.holders.append(holder)
         self.claims.append(slot)
         return SlotClaim(len(self.claims) == 1, slot, 0)
 
@@ -100,6 +103,20 @@ def test_slot_claim_is_exclusive(ctx: tuple[TestClient, StubControls]) -> None:
     body = {"slot": "2026-11-15-06"}
     assert client.post("/agent/controls/slot/claim", json=body, headers=H).json()["claimed"]
     assert not client.post("/agent/controls/slot/claim", json=body, headers=H).json()["claimed"]
+
+
+def test_slot_claim_passes_the_holder_through(ctx: tuple[TestClient, StubControls]) -> None:
+    client, stub = ctx
+    body = {"slot": "2026-11-15-06", "holder": "abc_123-DEF"}
+    assert client.post("/agent/controls/slot/claim", json=body, headers=H).status_code == 200
+    assert stub.holders == ["abc_123-DEF"]
+
+
+@pytest.mark.parametrize("holder", ["x" * 65, "has space", "semi;colon", ""])
+def test_slot_claim_rejects_a_bad_holder(ctx: tuple[TestClient, StubControls], holder: str) -> None:
+    client, _ = ctx
+    body = {"slot": "2026-11-15-06", "holder": holder}
+    assert client.post("/agent/controls/slot/claim", json=body, headers=H).status_code == 422
 
 
 def test_slot_finish_release_does_not_count_a_failure(

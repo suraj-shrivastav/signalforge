@@ -4,7 +4,7 @@ Written for an engineer or agent with no context. The plan is [docs/superpowers/
 
 ## 1. Goal and status
 
-Goal: SignalForge runs with no human at runtime, off the laptop, and the owner can stop it at any time. Milestone 1 ("unattended and stoppable") was merged on 2026-11-15 (PRs #136 to #148). The production database is at alembic revision 0014. The 7-day soak is pending (owner steps in section 7).
+Goal: SignalForge runs with no human at runtime, off the laptop, and the owner can stop it at any time. Milestone 1 ("unattended and stoppable") was merged on 2026-11-15 (PRs #136 to #148). The production database is at alembic revision 0014 (0015 is applied with the claim-holder PR). The 7-day soak is pending (owner steps in section 7).
 
 ## 2. What shipped, by PR
 
@@ -28,11 +28,11 @@ Goal: SignalForge runs with no human at runtime, off the laptop, and the owner c
 
 ### Control plane
 
-`pipeline_controls` is a one-row table (`id = 1`, seeded by migration 0013). Columns: `paused`, `paused_reason`, `paused_by` (`editor` or `agent`, by the key used), `paused_at`, `paused_until`, `slot`, `slot_status` (`running`, `done`, `failed`), `slot_failures`, `slot_lease_until`. Every repository call locks the row (`SELECT ... FOR UPDATE`).
+`pipeline_controls` is a one-row table (`id = 1`, seeded by migration 0013). Columns: `paused`, `paused_reason`, `paused_by` (`editor` or `agent`, by the key used), `paused_at`, `paused_until`, `slot`, `slot_status` (`running`, `done`, `failed`), `slot_failures`, `slot_lease_until`, `slot_holder` (migration 0015). Every repository call locks the row (`SELECT ... FOR UPDATE`).
 
 - `is_paused(row, now)` (`src/signalforge/control_policy.py`): false unless `paused`; a pause with no `paused_until` holds until resumed; a pause with `paused_until` (a breaker pause, `minutes` on the pause call, 1 minute to 7 days) stops counting once that time passes.
 - `slot_id(now_local)`: `YYYY-MM-DD-HH` with the hour rounded down to 00, 06, 12 or 18 in the autopilot's clock (`AUTOPILOT_TZ`, default UTC).
-- `claim_slot(slot, now, lease)` (`ControlsRepository`): refused when a lease is still running, when this slot is already `done`, or when it has 3 failures. Otherwise it sets `running`, the lease expiry, and keeps the failure count if it is the same slot (a new slot starts at 0). `finish_slot(slot, ok)` sets `done` or `failed`, adds a failure on `ok=false`, and clears the lease; it ignores a slot that is not the current one.
+- `claim_slot(slot, now, lease, holder=None)` (`ControlsRepository`): a leased, running slot asked again by the same non-null `holder` returns its own claim unchanged (lease and failures untouched); otherwise refused when a lease is still running, when this slot is already `done`, or when it has 3 failures. Otherwise it sets `running`, the lease expiry, and keeps the failure count if it is the same slot (a new slot starts at 0). `finish_slot(slot, ok)` sets `done` or `failed`, adds a failure on `ok=false`, and clears the lease and the holder; it ignores a slot that is not the current one.
 
 ### Autopilot flow
 
@@ -40,7 +40,7 @@ Goal: SignalForge runs with no human at runtime, off the laptop, and the owner c
 
 1. `GET /agent/controls`. Paused: log outcome `paused` and exit 0. An error: outcome `failed`, exit 1.
 2. Pre-claim steps, each isolated (an exception is logged and the next step still runs; a 423 stops the run as `paused`): `POST /agent/publish-next` (and a site revalidate if something published), the images tick (`articleimg.py auto` as a child process with `DATABASE_URL`, `SUPABASE_*` and every `*_API_KEY` except the agent key removed; a missing script or a non-zero exit only logs a warning), and `close_dead_ends` (reject every `close` card with `needs_more_evidence` and the note `auto-closed: <stage>`).
-3. `POST /agent/controls/slot/claim` with the current slot and `lease_minutes=360` (a worst-case slot runs about 330 minutes; the API default is 120). Not claimed: outcome `skipped`, exit 0.
+3. `POST /agent/controls/slot/claim` with the current slot, a per-run `holder` (uuid4 hex) and `lease_minutes=360`; if the call raises it is retried once with the same holder. (A worst-case slot runs about 330 minutes; the API default lease is 120.) Not claimed: outcome `skipped`, exit 0.
 4. `run_slot`, on a claimed slot: `tick`; then, only when `failures == 0` (the slot's first attempt), accept `max(0, AUTOPILOT_ACCEPT_PER_RUN - in_flight)` cards, highest `score` first from `GET /cards/queue?limit=50`, where `in_flight` counts `/agent/work` cards whose next_action is `run_research`, `retry_research`, `run_draft`, `retry_draft`, `auto_review`, `run_revise` or `publish`; then up to two rounds of research (`retry_failed=true`, `limit` = waiting cards capped to 1 to 4) and draft (`retry_failed=true`), stopping early once a card awaits review; `revise` if any card is `run_revise`; auto-review up to 3 cards (`publish=true`; a `revise` answer triggers a revise run and a re-review, at most 3 attempts per card; a 409 means the card is no longer pending and is skipped); `publish-next`.
 5. Every stage start goes through `Api.start`: a 409 waits for the running stage and retries once; the run is polled on `GET /agent/runs` (60 seconds, 30 polls) and counts as ok only when `last[stage].ok` is true. A 5xx or a network error is retried up to 4 attempts, 20 seconds apart. A tick that exits non-zero only logs a warning.
 6. `POST /agent/controls/slot/finish` with the result. A failure sends the alert `slot failed 3 times` when this was the third failure. A pause mid-slot finishes the slot as failed, never alerts, and exits 0 with outcome `paused`.
@@ -108,6 +108,7 @@ Stage runs are daemon threads, so a restart leaves `running` rows. At startup `s
 |---|---|---|---|
 | 0013 | `pipeline_controls` (seeded row) | 2026-11-15 | main at 40e7350 |
 | 0014 | `article_drafts.attempts` | 2026-11-15 | the PR #144 head, afe2163, just before merge, with owner approval |
+| 0015 | `pipeline_controls.slot_holder` | pending | applied to production before merge with owner approval |
 
 `alembic upgrade head` was run again from main at 3c76e70 on 2026-11-15 and the database is at head (0014). The migrations folder is `src/signalforge/db/migrations/versions`. Note for Milestone 2: the plan names its first migration `0014 sentence_verdicts`; that number is taken, so it becomes 0015.
 
@@ -134,11 +135,11 @@ There is no R4 in the ruling list.
 
 ## 6. Known residuals
 
-- A claim call that fails after the server took the lease leaves the slot held for the 360-minute lease.
 - Hermes Telegram control works only while its gateway host (the laptop) is on. Moving the gateway to the cloud is a follow-up.
 
 Fixed after M1 merge:
 
+- A claim call that fails after the server took the lease no longer strands the slot. Migration 0015 adds `pipeline_controls.slot_holder`; the autopilot sends one `holder` id per run and retries the claim once with the same id, and the server hands the same holder its own claim back without changing the lease or the failure count. `finish_slot` and `release_slot` clear the holder (this PR).
 - A pause mid-slot no longer counts as a failure. The autopilot sends `slot/finish` with `release: true`; the slot shows as `failed` but `slot_failures` is unchanged, so the next run claims it again and accepts cards normally (this PR).
 - A tick with a non-zero `exit_code` now fails the slot, with `tick exit_code N` in the outcome line (this PR).
 - The accept target counts every non-terminal card, mid-stage (`wait`) included, read from `GET /agent/pipeline` because `/agent/work` hides `wait` (this PR).

@@ -44,18 +44,27 @@ class ControlsRepository:
         return row
 
     def claim_slot(
-        self, slot: str, now: datetime, lease: timedelta, max_failures: int = 3
+        self,
+        slot: str,
+        now: datetime,
+        lease: timedelta,
+        max_failures: int = 3,
+        holder: str | None = None,
     ) -> SlotClaim:
+        """Take the lease. The same ``holder`` asking again gets its own claim back unchanged."""
         row = self.get()
         same = row.slot == slot
         failures = row.slot_failures if same else 0
         leased = row.slot_status == "running" and (
             row.slot_lease_until is not None and row.slot_lease_until > now
         )
+        if leased and same and holder is not None and holder == row.slot_holder:
+            return SlotClaim(True, slot, row.slot_failures)  # a retry after a lost reply
         if leased or (same and row.slot_status == "done") or failures >= max_failures:
             return SlotClaim(False, slot, failures)
         row.slot, row.slot_status, row.slot_failures = slot, "running", failures
         row.slot_lease_until = now + lease
+        row.slot_holder = holder
         self._session.flush()
         return SlotClaim(True, slot, failures)
 
@@ -65,6 +74,7 @@ class ControlsRepository:
         if row.slot == slot and row.slot_status == "running":
             row.slot_status = "failed"
             row.slot_lease_until = None
+            row.slot_holder = None
             self._session.flush()
         return row
 
@@ -74,5 +84,6 @@ class ControlsRepository:
             row.slot_status = "done" if ok else "failed"
             row.slot_failures += 0 if ok else 1
             row.slot_lease_until = None
+            row.slot_holder = None
             self._session.flush()
         return row
