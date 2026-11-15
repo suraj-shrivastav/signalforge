@@ -26,14 +26,14 @@ flowchart LR
     D --> A["Act<br/>run a stage, review, publish"]
     A --> V["Verify<br/>rules + judge model + audit log"]
     V --> O
-    V -. "cannot decide" .-> H(["Human"])
+    V -. "cannot finish" .-> H(["Closed with a reason"])
 ```
 
 - **Observe.** The system reports, for every card, a stage and a single `next_action`. The agent never has to infer state from logs or remember where it was. The mapping from stored statuses to the next action is one pure function, easy to test and impossible for the model to misread.
-- **Decide.** The set of actions is small and closed: research, retry, draft, review, revise, publish, attach images, wait, or hand to a human. A closed action space is what makes an agent reliable.
+- **Decide.** The set of actions is small and closed: research, retry, draft, review, revise, publish, attach images, close, wait, or nothing. A closed action space is what makes an agent reliable.
 - **Act.** Each action is idempotent and runs in the background. One run at a time, so an eager agent cannot stampede the pipeline or the budget.
 - **Verify.** Nothing the agent does is trusted on its own say-so. Output passes mechanical checks, then an independent judge model, then deterministic review rules.
-- **Escalate.** When the right move is judgement, such as a draft with no usable claims, the agent routes it to a human instead of forcing it through.
+- **Close.** When a card cannot be finished (research failed twice, a draft with no usable claims, a revise past its redraft cap), the agent closes it with a reason tag instead of forcing it through or waiting on a person. A human can still audit or reopen it, and can pause the whole loop with a kill switch.
 
 ### One article's journey
 
@@ -119,7 +119,7 @@ Every published article is built from its verified claims and carries its source
 
 ## Running it
 
-A cloud cron job (the autopilot, `python -m apps.worker.autopilot`) runs every 15 minutes. It publishes the next queued draft, makes images, closes dead cards, and once per 6-hour slot (00, 06, 12, 18) accepts the two top-scored cards and takes them through research, draft, review and publish. A slot lease stops two runners from doubling a slot. The owner can pause everything with a kill switch, and the autopilot sends a webhook alert after repeated failures. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes is the owner's Telegram control (status, pause, resume, publish now, hot topics) and sends an evening report; it does not drive the pipeline. Cron setup is in [docs/deploy-cron.md](docs/deploy-cron.md); Hermes setup, and the laptop launchd fallback, in [docs/hermes-setup.md](docs/hermes-setup.md).
+A cloud cron job (the autopilot, `python -m apps.worker.autopilot`) runs every 15 minutes. It publishes the next queued draft, makes images, closes dead cards, and once per 6-hour slot (00, 06, 12, 18) tops the pipeline up to two cards in flight (`AUTOPILOT_ACCEPT_PER_RUN`, accepting by score, on the slot's first attempt only) and takes them through research, draft, review and publish. A slot lease stops two runners from doubling a slot. The owner can pause everything with a kill switch (calls return 423 until resumed), and the autopilot sends a webhook alert after three failed attempts on a slot. Keep `AUTO_PIPELINE_ON_ACCEPT` false on the API: the autopilot accepts cards itself. Publishing is paced by the API: at least 4 hours apart, at most 3 per day. Hermes is the owner's Telegram control (status, pause, resume, publish now, hot topics) and sends an evening report; it does not drive the pipeline. Cron setup is in [docs/deploy-cron.md](docs/deploy-cron.md); Hermes setup, and the laptop launchd fallback (never run beside the cron), in [docs/hermes-setup.md](docs/hermes-setup.md). What Milestone 1 shipped and how it behaves is in [docs/pipeline/m1-autonomy-implementation.md](docs/pipeline/m1-autonomy-implementation.md).
 
 ## Architecture
 

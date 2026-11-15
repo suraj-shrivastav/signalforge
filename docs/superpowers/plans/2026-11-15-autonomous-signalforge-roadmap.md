@@ -1,5 +1,7 @@
 # Autonomous SignalForge Implementation Plan
 
+Status 2026-11-15: Milestone 1 merged (#136-#148); soak pending. Record: docs/pipeline/m1-autonomy-implementation.md
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Run SignalForge end to end with no human at runtime: off the laptop, never waiting on a person, able to stop itself, and verifying claims well enough that publishing without a human is safe.

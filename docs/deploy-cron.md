@@ -8,10 +8,10 @@ started every 15 minutes. It holds only the agent key and calls the API; it need
 Each run:
 
 1. Reads `GET /agent/controls` and exits 0 if the pipeline is paused.
-2. Tries `POST /agent/publish-next`, then the images tick (`skills/article-images/scripts/articleimg.py auto`).
+2. Tries `POST /agent/publish-next`, then the images tick (`skills/article-images/scripts/articleimg.py auto`). The tick runs the script as a child process with the environment stripped of `DATABASE_URL`, `SUPABASE_*` and every `*_API_KEY` except the agent key (passed as `EDITOR_API_KEY`). It logs a warning when the script is missing or exits non-zero, and never fails the run.
 3. Closes every `/agent/work` card whose `next_action` is `close`: `POST /cards/{id}/decision` with `rejected`, `["needs_more_evidence"]` and the note `auto-closed: <stage>`.
-4. Claims the 6-hour slot (`POST /agent/controls/slot/claim`, 360-minute lease). If it gets the lease it runs tick, accepts cards (first attempt of a slot only), research, draft, revise for cards waiting on it, auto-review and revise, publish-next, then `slot/finish`. A stage counts as done only when `GET /agent/runs` reports it ended ok. A second runner finds the slot held or done and skips the slot; it still runs steps 2 and 3, which are safe to repeat.
-5. Sends an alert after 3 failed attempts on one slot.
+4. Claims the 6-hour slot (`POST /agent/controls/slot/claim`, 360-minute lease). If it gets the lease it runs tick, accepts cards (first attempt of a slot only), research, draft, revise for cards waiting on it, auto-review and revise, publish-next, then `slot/finish`. A stage start that gets 409 (another run going) waits for that run, then retries once; a 423 ends the run as `paused` and counts as a failed attempt when it happens mid-slot. A stage counts as done only when `GET /agent/runs` reports it ended ok (`last[stage].ok`). A second runner finds the slot held or done and skips the slot; it still runs steps 2 and 3, which are safe to repeat.
+5. Sends an alert after 3 failed attempts on one slot (after the third, the slot is not claimed again). A pause mid-slot ends the slot as failed without an alert.
 6. Logs one JSON line per run with `"message": "slot outcome"` and the fields `slot`, `outcome` (`done`, `failed`, `skipped` or `paused`) and `reason`. These lines are the per-slot history; `GET /agent/controls` shows only the latest slot.
 
 Steps 2 and 3 are best effort: a failure there is logged and the run goes on to the claim.
@@ -26,7 +26,7 @@ Accepting: on a slot's first attempt the autopilot accepts `max(0, AUTOPILOT_ACC
 ## Render Cron Job
 
 1. Create a Cron Job from this repository, built the same way as the API service.
-2. Schedule `*/15 * * * *`. Command `uv run python -m apps.worker.autopilot`.
+2. Schedule `*/15 * * * *`. Use the same start environment as the API service (same build, same Python environment) and the command `python -m apps.worker.autopilot`, which works when the build's virtualenv is on `PATH`. Avoid `uv run`: it re-syncs dependencies at start (see the Railway note below). No Render config is in this repo, so check how the API service is started in its Render settings and copy that.
 3. Make sure the build uses the repository root and includes `skills/`: the images tick runs `skills/article-images/scripts/articleimg.py` (standard library only). If the script is missing it logs a warning and skips the images. No Render config is in this repo, so check this in the Render service settings.
 4. Set the variables below.
 

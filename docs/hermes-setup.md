@@ -1,8 +1,8 @@
 # SignalForge on a new device: Hermes + scheduler setup
 
-SignalForge's backend runs on Render (database on Supabase, website on Vercel). The pipeline is driven by a cloud cron autopilot; see [deploy-cron.md](deploy-cron.md). The laptop runs Hermes, and until the cron soak passes it can also run the launchd scheduler below as a fallback:
+SignalForge's backend runs on Render (database on Supabase, website on Vercel). The pipeline is driven by a cloud cron autopilot; see [deploy-cron.md](deploy-cron.md). The laptop runs Hermes. The launchd scheduler below is a fallback only: unload it before you enable the cron, and never run both.
 
-1. **Pipeline scheduler, fallback until the soak passes** (launchd + shell), replaced by the cron autopilot: four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the two top-scored cards, researches them, drafts them, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
+1. **Pipeline scheduler, a fallback only** (launchd + shell). The cron autopilot is the primary driver; use launchd only if the cron is down, and never together with it (section 2): four slots a day (00, 06, 12, 18 local). Each slot ticks the backend, accepts the two top-scored cards, researches them, drafts them, auto-reviews it and publishes it (or queues it behind the pacing limit). Every 15 minutes it also tries to publish the next queued draft and refreshes the website cache after a publish.
 2. **Hermes** (agent + Telegram gateway): the owner's Telegram control (section 5) and one evening job (6 pm) that reports the day to Telegram and attaches images when needed.
 
 The pipeline does not depend on an LLM agent, so a Hermes failure never blocks drafting or publishing.
@@ -10,12 +10,12 @@ The pipeline does not depend on an LLM agent, so a Hermes failure never blocks d
 ## Publishing limits
 
 - At least 4 hours between articles, at most 3 per rolling 24 hours. The API enforces this; the scripts cannot go over it.
-- Two cards are accepted per slot (`ACCEPT_PER_RUN` in the pipeline script), so one failure still leaves a draft. A card that fails research is retried once in the same run and once in the next slot. After 2 failed attempts its `next_action` becomes `close` and the agent rejects it (the autopilot logs each close as `auto-closed <card_id> (<stage>): <title>`).
+- About two cards are in the pipeline at a time (the autopilot's `AUTOPILOT_ACCEPT_PER_RUN`, default 2: it accepts only enough to top that up; the launchd script's `ACCEPT_PER_RUN` accepts two per slot), so one failure still leaves a draft. A card that fails research or its draft is retried; after 2 failed attempts its `next_action` becomes `close` and the autopilot rejects it (it logs each close as `auto-closed <card_id> (<stage>): <title>`). A card whose revise has used all `AUTO_REVIEW_MAX_REDRAFTS` (2) redrafts is closed the same way.
 - A late slot (laptop off) runs as soon as the Mac is awake, so the number of articles per day can drop below 3 on days the Mac was off.
 
 ## Backend setup (one time, any new Render or database)
 
-1. Run database migrations against the database: `alembic upgrade head` (uses `DATABASE_URL`; head is `0012`, which adds `research_packages.attempts`). Run it before the backend deploys new code.
+1. Run database migrations against the database: `alembic upgrade head` (uses `DATABASE_URL`; head is `0014`: `0013` adds `pipeline_controls` (kill switch and slot lease), `0014` adds `article_drafts.attempts`). Run it before the backend deploys new code.
 2. Render environment: set `LLM_EMBED_BATCH_SIZE=1` when the embedding provider cannot embed more than one text per request (NVIDIA `nemotron-3.5-embed-1b` returns HTTP 500 for batches). Leave it unset (0) for providers that batch normally. If embeddings still fail, research keeps the claims unmerged instead of failing.
 3. Vercel: set `REVALIDATE_SECRET` (same value as in `~/.signalforge.env`) so the scheduler can expire the article cache after a publish.
 
@@ -39,7 +39,7 @@ If the repo lives elsewhere, set `SIGNALFORGE_REPO` in `~/.signalforge.env`.
 
 ## 2. Install the pipeline scheduler (fallback / until the soak passes)
 
-Once the cron autopilot has passed its soak ([deploy-cron.md](deploy-cron.md)), skip this section and decommission launchd as described there. Never run launchd next to the cron autopilot: the scripts keep their slot in `~/.signalforge-state` and never take the API's slot lease, so both would run every slot. Unload launchd before you enable the cron.
+Skip this section while the cron autopilot ([deploy-cron.md](deploy-cron.md)) is running, and decommission launchd as described there. Install it only if the cron is down. Never run launchd next to the cron autopilot: the scripts keep their slot in `~/.signalforge-state` and never take the API's slot lease, so both would run every slot. Unload launchd before you enable the cron.
 
 ```bash
 scripts/hermes/install.sh      # first run creates ~/.signalforge.env and stops
@@ -68,7 +68,7 @@ Do not also add a crontab entry for the pipeline. It would double-run it.
 1. Install Hermes and run `hermes setup`. Choose a model provider.
 2. Run `hermes gateway setup` and choose Telegram. Enter the bot token and your chat id when asked.
 3. In `~/.hermes/config.yaml` make sure `catch_up_missed: true` is set under the cron section, so missed Hermes jobs run after wake.
-4. Add the backend key to `~/.hermes/.env` as `AGENT_API_KEY=<editor key>`.
+4. Add the backend key to `~/.hermes/.env` as `AGENT_API_KEY=<agent key>` (the editor key also works).
 5. Start the gateway as a service and confirm Telegram is connected:
 
 ```bash
@@ -79,6 +79,8 @@ hermes gateway status       # expect: telegram connected
 Send the bot a message to confirm it answers.
 
 ## 4. Create the evening report job
+
+The report reads the API only (`GET /agent/controls`, `/agent/work`, `/agent/runs`), never a local log, so it works with the laptop scheduler off.
 
 The prompt is in [scripts/hermes/evening-report-prompt.md](../scripts/hermes/evening-report-prompt.md). Edit the repo paths in it for this machine, then:
 
@@ -102,16 +104,16 @@ The prompt reads `GET /agent/controls`, `/agent/work` and `/agent/runs` (the cro
 
 Add these facts to `~/.hermes/memories/MEMORY.md` (one entry per fact, separated by `§`) so Hermes can answer questions about the pipeline:
 
-- API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. Reads of run state (`/agent/runs`, `/cards/queue`, `/agent/work`) need `EDITOR_API_KEY`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
-- Research needs at least 3 claims, otherwise one extra search round. A card is tried at most 2 times, then `next_action` is `close`. Never retry a closed card; the autopilot log on the cron host records it. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
-- The cloud cron autopilot runs the pipeline (the launchd scheduler is a fallback until the soak passes). Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
+- API base URL `https://signalforge-wmtl.onrender.com`. Write endpoints accept `X-Editor-Key` with `AGENT_API_KEY` or `EDITOR_API_KEY`. The agent key also reads `/agent/*` and `/cards/queue`. Publish pacing: 4 h gap, max 3 per 24 h, never force. Auto-review: max 2 redrafts.
+- Research needs at least 3 claims, otherwise one extra search round. A card gets at most 2 research attempts and 2 draft attempts, then `next_action` is `close` (also after a `needs_more_info` draft or 2 redrafts). Never retry a closed card; the autopilot log on the cron host records it. While paused the API answers 423 to runs, publish-next and topics: report the pause, do not retry. Failure text starts with a class: `blocked`, `empty`, `no_claims`, `thin`, `budget`, `other`. Claim merging is skipped if the embedding API fails.
+- The cloud cron autopilot runs the pipeline (the launchd scheduler is a fallback only, never run beside it). Only the evening Hermes job is enabled; the morning, midday and night tick jobs stay paused on purpose.
 - The article-images skill lives in the repo at `skills/article-images/`. Use the project venv (`.venv/bin/python`), because system python 3.9 is too old.
 
 ## 5. Telegram control
 
-The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>` and `cards` to the bot, and maps each to an API call with the agent key. It never unpublishes or deletes, and acts only on messages from the owner's chat.
+The prompt is in [scripts/hermes/telegram-control.md](../scripts/hermes/telegram-control.md). To install it: open that file, copy everything after its first four lines (`sed 1,4d scripts/hermes/telegram-control.md`) and add it to `~/.hermes/memories/MEMORY.md` as one entry, separated from the others by `§`. It lets the owner send `status`, `pause <reason>`, `resume`, `publish now`, `hot <url or query>` and `cards` to the bot, and maps each to an API call with the agent key. It never unpublishes or deletes, and acts only on messages from the owner's chat.
 
-Hermes takes standing facts from `~/.hermes/memories/MEMORY.md` (see Hermes memory above). Add the prompt (everything after its first four lines) there as a standing instruction, as one entry separated by `§`. Make sure `API_BASE_URL` is set in `~/.hermes/.env` next to `AGENT_API_KEY`. Restart the gateway (`hermes gateway status`), then send `status` to the bot to check it answers.
+Hermes takes standing facts from `~/.hermes/memories/MEMORY.md` (see Hermes memory above). Make sure `API_BASE_URL` is set in `~/.hermes/.env` next to `AGENT_API_KEY`. Restart the gateway (`hermes gateway status`), then send `status` to the bot to check it answers.
 
 The control works only while the gateway host is on. The pipeline does not depend on it: pause also works with `curl` (see [deploy-cron.md](deploy-cron.md)).
 
@@ -152,9 +154,13 @@ The pipeline picks its models per role from env (`LLM_MODEL_*`, `LLM_BASE_URL`; 
 | Hermes job `agent reported failure` | The agent was cut off (often by sleep) or the model call failed. Check `hermes cron runs`, `~/.hermes/logs/errors.log`. |
 | Telegram `nodename nor servname provided` or `Sticky Telegram path ... failed` | Network dropped across sleep. The gateway retries; reports may arrive late. |
 | A slot runs hours late | The Mac was off or asleep at slot time. The slot runs as soon as it wakes; this is by design. To reduce it, schedule a wake before each slot (for example `sudo pmset repeat wakeorpoweron MTWRFSU 05:55:00`, one schedule only) or keep the Mac awake (section 6). |
-| Cards with `close` | Research failed twice, or the draft had no usable claims. The agent rejects them with `needs_more_evidence`. Read the failure reason and fix the source problem if any. They do not block other cards. |
+| Cards with `close` (a closed card) | Research failed or was thin twice, the draft failed twice or had no usable claims, or a revise used up its redrafts. The autopilot rejects them with `needs_more_evidence` and the note `auto-closed: <stage>` within 15 minutes; they leave `/agent/work` at once, so look for `auto-closed` in the cron host's log. Read the failure reason and fix the source problem if any. They do not block other cards. |
+| Calls return HTTP 423, or the autopilot logs `outcome: paused` | The pipeline is paused (kill switch). `GET /agent/controls` shows `paused_reason`, `paused_by` and `paused_until`. Resume with `POST /agent/controls/resume` (or `resume` in Telegram). A breaker pause lifts itself at `paused_until`. Nothing is lost: the next slot picks up. |
+| Alert `slot failed 3 times` | The autopilot failed one slot three times and will not claim it again (`GET /agent/controls`: `slot_failures` 3). Read the cron log lines `slot outcome` with `outcome: failed` and their `reason` (the failing step), fix the cause; the next 6-hour slot starts clean. A mid-slot pause counts as a failed attempt too. |
+| Redraft cap reached (card stage `revise_exhausted`) | The article used its `AUTO_REVIEW_MAX_REDRAFTS` redrafts, failed ones included. It is closed, not retried. Raise the setting on the API only if the drafts were close to passing. |
+| A card is held in a stage for hours | A restart of the API loses an in-flight stage. The API frees such rows (older than 90 minutes) at startup and the next autopilot run retries the card, up to the attempt caps. |
 | Research fails with `LLM provider unavailable (status=500)` on embeddings | Set `LLM_EMBED_BATCH_SIZE=1` on the backend. Claim merging is skipped if the embedding call still fails. |
-| `column research_packages.attempts does not exist` | Migration `0012` was not applied. Run `alembic upgrade head`. |
+| `column research_packages.attempts` / `article_drafts.attempts` / `pipeline_controls` does not exist | Migration `0012`, `0014` or `0013` was not applied. Run `alembic upgrade head`. |
 | Runs happen at odd times | Check for a leftover crontab (`crontab -l`) or old Hermes tick jobs; remove or `hermes cron pause <id>` them. |
 
 ## Uninstall
