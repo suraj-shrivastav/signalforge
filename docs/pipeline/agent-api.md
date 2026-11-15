@@ -1,6 +1,6 @@
 # Agent API
 
-How an automation agent (Hermes) runs SignalForge through HTTP. Send the key in the
+How an automation agent runs SignalForge through HTTP. The cron autopilot (`apps/worker/autopilot.py`, see [docs/deploy-cron.md](../deploy-cron.md)) is the main client; Hermes uses the same API for owner commands over Telegram. Send the key in the
 `X-Editor-Key` header. Set `AGENT_API_KEY` on the API for a separate, revocable key; the
 editor key keeps working. The OpenAPI spec is at `GET /openapi.json` (tag `agent` for the
 endpoints below).
@@ -10,7 +10,9 @@ endpoints below).
 1. **Collect:** `POST /agent/run/tick` (ingest, assess, cards, research, draft). It runs in the
    background; `GET /agent/runs` shows progress. One run at a time (409 while busy).
 2. **Pick topics:** `GET /cards/queue`, then `POST /cards/{id}/decision` with `accepted` or
-   `rejected`. With `AUTO_PIPELINE_ON_ACCEPT=true` an accept starts research and draft.
+   `rejected`. Keep `AUTO_PIPELINE_ON_ACCEPT` **false** (the default) when the autopilot runs the
+   pipeline: its accepts would start a competing pass inside the API, and the autopilot's next
+   stage start would get 409. The autopilot accepts cards itself and then calls the run endpoints.
 3. **Ask what is next:** `GET /agent/work` lists only the cards that need a call, each with
    `next_action`. `GET /agent/pipeline` lists every recent accepted card with its stage.
 4. **Do the action:**
@@ -23,8 +25,11 @@ endpoints below).
 | `run_revise` | `POST /agent/run/revise` |
 | `publish` | `POST /agent/publish-next` (one call for all waiting drafts; it follows the publish pace) |
 | `attach_images` | follow `skills/article-images/SKILL.md` |
-| `close` | the card cannot finish (research failed twice, the draft had no usable claims, or a revise has used all `AUTO_REVIEW_MAX_REDRAFTS` redrafts). Reject it: `POST /cards/{id}/decision` with `{"decision":"rejected","reason_tags":["needs_more_evidence"],"note":"auto-closed: <stage>"}`. Never retry. |
-| `wait`, `none` | nothing to do. An article the owner unpublished is `none` (stage `unpublished`): the agent never republishes it. Only an editor publish brings it back. |
+| `close` | the card cannot finish: research failed or came back thin twice (`MAX_RESEARCH_ATTEMPTS`, stage `research_parked`), the draft failed twice (`MAX_DRAFT_ATTEMPTS`, stage `draft_failed`), the draft ended `needs_more_info` (no usable claims, stage `draft_needs_more_info`), or a revise has used all `AUTO_REVIEW_MAX_REDRAFTS` redrafts, failed ones included (stage `revise_exhausted`). Reject it: `POST /cards/{id}/decision` with `{"decision":"rejected","reason_tags":["needs_more_evidence"],"note":"auto-closed: <stage>"}`. Never retry. |
+| `wait` | nothing to do: research or the draft is running (stages `researching`, `draft_drafting`). |
+| `none` | nothing to do: `rejected`, `unpublished` (the owner took it down; the agent does not publish it again, and an editor publish brings it back) or `complete`. |
+
+Every `next_action` the API can return: `run_research`, `retry_research`, `run_draft`, `retry_draft`, `auto_review`, `run_revise`, `publish`, `attach_images`, `close`, `wait`, `none` (`classify` in `src/signalforge/pipeline_state.py`). `GET /agent/work` leaves out `wait` and `none`.
 
 ## Decisions and reason tags
 
@@ -73,8 +78,9 @@ Research costs money, so it never fans out:
 - Only one pipeline run happens at a time. The pass that starts after an accept and any run an
   agent starts share one slot, so a manual run returns 409 while an accept pass is going and
   the other way round. `GET /agent/runs` shows it as stage `auto`.
-- Each accept starts a pass that takes one card. Accepting three cards gives three passes in
-  a row, best first, never in parallel.
+- With `AUTO_PIPELINE_ON_ACCEPT=true` (off by default, and kept off under the autopilot), each
+  accept starts a pass that takes one card. Accepting three cards gives three passes in a row,
+  best first, never in parallel.
 
 ## Publish pace
 
@@ -117,7 +123,7 @@ Every automatic edit and decision is in the draft's review log with `actor` (`ag
 A pause stops the agent without revoking its key. While paused, `POST /agent/run/{stage}`,
 `POST /agent/publish-next`, `POST /agent/topics` and `POST /editor/drafts/{id}/publish` with
 the agent key return **423**; `auto-review?publish=true` still reviews and approves
-but does not publish (`queued: true`). The auto pipeline after an accept skips while paused (the decision is still recorded). The old cron entry point `python -m apps.worker.tick` exits 0 without running anything. Reads and publishes with the editor key are not affected: the editor key is the owner's manual override.
+but does not publish (`queued: true`). The auto pipeline after an accept skips while paused (the decision is still recorded). The old cron entry point `python -m apps.worker.tick` exits 0 without running anything. Reads and publishes with the editor key are not affected: the editor key is the owner's manual override. Never blocked by a pause: `GET /agent/runs`, `/agent/work`, `/agent/pipeline`, every `/agent/controls*` call, card decisions, image attach and upload, unpublish, and auto-review without `publish=true`. A breaker pause (`minutes` set) stops counting as paused once `paused_until` passes, with no resume call.
 
 | Call | Does |
 |---|---|
