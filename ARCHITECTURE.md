@@ -26,9 +26,10 @@ flowchart LR
     end
     WEB -->|"/public/*, cached 300 s, tag articles"| API
     AP -->|"POST /api/revalidate after a publish"| WEB
+    API -->|"POST /api/revalidate after publish, unpublish, images"| WEB
 ```
 
-- **Backend** (Render): FastAPI app in `apps/api`. Long stages run in a background thread, one at a time (a second start returns 409).
+- **Backend** (Render): FastAPI app in `apps/api`. Long stages run in a background thread, one at a time (a second start returns 409). With `SITE_URL` and `REVALIDATE_SECRET` set, it calls the site's `POST /api/revalidate` after every publish, unpublish and image attach (`src/signalforge/site_revalidate.py`), so the site's 300-second cache never hides a change.
 - **Database** (Supabase Postgres, pgvector). Migrations with Alembic in `src/signalforge/db/migrations`. Run `alembic upgrade head` before deploying code that needs a new column.
 - **Website** (Vercel): Next.js in `apps/web`. It reads only the public API. Article lists are cached for 300 s under the tag `articles`; the autopilot expires that tag after a publish.
 - **Autopilot** (Render cron job, see [docs/deploy-cron.md](docs/deploy-cron.md)): `python -m apps.worker.autopilot` every 15 minutes. It holds only the agent key. It exits if `GET /agent/controls` says paused. Otherwise it tries to publish a queued draft, makes images, closes dead cards, and runs the full pipeline once per 6-hour slot after claiming the slot lease. After 3 failed attempts on a slot it sends an alert to `ALERT_WEBHOOK_URL`.
@@ -82,6 +83,7 @@ flowchart TD
     Q -->|"4 h apart, max 3 per 24 h"| PUB["Publish"]
     PUB --> IMG["Images<br/>articleimg.py auto"]
     PUB -.->|"owner unpublishes"| UP(["unpublished: next_action none, never republished by the agent"])
+    UP --> RV2
     PUB --> RV2["Revalidate site cache"]
 ```
 

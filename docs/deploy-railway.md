@@ -27,6 +27,8 @@ paid plan. Check the current pricing page before relying on it.
 - `EDITOR_API_KEY`, `AGENT_API_KEY` (32 or more random characters each)
 - `SUPABASE_URL` (the API accepts images from this host) and `SUPABASE_SECRET_KEY` (the API uploads article images with it, so Hermes needs no Supabase key)
 - `SITE_URL` (the public web URL, no trailing slash), `INDEXNOW_KEY`, `PUBLISH_BYLINE`
+- `REVALIDATE_SECRET` (same value as on the web service): the api expires the site's article
+  cache after every publish, unpublish and image attach
 - `LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_*`, `LLM_EXTRA_BODY`,
   `LLM_EMBED_EXTRA_BODY`, `LLM_MAX_OUTPUT_TOKENS`, `TAVILY_API_KEY` (the stages run inside the API)
 - Optional: `AUTO_PIPELINE_DAILY_CAP`, `AI_TRAINING_CRAWLERS`, `ALERT_WEBHOOK_URL` (the API sends
@@ -39,6 +41,7 @@ paid plan. Check the current pricing page before relying on it.
 - `API_BASE_URL`: the api service's private address, `http://<api-service>.railway.internal:<PORT>`
   (or its public URL). Server side only.
 - `SITE_URL`: the same public URL as above. `INDEXNOW_KEY`: same value as the api.
+- `REVALIDATE_SECRET`: same value as the api; `/api/revalidate` checks it.
 - `EDITOR_UI_PASSWORD` if you keep the editor pages.
 
 **Hermes** (outside Railway): `API_BASE_URL` (public api URL), `EDITOR_API_KEY` set to the

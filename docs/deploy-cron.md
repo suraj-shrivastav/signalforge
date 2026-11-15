@@ -22,6 +22,7 @@ Accepting: on a slot's first attempt the autopilot accepts `max(0, AUTOPILOT_ACC
 
 - `AUTO_PIPELINE_ON_ACCEPT` must be `false` (the default) on the API. The autopilot accepts cards itself; with it on, every accept starts a pass inside the API that holds the run lock, and the autopilot's next stage start gets 409 and has to wait.
 - Set `ALERT_WEBHOOK_URL` on the API host too: the pause alert is sent by the API, not by the cron job.
+- Set `SITE_URL` and `REVALIDATE_SECRET` (same value as on Vercel) on the API host too. The API then expires the website's article cache right after every publish, unpublish and image attach, so a change shows at once instead of after the site's 5-minute cache. Without them, an unpublished article stays visible for up to 5 minutes.
 
 ## Render Cron Job
 
