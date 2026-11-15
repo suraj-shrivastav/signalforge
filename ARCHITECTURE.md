@@ -7,10 +7,12 @@ How the system is put together, where each part runs, and how an article moves f
 ```mermaid
 flowchart LR
     subgraph Laptop["Operator laptop (macOS)"]
-        L["launchd agent<br/>every 15 min"] --> SH["tick + pipeline shell scripts"]
-        H["Hermes agent<br/>evening report job"]
+        H["Hermes agent<br/>Telegram control + evening report"]
     end
-    SH -->|"X-Editor-Key, HTTPS"| API
+    subgraph Cron["Cron (Render)"]
+        AP["autopilot<br/>every 15 min"]
+    end
+    AP -->|"agent key, HTTPS"| API
     H -->|"X-Editor-Key, HTTPS"| API
     subgraph Render["Render"]
         API["FastAPI backend<br/>+ background stage runs"]
@@ -23,14 +25,14 @@ flowchart LR
         WEB["Next.js site<br/>never touches the database"]
     end
     WEB -->|"/public/*, cached 300 s, tag articles"| API
-    SH -->|"POST /api/revalidate after a publish"| WEB
+    AP -->|"POST /api/revalidate after a publish"| WEB
 ```
 
 - **Backend** (Render): FastAPI app in `apps/api`. Long stages run in a background thread, one at a time (a second start returns 409).
 - **Database** (Supabase Postgres, pgvector). Migrations with Alembic in `src/signalforge/db/migrations`. Run `alembic upgrade head` before deploying code that needs a new column.
-- **Website** (Vercel): Next.js in `apps/web`. It reads only the public API. Article lists are cached for 300 s under the tag `articles`; the scheduler expires that tag after a publish.
-- **Scheduler** (laptop): launchd runs `scripts/hermes/signalforge_cron_tick.sh` every 15 minutes. It tries to publish a queued draft each time, and runs the full pipeline once per 6-hour slot (00, 06, 12, 18 local), catching up if the laptop was off.
-- **Hermes** (laptop): an agent with one revocable key. Only its evening job is enabled. It reports the day, attaches missing images, and lists closed cards. It never blocks the pipeline.
+- **Website** (Vercel): Next.js in `apps/web`. It reads only the public API. Article lists are cached for 300 s under the tag `articles`; the autopilot expires that tag after a publish.
+- **Autopilot** (Render cron job, see [docs/deploy-cron.md](docs/deploy-cron.md)): `python -m apps.worker.autopilot` every 15 minutes. It holds only the agent key. It exits if `GET /agent/controls` says paused. Otherwise it tries to publish a queued draft, makes images, closes dead cards, and runs the full pipeline once per 6-hour slot after claiming the slot lease. After 3 failed attempts on a slot it sends an alert to `ALERT_WEBHOOK_URL`.
+- **Hermes** (laptop): an agent with one revocable key. It is the owner's Telegram control (status, pause, resume, publish now, hot topics; see `scripts/hermes/telegram-control.md`) and sends the evening report. It is not the pipeline driver, and it never blocks the pipeline. The launchd scripts in `scripts/hermes` remain as a fallback until the soak passes.
 
 ## 2. Code layout
 
@@ -48,7 +50,7 @@ flowchart LR
 | `apps/worker` | CLI entry points for each stage and for `tick`. |
 | `apps/web` | Next.js site and editor pages. |
 | `skills/article-images` | Deterministic SVG cover and figure generator and uploader. |
-| `scripts/hermes` | Scheduler scripts, launchd template, install script, Hermes prompt. |
+| `scripts/hermes` | Hermes prompts (evening report, Telegram control) and the fallback launchd scripts and install script. |
 | `scripts/eval_research.py` | Dry-run research evaluation. See [docs/pipeline/eval-research.md](docs/pipeline/eval-research.md). |
 
 ## 3. The pipeline
@@ -58,7 +60,7 @@ flowchart TD
     I["Ingest<br/>all enabled sources, dedupe by canonical URL"] --> A["Assess<br/>relevance, title + source + first 800 chars of summary"]
     A --> C["Cards<br/>angle, novelty, risk flags"]
     C --> RK["Rank<br/>weighted score from rules ranker"]
-    RK --> AC["Accept<br/>scheduler takes the top 2"]
+    RK --> AC["Accept<br/>autopilot takes the top 2"]
     AC --> R["Research"]
     R -->|"researched"| D["Draft<br/>writer model declares claims"]
     R -->|"failed, attempts under 2"| RR["retry_research"]
@@ -91,7 +93,7 @@ The writer sees only the stored research package and declares claims that point 
 
 ### Publishing
 
-The API enforces pacing: at least 4 hours between articles and at most 3 per rolling 24 hours. The approved queue drains as slots open, from the 15-minute tick as well as from the 6-hour slot. The scheduler accepts two cards per slot so that one failure still leaves a draft. Expect 2 to 3 articles a day; the number drops on days the laptop was off.
+The API enforces pacing: at least 4 hours between articles and at most 3 per rolling 24 hours. The approved queue drains as slots open, from the 15-minute run as well as from the 6-hour slot. The autopilot accepts two cards per slot so that one failure still leaves a draft. Expect 2 to 3 articles a day; the number drops when a slot fails.
 
 ### Images
 
@@ -103,17 +105,17 @@ Stages ask for a role (writer, judge, relevance filter, research extraction, cla
 
 ## 5. State and the agent interface
 
-`GET /agent/work` returns every card with a `stage` and one `next_action`: `run_research`, `retry_research`, `run_draft`, `retry_draft`, `auto_review`, `run_revise`, `publish`, `attach_images`, `close`, `wait` or `none`. Write calls (`POST /agent/run/<stage>`, `/agent/drafts/{id}/auto-review`, `/agent/publish-next`) are idempotent and need the revocable editor key. Every decision is stored with an actor (agent or human) and every LLM call with its cost, against a per-card budget.
+`GET /agent/work` returns every card with a `stage` and one `next_action`: `run_research`, `retry_research`, `run_draft`, `retry_draft`, `auto_review`, `run_revise`, `publish`, `attach_images`, `close`, `wait` or `none`. Write calls (`POST /agent/run/<stage>`, `/agent/drafts/{id}/auto-review`, `/agent/publish-next`) are idempotent and need the revocable editor key. `GET /agent/controls` returns the kill-switch state and the slot lease; `POST /agent/controls/pause`, `/resume`, `/slot/claim` and `/slot/finish` change them. While paused, run, publish-next and topic calls return 423. Every decision is stored with an actor (agent or human) and every LLM call with its cost, against a per-card budget.
 
 ## 6. Security
 
 - Untrusted page text is wrapped as data and never treated as instructions. Fetching checks URL safety and robots rules.
-- Hermes holds one revocable key and no database or storage credentials.
-- Secrets live in environment files (`~/.signalforge.env`, `~/.hermes/.env`, Render and Vercel settings), never in the repo.
+- The autopilot and Hermes each hold one revocable key and no database or storage credentials.
+- Secrets live in environment files (`~/.hermes/.env`, Render and Vercel settings), never in the repo.
 
 ## 7. Known limits
 
 - Topic ranking still depends on model-estimated numbers, and there is no cross-source clustering or novelty check against published articles. Two accepted cards can cover the same news.
 - Most recent articles come from arXiv, because it is the highest-volume source and has no popularity signal.
 - Research does not read PDFs.
-- Scheduling depends on the laptop being on. A missed slot runs late rather than being lost.
+- Hermes Telegram control works only while its gateway host is on. The pipeline itself does not depend on it.
