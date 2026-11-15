@@ -109,8 +109,24 @@ publishes still count toward the pace, so the next scheduled one waits its turn.
 Every automatic edit and decision is in the draft's review log with `actor` (`agent` or
 `editor`). `POST /editor/articles/{slug}/unpublish` takes an article down.
 
+## Kill switch and slot lease
+
+A pause stops the agent without revoking its key. While paused, `POST /agent/run/{stage}` and
+`POST /agent/publish-next` return **423**; `auto-review?publish=true` still reviews and approves
+but does not publish (`queued: true`). Reads and editor publishes are not affected.
+
+| Call | Does |
+|---|---|
+| `GET /agent/controls` | `{paused, paused_reason, paused_by, paused_until, slot, slot_status, slot_failures}` |
+| `POST /agent/controls/pause` | `{"reason": "...", "minutes": null}`. `minutes` set is a breaker pause that lifts itself; without it the pause holds until resumed. Sends a webhook alert if `ALERT_WEBHOOK_URL` is set. |
+| `POST /agent/controls/resume` | clears the pause |
+| `POST /agent/controls/slot/claim` | `{"slot": "2026-11-15-06", "lease_minutes": 120}` returns `{claimed, slot, failures}`; `claimed` is false if the slot is held or done |
+| `POST /agent/controls/slot/finish` | `{"slot": "...", "ok": true}` ends the lease |
+
+Pause and resume record `paused_by` as `editor` or `agent`, by the key used.
+
 ## Limits
 
 The judge model is small and noisy, so automatic approval can let a wrong sentence through.
 Deleting flagged sentences and requiring verified claims lowers the risk but does not remove it.
-Nothing pauses the agent besides revoking `AGENT_API_KEY`.
+Pause it with `POST /agent/controls/pause`, or revoke `AGENT_API_KEY`.

@@ -14,22 +14,32 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from apps.api import agent_runs
-from apps.api.deps import get_article_repository, get_published_repository, get_session
+from apps.api.deps import (
+    get_article_repository,
+    get_controls_repository,
+    get_published_repository,
+    get_session,
+)
 from apps.api.routes.articles import get_draft_row, publish_approved
 from apps.api.routes.cards import require_editor_key
 from apps.api.schemas import PublishedOut, PublishIn
 from apps.worker import topic as topic_job
+from signalforge.alerts import send_alert
 from signalforge.auto_review import ReviewPolicy, decide
+from signalforge.control_policy import is_paused
 from signalforge.core.artifacts.article import ArticleBody, ArticleTemplate
 from signalforge.core.canonical import canonical_url
 from signalforge.core.errors import ArtifactValidationError
 from signalforge.db.repositories.article import ArticleDraftRepository
+from signalforge.db.repositories.controls import ControlsRepository
 from signalforge.db.repositories.pipeline import PipelineRepository
 from signalforge.db.repositories.published import PublishedArticleRepository
 from signalforge.db.session import ConnectionMode, create_db_engine
 from signalforge.publish_pacing import next_publish_time
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_editor_key)])
+
+Controls = Annotated[ControlsRepository, Depends(get_controls_repository)]
 
 Stage = Literal["tick", "assess", "cards", "research", "draft", "revise"]
 
@@ -92,6 +102,90 @@ class PublishNextOut(BaseModel):
     next_publish_at: datetime | None
 
 
+class ControlsOut(BaseModel):
+    paused: bool
+    paused_reason: str | None
+    paused_by: str | None
+    paused_until: datetime | None
+    slot: str | None
+    slot_status: str | None
+    slot_failures: int
+
+
+class PauseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=1, max_length=500)
+    # Set by a circuit breaker: the pause lifts by itself after this many minutes.
+    minutes: int | None = Field(default=None, ge=1, le=7 * 24 * 60)
+
+
+class SlotIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slot: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}-(00|06|12|18)$")
+    lease_minutes: int = Field(default=120, ge=10, le=720)
+
+
+class SlotFinishIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slot: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}-(00|06|12|18)$")
+    ok: bool
+
+
+class SlotClaimOut(BaseModel):
+    claimed: bool
+    slot: str
+    failures: int
+
+
+def _controls_out(row: Any) -> ControlsOut:
+    return ControlsOut(
+        paused=is_paused(row, datetime.now(UTC)), paused_reason=row.paused_reason,
+        paused_by=row.paused_by, paused_until=row.paused_until, slot=row.slot,
+        slot_status=row.slot_status, slot_failures=row.slot_failures,
+    )  # fmt: skip
+
+
+def _ensure_running(controls: ControlsRepository) -> None:
+    if is_paused(controls.get(), datetime.now(UTC)):
+        raise HTTPException(status_code=423, detail="Pipeline is paused")
+
+
+@router.get("/controls", response_model=ControlsOut)
+def get_controls(controls: Controls) -> ControlsOut:
+    """The kill switch and the slot lease the autopilot holds."""
+    return _controls_out(controls.get())
+
+
+@router.post("/controls/pause", response_model=ControlsOut)
+def pause(
+    body: PauseIn, request: Request, controls: Controls, background: BackgroundTasks
+) -> ControlsOut:
+    """Stop stage runs and publishing. ``minutes`` makes it a breaker pause that lifts itself."""
+    now = datetime.now(UTC)
+    until = now + timedelta(minutes=body.minutes) if body.minutes else None
+    row = controls.pause(body.reason, request.state.actor, now, until=until)
+    url = request.app.state.settings.alert_webhook_url
+    background.add_task(send_alert, url.get_secret_value() if url else None, "paused", body.reason)
+    return _controls_out(row)
+
+
+@router.post("/controls/resume", response_model=ControlsOut)
+def resume(request: Request, controls: Controls) -> ControlsOut:
+    return _controls_out(controls.resume(request.state.actor))
+
+
+@router.post("/controls/slot/claim", response_model=SlotClaimOut)
+def claim_slot(body: SlotIn, controls: Controls) -> SlotClaimOut:
+    """Take the lease on a six-hour slot; ``claimed`` is false if another run holds it."""
+    claim = controls.claim_slot(body.slot, datetime.now(UTC), timedelta(minutes=body.lease_minutes))
+    return SlotClaimOut(claimed=claim.claimed, slot=claim.slot, failures=claim.failures)
+
+
+@router.post("/controls/slot/finish", response_model=ControlsOut)
+def finish_slot(body: SlotFinishIn, controls: Controls) -> ControlsOut:
+    return _controls_out(controls.finish_slot(body.slot, body.ok))
+
+
 def _cards(session: Session, limit: int) -> list[PipelineCardOut]:
     return [
         PipelineCardOut(
@@ -133,14 +227,16 @@ _DEFAULT_LIMIT = {"research": 1}
 def run_stage(
     stage: Stage,
     request: Request,
+    controls: Controls,
     limit: Annotated[int | None, Query(ge=1, le=50)] = None,
     retry_failed: bool = False,
 ) -> RunOut:
     """Start a stage in the background. One run at a time: 409 while another is going.
 
     ``limit`` is how many cards to take; research defaults to 1 (the best waiting card),
-    every other stage to 10.
+    every other stage to 10. 423 while the pipeline is paused.
     """
+    _ensure_running(controls)
     count = limit if limit is not None else _DEFAULT_LIMIT.get(stage, 10)
     if not agent_runs.start(stage, request.app.state.settings, count, retry_failed):
         raise HTTPException(status_code=409, detail="Another run is still going")
@@ -158,6 +254,7 @@ def auto_review(
     card_id: UUID,
     request: Request,
     background: BackgroundTasks,
+    controls: Controls,
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
     publish: bool = False,
@@ -168,8 +265,10 @@ def auto_review(
     Approve: flagged sentences are deleted, the draft is approved and (with publish=true)
     published, on the publish pace unless ``force=true`` (a hot topic the owner asked for).
     Revise: it goes back for a redraft with the reasons as the note (run stage
-    'revise'). Reject: it already had the maximum redrafts. Every step is logged.
+    'revise'). Reject: it already had the maximum redrafts. Every step is logged. While the
+    pipeline is paused it still reviews and approves, but never publishes (``queued`` is true).
     """
+    paused = is_paused(controls.get(), datetime.now(UTC))
     settings = request.app.state.settings
     row = get_draft_row(repo, card_id)
     if row.status != "drafted" or not row.draft:
@@ -211,7 +310,9 @@ def auto_review(
             "approved by policy",
             {"type": "review", "decision": "approved", "actor": actor},
         )
-        if publish:
+        if publish and paused:
+            result.queued = True
+        elif publish:
             slot = _next_slot(settings, published)
             if force or slot <= datetime.now(UTC):
                 result.published = publish_approved(
@@ -244,6 +345,7 @@ def _next_slot(settings: Any, published: PublishedArticleRepository) -> datetime
 def publish_next(
     request: Request,
     background: BackgroundTasks,
+    controls: Controls,
     session: Annotated[Session, Depends(get_session)],
     repo: Annotated[ArticleDraftRepository, Depends(get_article_repository)],
     published: Annotated[PublishedArticleRepository, Depends(get_published_repository)],
@@ -258,7 +360,9 @@ def publish_next(
 
     The pace is a target, not a limit: ``force=true`` publishes now whatever the pace says, for
     a hot topic the owner asked for. ``card_id`` picks that waiting draft instead of the oldest.
+    423 while the pipeline is paused.
     """
+    _ensure_running(controls)
     settings = request.app.state.settings
     waiting = [c for c in _cards(session, 200) if c.next_action == "publish"]
     if card_id is not None:

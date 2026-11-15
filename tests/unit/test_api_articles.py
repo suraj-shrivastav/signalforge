@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from apps.api.deps import get_article_repository, get_published_repository
+from apps.api.deps import get_article_repository, get_controls_repository, get_published_repository
 from apps.api.main import create_app
 from apps.api.routes import articles
 from apps.api.schemas import PublicArticleOut, PublicArticleSummaryOut
@@ -654,8 +654,13 @@ def actx() -> Iterator[tuple[TestClient, StubRepo]]:
     repo = StubRepo()
     published = StubPublished()
     app.dependency_overrides[get_article_repository] = lambda: repo
+    controls = SimpleNamespace(
+        get=lambda: SimpleNamespace(paused=False, paused_until=None, paused_reason=None)
+    )
     app.dependency_overrides[get_published_repository] = lambda: published
+    app.dependency_overrides[get_controls_repository] = lambda: controls
     repo.published = published  # type: ignore[attr-defined]
+    repo.controls = controls  # type: ignore[attr-defined]
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, repo
 
@@ -730,6 +735,20 @@ def _approve_without_publishing(client: TestClient, repo: StubRepo) -> UUID:
     out = client.post(f"/agent/drafts/{card_id}/auto-review", headers=HA).json()
     assert out["action"] == "approve"
     return card_id
+
+
+def test_auto_review_while_paused_approves_without_publishing(
+    actx: tuple[TestClient, StubRepo],
+) -> None:
+    client, repo = actx
+    repo.controls.get = lambda: SimpleNamespace(  # type: ignore[attr-defined]
+        paused=True, paused_until=None, paused_reason="drill"
+    )
+    card_id = repo.add(BODY.model_dump(mode="json"))
+    out = client.post(f"/agent/drafts/{card_id}/auto-review?publish=true", headers=HA).json()
+    assert out["action"] == "approve"
+    assert (out["published"], out["queued"]) == (None, True)
+    assert repo.rows[card_id].review_status == "approved"
 
 
 def test_auto_review_holds_a_publish_that_is_too_soon_after_the_last(
