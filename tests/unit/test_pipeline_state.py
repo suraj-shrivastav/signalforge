@@ -2,7 +2,12 @@ from itertools import product
 
 import pytest
 
-from signalforge.pipeline_state import CLOSE_REASON_TAG, MAX_RESEARCH_ATTEMPTS, classify
+from signalforge.pipeline_state import (
+    CLOSE_REASON_TAG,
+    MAX_DRAFT_ATTEMPTS,
+    MAX_RESEARCH_ATTEMPTS,
+    classify,
+)
 
 
 def state(**kw: object) -> tuple[str, str]:
@@ -26,6 +31,8 @@ def state(**kw: object) -> tuple[str, str]:
         ),
         ({"draft": None, "review": None}, ("researched", "run_draft")),
         ({"draft": "failed"}, ("draft_failed", "retry_draft")),
+        ({"draft": "failed", "draft_attempts": 1}, ("draft_failed", "retry_draft")),
+        ({"draft": "failed", "draft_attempts": 2}, ("draft_failed", "close")),
         ({"draft": "needs_more_info"}, ("draft_needs_more_info", "close")),
         ({"draft": "drafting", "review": None}, ("draft_drafting", "wait")),
         ({}, ("awaiting_review", "auto_review")),
@@ -92,14 +99,16 @@ def test_no_action_waits_on_a_person() -> None:
     draft = [None, "drafting", "drafted", "needs_more_info", "failed"]
     review = [None, "pending", "approved", "revise", "rejected"]
     published = [None, "published", "unpublished"]
-    for r, d, rv, p, cover, attempts in product(
-        research, draft, review, published, [True, False], [0, MAX_RESEARCH_ATTEMPTS]
-    ):
+    for r, d, rv, p, cover, attempts, d_attempts in product(
+        research, draft, review, published, [True, False],
+        [0, MAX_RESEARCH_ATTEMPTS], [0, MAX_DRAFT_ATTEMPTS],
+    ):  # fmt: skip
         action = classify(
             research=r, draft=d, review=rv, published=p,
             has_cover=cover, has_figure=cover, research_attempts=attempts,
+            draft_attempts=d_attempts,
         ).next_action  # fmt: skip
-        assert action in AUTONOMOUS_ACTIONS, (r, d, rv, p, attempts, action)
+        assert action in AUTONOMOUS_ACTIONS, (r, d, rv, p, attempts, d_attempts, action)
 
 
 def test_close_reason_tag_is_known() -> None:

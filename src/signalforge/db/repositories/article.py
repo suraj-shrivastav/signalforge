@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from signalforge.db.models.article import ArticleDraftRow
 from signalforge.db.models.cards import EditorDecisionRow, TopicCardRow
 from signalforge.db.models.research import ResearchPackageRow
 from signalforge.db.models.signals import Signal
+from signalforge.pipeline_state import MAX_DRAFT_ATTEMPTS
 
 
 class ArticleDraftRepository:
@@ -25,7 +26,8 @@ class ArticleDraftRepository:
         """Cards with a 'researched' package and no article_drafts row.
 
         With ``retry_failed``, a 'failed' row does not count as drafted, and ``insert``
-        replaces it. Other statuses are never reselected.
+        replaces it, until it has used MAX_DRAFT_ATTEMPTS attempts (then the card is closed
+        and not returned). Other statuses are never reselected.
 
         The card's latest editor decision must still be 'accepted': a card rejected or
         snoozed after research is not drafted.
@@ -34,7 +36,12 @@ class ArticleDraftRepository:
         """
         drafted = select(ArticleDraftRow.card_id)
         if retry_failed:
-            drafted = drafted.where(ArticleDraftRow.status != DraftStatus.FAILED.value)
+            drafted = drafted.where(
+                or_(
+                    ArticleDraftRow.status != DraftStatus.FAILED.value,
+                    ArticleDraftRow.attempts >= MAX_DRAFT_ATTEMPTS,
+                )
+            )
         latest = (
             select(EditorDecisionRow.topic_card_id, EditorDecisionRow.decision)
             .distinct(EditorDecisionRow.topic_card_id)
@@ -121,7 +128,8 @@ class ArticleDraftRepository:
     ) -> bool:
         """Insert an article_drafts row derived from ``draft``.
 
-        ON CONFLICT (card_id) a 'failed' row is replaced by the retry; any other row is
+        ON CONFLICT (card_id) a 'failed' row is replaced by the retry and its attempts count
+        goes up by one (the first insert stores 1); any other row is
         left alone. A missing body is stored as ``{}``.
         """
         dumped = draft.model_dump(mode="json")
@@ -138,10 +146,14 @@ class ArticleDraftRepository:
         }
         statement = (
             insert(ArticleDraftRow)
-            .values(id=draft.id, card_id=draft.card_id, **values)
+            .values(id=draft.id, card_id=draft.card_id, attempts=1, **values)
             .on_conflict_do_update(
                 index_elements=["card_id"],
-                set_={**values, "updated_at": func.now()},
+                set_={
+                    **values,
+                    "attempts": ArticleDraftRow.__table__.c.attempts + 1,
+                    "updated_at": func.now(),
+                },
                 where=ArticleDraftRow.status == DraftStatus.FAILED.value,
             )
             .returning(ArticleDraftRow.id)

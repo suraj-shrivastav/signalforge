@@ -5,6 +5,9 @@ from dataclasses import dataclass
 # A card whose research failed or came back thin this many times is closed, not retried.
 MAX_RESEARCH_ATTEMPTS: int = 2
 
+# A card whose draft failed this many times is closed, not retried.
+MAX_DRAFT_ATTEMPTS: int = 2
+
 # The agent closes a card it cannot finish by rejecting it with this tag. Nothing waits on a
 # person: the decision row records the actor, so an editor can still audit or reopen it.
 CLOSE_REASON_TAG: str = "needs_more_evidence"
@@ -25,6 +28,7 @@ def classify(
     has_cover: bool,
     has_figure: bool,
     research_attempts: int = 0,
+    draft_attempts: int = 0,
 ) -> CardState:
     """Pure mapping from stored statuses to a stage and the next action for the agent."""
     if research is None:
@@ -37,6 +41,8 @@ def classify(
         return CardState(f"research_{research}", "retry_research")
     if draft is None:
         return CardState("researched", "run_draft")
+    if draft == "failed" and draft_attempts >= MAX_DRAFT_ATTEMPTS:
+        return CardState("draft_failed", "close")
     if draft == "failed":
         return CardState("draft_failed", "retry_draft")
     if draft == "drafting":
