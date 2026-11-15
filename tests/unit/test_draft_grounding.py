@@ -87,11 +87,15 @@ def judge(*supported: bool) -> str:
     return json.dumps({"sentences": verdicts})
 
 
-def run(replies: list[str], brief: str = "", provider: Any = None) -> Any:
+def make_gateway(replies: list[str], provider: Any = None) -> LLMGateway:
     roles = {WRITER_ROLE: ModelSpec("a/w", "a"), JUDGE_ROLE: ModelSpec("b/j", "b")}
     budget = Budget(BudgetScope.ARTICLE, BudgetLimits(max_cost_usd=Decimal("1")))
-    gateway = LLMGateway(provider or FakeProvider(replies), roles, budget, Recorder())  # type: ignore[arg-type]
-    return _process_card(gateway, package(), ArticleTemplate.NEWS_BRIEF, RUN, brief)
+    return LLMGateway(provider or FakeProvider(replies), roles, budget, Recorder())  # type: ignore[arg-type]
+
+
+def run(replies: list[str], brief: str = "", provider: Any = None, repair: bool = False) -> Any:
+    gateway = make_gateway(replies, provider)
+    return _process_card(gateway, package(), ArticleTemplate.NEWS_BRIEF, RUN, brief, repair=repair)
 
 
 def all_true(n: int = 29) -> str:
@@ -252,3 +256,51 @@ def test_same_family_different_model_is_allowed(caplog: pytest.LogCaptureFixture
     _check_families(_gateway("nvidia/big", "nvidia/small"))
     assert "share a model family" in caplog.text
     _check_families(_gateway("nvidia/big", "google/small"))
+
+
+UNCITED = "It is open source and free for everyone."
+
+
+def repaired(*fixes: tuple[int, str, list[int]], title: str | None = None) -> str:
+    sentences = [{"index": i, "text": t, "claim_ids": ids} for i, t, ids in fixes]
+    return json.dumps({"title": title, "sentences": sentences})
+
+
+def test_repair_rewrites_a_flagged_sentence_and_the_recheck_clears_its_flag() -> None:
+    body = [*BODY, sentence(UNCITED, [])]
+    draft = run([writer(body), all_true(30), repaired((29, GOOD, [0])), all_true(30)], repair=True)
+    assert draft.draft is not None
+    assert draft.draft.flags == ()
+    assert UNCITED not in draft.draft.sections[0].paragraphs[0]
+
+
+def test_repair_can_drop_a_body_sentence_no_claim_supports() -> None:
+    body = [*BODY, sentence(UNCITED, [])]
+    draft = run([writer(body), all_true(30), repaired((29, "", [])), all_true(29)], repair=True)
+    assert draft.draft is not None
+    assert draft.draft.flags == ()
+    assert draft.draft.sections[0].paragraphs[0].count(GOOD) == 28
+
+
+def test_repair_never_drops_the_dek() -> None:
+    rejects_dek = judge(False, *([True] * 28))
+    draft = run([writer(), rejects_dek, repaired((0, "", [])), rejects_dek], repair=True)
+    assert draft.draft is not None
+    assert draft.draft.dek == GOOD
+    assert [f.section for f in draft.draft.flags] == [-1]
+
+
+def test_repair_only_changes_flagged_sentences() -> None:
+    body = [*BODY, sentence(UNCITED, [])]
+    sneaky = repaired((29, GOOD, [0]), (1, "Nemotron won.", [0]))
+    draft = run([writer(body), all_true(30), sneaky, all_true(30)], repair=True)
+    assert draft.draft is not None
+    assert "Nemotron won." not in draft.draft.sections[0].paragraphs[0]
+
+
+def test_a_failed_repair_keeps_the_writer_sentences_and_their_flags() -> None:
+    body = [*BODY, sentence(UNCITED, [])]
+    draft = run([writer(body), all_true(30)], repair=True)  # no reply queued for the repair
+    assert draft.status is DraftStatus.DRAFTED
+    assert draft.draft is not None
+    assert [f.text for f in draft.draft.flags] == [UNCITED]
