@@ -176,6 +176,10 @@ class Settings(BaseSettings):
     auto_review_max_flagged_share: float = Field(default=0.4, ge=0, le=1)
     auto_review_max_redrafts: int = Field(default=2, ge=0)
     auto_review_min_section_sentences: int = Field(default=2, ge=1)
+    # Share of each template's minimum word count (LENGTH_BANDS) a draft must reach after
+    # deletions. 1.0 enforces the band minimum. Set lower from the quality report while
+    # research is thin (docs/superpowers/plans/2026-11-15-m2-article-quality.md, Task 6).
+    auto_review_length_floor_ratio: float = Field(default=1.0, ge=0, le=1)
 
     @model_validator(mode="after")
     def _require_token_for_ingest_endpoint(self) -> Self:

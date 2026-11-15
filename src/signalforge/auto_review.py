@@ -9,6 +9,7 @@ Pure functions, no DB and no LLM. The decision is one of:
 - ``reject``: it already had the maximum number of redrafts and still fails.
 """
 
+import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -17,7 +18,12 @@ from typing import Literal
 from signalforge.core.artifacts.article import ArticleBody, ArticleFlag, ArticleTemplate
 from signalforge.core.artifacts.research import ClaimStatus
 from signalforge.core.errors import ArtifactValidationError
-from signalforge.stages.draft_extraction import publish_gate, title_overreach, word_count
+from signalforge.stages.draft_extraction import (
+    LENGTH_BANDS,
+    publish_gate,
+    title_overreach,
+    word_count,
+)
 from signalforge.stages.draft_review import DEK, apply_sentence_edit
 
 # The review_note of a draft this module approved. Publishing reads it to choose the
@@ -35,6 +41,7 @@ class ReviewPolicy:
     max_flagged_share: float = 0.4
     max_redrafts: int = 2
     min_section_sentences: int = 2
+    length_floor_ratio: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -169,8 +176,9 @@ def decide(
         deleted.append(flag)
     reasons: list[str] = []
     words = word_count(current)
-    if words < policy.min_words:
-        reasons.append(f"{words} words after deletions, minimum {policy.min_words}")
+    floor = max(policy.min_words, math.ceil(LENGTH_BANDS[template][0] * policy.length_floor_ratio))
+    if words < floor:
+        reasons.append(f"{words} words after deletions, minimum {floor} for {template.value}")
     good = sum(c.status in _GOOD for c in current.claims)
     if good < policy.min_claims:
         reasons.append(f"{good} verified or supported claims, minimum {policy.min_claims}")
